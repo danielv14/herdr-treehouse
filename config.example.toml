@@ -1,0 +1,39 @@
+# workon repo config. Lives at: $(herdr plugin config-dir workon)/config.toml
+#
+# Placeholders available in worktree_dir and bootstrap:
+#   {repo}        repo name (config key)
+#   {branch}      full branch name, e.g. VKT-1234/fix-thing
+#   {slug}        slugified branch, e.g. vkt-1234-fix-thing
+#   {ticket}      leading ticket id lowercased (vkt-1234), empty if none
+#   {id}          {ticket} if present, otherwise {slug}
+#   {worktree}    resolved worktree path
+#   {base}        base ref (default origin/master)
+#   {targets...}  expands to one argv entry per --target (bootstrap only)
+#
+# A repo can override any of this with a .workon.toml in its root
+# (same fields, no [repos.*] wrapper).
+
+[repos.npm-packages]
+root = "~/dev/npm-packages"
+# Sibling layout matching worktree-up.sh and lazygit muscle memory.
+worktree_dir = "../npm-packages-{id}"
+base = "origin/master"
+# worktree-up.sh handles env copying, startmotor config, and node_modules.
+bootstrap = [
+  "~/.claude/skills/vk-branch/worktree-up.sh",
+  "--dir", "{worktree}",
+  "{branch}",
+  "{targets...}",
+]
+dev_command = "npm run startmotor"
+dev_split = "down"
+dev_ratio = 0.3
+# Verification is serial (tab by tab), so the dev pane only pre-fills the
+# command; two tabs must never race for the same docker containers/ports.
+dev_autostart = false
+
+# Minimal example: a private repo where a plain worktree + dev server is enough.
+# [repos.showtime]
+# root = "~/dev-personal/showtime"
+# dev_command = "npm run dev"
+# dev_autostart = false

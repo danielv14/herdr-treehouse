@@ -1,0 +1,47 @@
+id = "workon"
+name = "Workon"
+version = "0.1.0"
+min_herdr_version = "0.7.0"
+description = "Worktree-as-tab workflow: bootstrap a git worktree per repo config and open it as a Herdr tab with a prepped dev pane."
+platforms = ["macos", "linux"]
+
+# Keybinding/UI entrypoint. Opens the interactive picker in a popup pane
+# (an action runs headless, so prompting must happen in a plugin pane).
+[[actions]]
+id = "up"
+title = "Workon: new worktree tab"
+contexts = ["workspace"]
+command = ["bash", "bin/workon-action-up.sh"]
+
+[[panes]]
+id = "up-interactive"
+title = "Workon"
+placement = "popup"
+width = "70%"
+height = 14
+command = ["bash", "bin/workon", "up", "--interactive"]
+
+# Ctrl+click a Jira ticket or GitHub issue anywhere in a terminal:
+# opens a worktree tab in the current repo and hands the ticket to an agent.
+[[actions]]
+id = "up-from-link"
+title = "Workon: start from clicked link"
+command = ["bash", "bin/workon", "up", "--from-link"]
+
+[[link_handlers]]
+id = "jira-ticket"
+title = "Workon: start from Jira ticket"
+pattern = "^https://vkmedia\\.atlassian\\.net/browse/[A-Z]+-[0-9]+/?$"
+action = "up-from-link"
+
+[[link_handlers]]
+id = "github-issue"
+title = "Workon: start from GitHub issue"
+pattern = "^https://github\\.com/[^/]+/[^/]+/issues/[0-9]+/?$"
+action = "up-from-link"
+
+# When a worktree is created through Herdr's native flow, run the repo's
+# bootstrap (env files, node_modules) if the repo is configured.
+[[events]]
+on = "worktree.created"
+command = ["bash", "bin/workon", "bootstrap", "--from-event"]
