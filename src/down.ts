@@ -4,19 +4,29 @@ import { herdr, insideHerdr } from './herdr.ts'
 
 type DownOptions = {
   path?: string
+  interactive: boolean
 }
 
 const parseDownArgs = (argv: string[]): DownOptions => {
-  const options: DownOptions = {}
+  const options: DownOptions = { interactive: false }
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index]
     if (arg === '--path') {
       index += 1
       options.path = argv[index]
       if (!options.path) throw new Error('--path requires a value')
-    } else throw new Error(`unknown option for down: ${arg}`)
+    } else if (arg === '--interactive') options.interactive = true
+    else throw new Error(`unknown option for down: ${arg}`)
   }
   return options
+}
+
+const confirmInteractively = async (worktreeRoot: string): Promise<boolean> => {
+  const { createInterface } = await import('node:readline/promises')
+  const readline = createInterface({ input: process.stdin, output: process.stdout })
+  const answer = await readline.question(`Ta bort worktree ${worktreeRoot} och stäng dess tabb? [y/N] `)
+  readline.close()
+  return answer.trim().toLowerCase() === 'y'
 }
 
 const SHELL_NAMES = new Set(['zsh', 'bash', 'fish', 'sh', '-zsh', '-bash'])
@@ -52,13 +62,20 @@ const confirmedBusyProcesses = async (paneId: string): Promise<string[]> => {
 
 export const down = async (argv: string[]) => {
   const options = parseDownArgs(argv)
-  const worktreePath = resolve(options.path ?? process.cwd())
+  // WORKON_DOWN_PATH carries the focused pane's cwd into the popup (whose own
+  // cwd is the plugin root).
+  const worktreePath = resolve(options.path ?? process.env.WORKON_DOWN_PATH ?? process.cwd())
 
   if (!isLinkedWorktree(worktreePath)) {
     throw new Error(`${worktreePath} is not a linked worktree (refusing to touch a main checkout)`)
   }
   const worktreeRoot = findRepoRoot(worktreePath)
   const mainRepoRoot = findMainRepoRoot(worktreePath)
+
+  if (options.interactive && !(await confirmInteractively(worktreeRoot))) {
+    console.log('Avbrutet.')
+    return
+  }
 
   const dirty = dirtyFiles(worktreeRoot)
   if (dirty.length > 0) {
@@ -100,11 +117,20 @@ export const down = async (argv: string[]) => {
     }
   }
 
+  // The process may be running inside the worktree it is about to delete;
+  // spawning anything from a deleted cwd fails with ENOENT. Move out first.
+  process.chdir(mainRepoRoot)
+
   git(mainRepoRoot, ['worktree', 'remove', worktreeRoot])
   console.log(`removed worktree: ${worktreeRoot}`)
   console.log('branch left in place (cleaned up via PR merge as usual)')
 
-  for (const tabId of tabIds) {
+  // Close the caller's own tab last: an agent driving the teardown from
+  // inside the worktree tab dies with it, so everything else must be done.
+  const ownTabId = process.env.HERDR_TAB_ID
+  const orderedTabIds = [...tabIds].sort((a, b) => Number(a === ownTabId) - Number(b === ownTabId))
+  for (const tabId of orderedTabIds) {
+    if (tabId === ownTabId) console.log('closing this tab (the teardown ran from inside it)')
     herdr(['tab', 'close', tabId])
     console.log(`closed tab: ${tabId}`)
   }

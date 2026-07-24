@@ -24,6 +24,20 @@ command = ["bash", "bin/workon", "up", "--interactive"]
 # Ctrl+click a Jira ticket or GitHub issue anywhere in a terminal:
 # opens a worktree tab in the current repo and hands the ticket to an agent.
 [[actions]]
+id = "down"
+title = "Workon: tear down this worktree tab"
+contexts = ["workspace"]
+command = ["bash", "bin/workon-action-down.sh"]
+
+[[panes]]
+id = "down-interactive"
+title = "Workon teardown"
+placement = "popup"
+width = "70%"
+height = 14
+command = ["bash", "bin/workon", "down", "--interactive"]
+
+[[actions]]
 id = "up-from-link"
 title = "Workon: start from clicked link"
 command = ["bash", "bin/workon", "up", "--from-link"]
