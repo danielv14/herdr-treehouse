@@ -16,6 +16,10 @@ export type RepoConfig = {
   worktree_dir?: string
   base?: string
   bootstrap?: string[]
+  // Simple shell commands run inside a FRESHLY CREATED worktree (skipped when
+  // the worktree already existed), e.g. ["corepack enable", "npm ci"].
+  // The middle ground between no bootstrap and a full bootstrap script.
+  setup?: string[]
   // Extra panes in the worktree tab. Each entry splits the PREVIOUS pane
   // (the first splits the main/agent pane), so a 1|1 layout with the right
   // column halved is: [{split: "right"}, {split: "down"}].
@@ -34,6 +38,7 @@ export type TemplateContext = {
   ticket: string
   id: string
   worktree: string
+  root: string
   base: string
   targets: string[]
 }
@@ -98,10 +103,11 @@ export const buildTemplateContext = (
   branch: string,
   base: string,
   targets: string[],
+  mainRepoRoot: string,
 ): Omit<TemplateContext, 'worktree'> => {
   const slug = slugFromBranch(branch)
   const ticket = ticketFromBranch(branch)
-  return { repo: repoName, branch, slug, ticket, id: ticket || slug, base, targets }
+  return { repo: repoName, branch, slug, ticket, id: ticket || slug, root: mainRepoRoot, base, targets }
 }
 
 export const expandTemplate = (template: string, context: Record<string, unknown>) =>

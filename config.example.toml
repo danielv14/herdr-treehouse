@@ -1,50 +1,60 @@
 # workon repo config. Lives at: $(herdr plugin config-dir workon)/config.toml
 #
-# Placeholders available in worktree_dir and bootstrap:
+# Placeholders available in worktree_dir, bootstrap, setup, and pane commands:
 #   {repo}        repo name (config key)
-#   {branch}      full branch name, e.g. VKT-1234/fix-thing
-#   {slug}        slugified branch, e.g. vkt-1234-fix-thing
-#   {ticket}      leading ticket id lowercased (vkt-1234), empty if none
+#   {branch}      full branch name, e.g. ABC-1234/fix-thing
+#   {slug}        slugified branch, e.g. abc-1234-fix-thing
+#   {ticket}      leading ticket id lowercased (abc-1234), empty if none
 #   {id}          {ticket} if present, otherwise {slug}
 #   {worktree}    resolved worktree path
+#   {root}        main checkout path
 #   {base}        base ref (default origin/master)
 #   {targets...}  expands to one argv entry per --target (bootstrap only)
+#
+# Worktree setup, two tiers:
+#   setup     = ["corepack enable", "npm ci"]  # simple shell commands run inside a
+#                                              # FRESHLY created worktree (skipped if
+#                                              # it already existed); enough for most
+#                                              # repos: install deps, cp {root}/.env .env
+#   bootstrap = ["path/to/script.sh", ...]     # replaces worktree creation entirely;
+#                                              # for repos needing real logic (monorepos)
 #
 # A repo can override any of this with a .workon.toml in its root
 # (same fields, no [repos.*] wrapper).
 
-[repos.npm-packages]
-root = "~/dev/npm-packages"
-# Sibling layout matching worktree-up.sh and lazygit muscle memory.
-worktree_dir = "../npm-packages-{id}"
+[repos.my-awesome-repo]
+root = "~/dev/my-awesome-repo"
+# Sibling layout: worktrees live next to the main checkout.
+worktree_dir = "../my-awesome-repo-{id}"
 base = "origin/master"
-# worktree-up.sh handles env copying, startmotor config, and node_modules.
+# The script handles env copying, config, and node_modules for the new worktree.
 bootstrap = [
-  "~/.claude/skills/vk-branch/worktree-up.sh",
+  "~/dev/my-awesome-repo/scripts/worktree-up.sh",
   "--dir", "{worktree}",
   "{branch}",
   "{targets...}",
 ]
 # Panes: each entry splits the PREVIOUS pane (the first splits the main/agent
 # pane). Layout below: agent | right column, right column halved.
-# Verification is serial (tab by tab), so startmotor only pre-fills; two tabs
-# must never race for the same docker containers/ports.
-[[repos.npm-packages.panes]]
+# Verification is serial (tab by tab), so the dev command is only pre-filled;
+# two tabs must never race for the same docker containers/ports.
+[[repos.my-awesome-repo.panes]]
 split = "right"
 ratio = 0.5
-label = "startmotor"
-command = "npm run startmotor"
+label = "dev"
+command = "npm run dev"
 autostart = false
 
-[[repos.npm-packages.panes]]
+[[repos.my-awesome-repo.panes]]
 split = "down"
 ratio = 0.5
 label = "shell"
 
-# Minimal example: a private repo where a plain worktree + dev server is enough.
-# [repos.showtime]
-# root = "~/dev-personal/showtime"
-# [[repos.showtime.panes]]
+# Minimal example: a repo where a plain worktree + deps + dev server is enough.
+# [repos.side-project]
+# root = "~/dev-personal/side-project"
+# setup = ["npm ci"]
+# [[repos.side-project.panes]]
 # split = "down"
 # ratio = 0.3
 # label = "dev"

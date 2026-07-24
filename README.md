@@ -2,7 +2,7 @@
 
 Herdr plugin for a worktree-as-tab workflow: point it at a branch (or a Jira/GitHub link) and it bootstraps a git worktree according to per-repo config, opens it as a new tab in the repo's Herdr workspace, sets up the repo's pane layout, and starts a coding agent.
 
-The mental model: **a workspace is a repo, a tab is a worktree**. Work happens in parallel across tabs; verification is serial, so a dev pane pre-fills its command (`npm run startmotor`, `npm run dev`, ...) without running it (`autostart = false`). Press Enter when it is that tab's turn.
+The mental model: **a workspace is a repo, a tab is a worktree**. Work happens in parallel across tabs; verification is serial, so a dev pane pre-fills its command (`npm run dev`, `docker compose up`, ...) without running it (`autostart = false`). Press Enter when it is that tab's turn.
 
 ## Layout
 
@@ -29,11 +29,11 @@ Requires bun on PATH and Herdr >= 0.7.
 ## Usage
 
 ```bash
-workon up --branch VKT-1234/fix-thing --target services/smaksak
-workon up --branch VKT-1234/fix-thing --prompt "Lös VKT-1234 enligt ticketen"
+workon up --branch ABC-1234/fix-thing --target services/web
+workon up --branch ABC-1234/fix-thing --prompt "Solve ABC-1234 as described in the ticket"
 workon up --interactive          # used by the popup action (keybinding)
 workon down                      # from inside a worktree; refuses if dirty or panes are busy
-workon down --path ../npm-packages-vkt-1234
+workon down --path ../my-awesome-repo-abc-1234
 workon onboard                   # propose config for the current repo
 workon onboard --apply           # append it to the plugin config
 ```
@@ -53,7 +53,7 @@ description = "workon: new worktree tab"
 
 ### Link handlers
 
-Ctrl+click a `vkmedia.atlassian.net/browse/VKT-1234` or GitHub issue URL in any pane. Since a click carries no judgment, the engine creates a mechanical `VKT-1234/wip` branch and prompts the agent in the new tab to read the ticket and rename the branch per repo conventions.
+Ctrl+click a Jira ticket URL (`*.atlassian.net/browse/ABC-1234`) or GitHub issue URL in any pane. Since a click carries no judgment, the engine creates a mechanical `ABC-1234/wip` branch and prompts the agent in the new tab to read the ticket and rename the branch per repo conventions.
 
 ## Status / iteration notes
 

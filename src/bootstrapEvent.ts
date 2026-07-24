@@ -33,7 +33,7 @@ export const bootstrapFromEvent = async () => {
 
   const base = repoConfig.base ?? 'origin/master'
   const templateContext: TemplateContext = {
-    ...buildTemplateContext(repoName, branch, base, []),
+    ...buildTemplateContext(repoName, branch, base, [], mainRepoRoot),
     worktree: worktreePath,
   }
   const argv = expandArgv(repoConfig.bootstrap, templateContext)

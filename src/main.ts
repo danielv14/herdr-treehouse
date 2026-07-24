@@ -13,7 +13,7 @@ Usage:
 
 up: bootstrap a worktree (per repo config) and open it as a Herdr tab
   --repo <path>      repo to operate on (default: repo of cwd)
-  --branch, -b       branch name, e.g. VKT-1234/fix-thing
+  --branch, -b       branch name, e.g. ABC-1234/fix-thing
   --target, -t       repo-relative dir passed to the bootstrap script (repeatable)
   --targets a,b      comma-separated form of --target
   --label <text>     tab label (default: ticket id or branch slug)
@@ -59,9 +59,21 @@ const main = async () => {
   }
 }
 
+// The interactive popup pane closes the moment the process exits, so hold it
+// open until the user has read the summary or error.
+const holdForInteractive = async () => {
+  if (!process.argv.includes('--interactive')) return
+  const { createInterface } = await import('node:readline/promises')
+  const readline = createInterface({ input: process.stdin, output: process.stdout })
+  await readline.question('\n[Enter] stänger')
+  readline.close()
+}
+
 try {
   await main()
+  await holdForInteractive()
 } catch (error) {
   console.error(`workon: ${error instanceof Error ? error.message : error}`)
+  await holdForInteractive()
   process.exit(1)
 }

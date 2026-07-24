@@ -18,6 +18,7 @@ const parseOnboardArgs = (argv: string[]): OnboardOptions => {
 
 type RepoScan = {
   devCommand?: string
+  installCommand?: string
   envFiles: string[]
   hasDockerCompose: boolean
   notes: string[]
@@ -30,8 +31,12 @@ const scanRepo = async (repoRoot: string): Promise<RepoScan> => {
   if (existsSync(packageJsonPath)) {
     const packageJson = await Bun.file(packageJsonPath).json()
     const scripts: Record<string, string> = packageJson.scripts ?? {}
-    const candidate = ['startmotor', 'dev', 'start'].find((script) => scripts[script])
+    const candidate = ['dev', 'start'].find((script) => scripts[script])
     if (candidate) scan.devCommand = `npm run ${candidate}`
+    if (existsSync(join(repoRoot, 'package-lock.json'))) scan.installCommand = 'npm ci'
+    else if (existsSync(join(repoRoot, 'pnpm-lock.yaml'))) scan.installCommand = 'pnpm install --frozen-lockfile'
+    else if (existsSync(join(repoRoot, 'bun.lock')) || existsSync(join(repoRoot, 'bun.lockb'))) scan.installCommand = 'bun install --frozen-lockfile'
+    else if (existsSync(join(repoRoot, 'yarn.lock'))) scan.installCommand = 'yarn install --frozen-lockfile'
   } else {
     scan.notes.push('no package.json found; set dev_command manually')
   }
@@ -72,6 +77,7 @@ export const onboard = async (argv: string[]) => {
     `# worktree_dir = "../${repoName}-{id}"  # sibling layout; default is ~/.herdr/worktrees/{repo}/{id}`,
     `# base = "origin/master"`,
     `# bootstrap = ["path/to/bootstrap.sh", "--dir", "{worktree}", "{branch}", "{targets...}"]`,
+    scan.installCommand ? `setup = ["${scan.installCommand}"]` : `# setup = ["npm ci"]  # commands run in a freshly created worktree`,
     '',
     `[[repos.${tomlKey}.panes]]`,
     'split = "down"',

@@ -63,7 +63,7 @@ const parseUpArgs = (argv: string[]): UpOptions => {
 
 const askInteractively = async (options: UpOptions) => {
   const readline = createInterface({ input: process.stdin, output: process.stdout })
-  options.branch = (await readline.question('Branch (t.ex. VKT-1234/fix-thing): ')).trim()
+  options.branch = (await readline.question('Branch (t.ex. ABC-1234/fix-thing): ')).trim()
   const targets = (await readline.question('Targets, kommaseparerade (tomt för inga): ')).trim()
   if (targets !== '') options.targets.push(...targets.split(',').map((t) => t.trim()).filter(Boolean))
   readline.close()
@@ -115,6 +115,15 @@ const runBootstrap = (repoConfig: RepoConfig, mainRepoRoot: string, context: Tem
   }
 }
 
+const runSetup = (repoConfig: RepoConfig, context: TemplateContext) => {
+  for (const rawCommand of repoConfig.setup ?? []) {
+    const command = expandTemplate(rawCommand, context)
+    console.log(`setup: ${command}`)
+    const result = spawnSync('bash', ['-lc', command], { cwd: context.worktree, stdio: 'inherit' })
+    if (result.status !== 0) throw new Error(`setup command failed (exit ${result.status}): ${command}`)
+  }
+}
+
 const findWorkspaceId = (mainRepoRoot: string): string => {
   try {
     const listed = herdr(['worktree', 'list', '--cwd', mainRepoRoot])
@@ -135,19 +144,25 @@ export const up = async (argv: string[]) => {
   if (!options.branch) throw new Error('up requires --branch (or --interactive / --from-link)')
   if (!insideHerdr()) throw new Error('not inside a Herdr session (HERDR_ENV != 1)')
 
-  const startDir = options.repo ?? process.cwd()
+  // WORKON_REPO carries the focused workspace's cwd into the popup, whose own
+  // cwd is the plugin root rather than the repo the user is working in.
+  const startDir = options.repo ?? process.env.WORKON_REPO ?? process.cwd()
   const mainRepoRoot = findMainRepoRoot(startDir)
   const { name: repoName, config: repoConfig } = await resolveRepoConfig(mainRepoRoot)
   const base = repoConfig.base ?? 'origin/master'
 
-  const partialContext = buildTemplateContext(repoName, options.branch, base, options.targets)
+  const partialContext = buildTemplateContext(repoName, options.branch, base, options.targets, mainRepoRoot)
   const worktreePath = resolveWorktreePath(repoConfig, mainRepoRoot, partialContext)
   const context: TemplateContext = { ...partialContext, worktree: worktreePath }
 
+  const worktreeExistedBefore = existsSync(worktreePath)
   runBootstrap(repoConfig, mainRepoRoot, context)
   if (!existsSync(worktreePath)) {
     throw new Error(`bootstrap finished but worktree is missing: ${worktreePath}`)
   }
+  // Setup only on a fresh worktree: re-running `up` on an existing one should
+  // not trigger another npm ci.
+  if (!worktreeExistedBefore) runSetup(repoConfig, context)
 
   const workspaceId = findWorkspaceId(mainRepoRoot)
   const label = options.label ?? context.id
