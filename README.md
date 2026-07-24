@@ -1,8 +1,8 @@
 # herdr-workon
 
-Herdr plugin for a worktree-as-tab workflow: point it at a branch (or a Jira/GitHub link) and it bootstraps a git worktree according to per-repo config, opens it as a new tab in the repo's Herdr workspace, preps a dev pane, and starts a coding agent.
+Herdr plugin for a worktree-as-tab workflow: point it at a branch (or a Jira/GitHub link) and it bootstraps a git worktree according to per-repo config, opens it as a new tab in the repo's Herdr workspace, sets up the repo's pane layout, and starts a coding agent.
 
-The mental model: **a workspace is a repo, a tab is a worktree**. Work happens in parallel across tabs; verification is serial, so the dev pane pre-fills its command (`npm run startmotor`, `npm run dev`, ...) without running it. Press Enter when it is that tab's turn.
+The mental model: **a workspace is a repo, a tab is a worktree**. Work happens in parallel across tabs; verification is serial, so a dev pane pre-fills its command (`npm run startmotor`, `npm run dev`, ...) without running it (`autostart = false`). Press Enter when it is that tab's turn.
 
 ## Layout
 
