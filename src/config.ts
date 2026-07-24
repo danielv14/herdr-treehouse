@@ -3,15 +3,23 @@ import { homedir } from 'node:os'
 import { basename, isAbsolute, join, resolve } from 'node:path'
 import { herdr } from './herdr.ts'
 
+export type PaneConfig = {
+  split?: 'down' | 'right'
+  ratio?: number
+  label?: string
+  command?: string
+  autostart?: boolean
+}
+
 export type RepoConfig = {
   root: string
   worktree_dir?: string
   base?: string
   bootstrap?: string[]
-  dev_command?: string
-  dev_split?: 'down' | 'right'
-  dev_ratio?: number
-  dev_autostart?: boolean
+  // Extra panes in the worktree tab. Each entry splits the PREVIOUS pane
+  // (the first splits the main/agent pane), so a 1|1 layout with the right
+  // column halved is: [{split: "right"}, {split: "down"}].
+  panes?: PaneConfig[]
   agent?: string
 }
 

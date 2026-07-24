@@ -65,16 +65,20 @@ export const onboard = async (argv: string[]) => {
   }
 
   const scan = await scanRepo(repoRoot)
+  const tomlKey = repoName.includes('.') ? JSON.stringify(repoName) : repoName
   const lines = [
-    `[repos.${repoName.includes('.') ? JSON.stringify(repoName) : repoName}]`,
+    `[repos.${tomlKey}]`,
     `root = "${repoRoot}"`,
     `# worktree_dir = "../${repoName}-{id}"  # sibling layout; default is ~/.herdr/worktrees/{repo}/{id}`,
     `# base = "origin/master"`,
     `# bootstrap = ["path/to/bootstrap.sh", "--dir", "{worktree}", "{branch}", "{targets...}"]`,
+    '',
+    `[[repos.${tomlKey}.panes]]`,
+    'split = "down"',
+    'label = "dev"',
+    scan.devCommand ? `command = "${scan.devCommand}"` : '# command = "npm run dev"',
+    'autostart = false',
   ]
-  if (scan.devCommand) lines.push(`dev_command = "${scan.devCommand}"`)
-  else lines.push(`# dev_command = "npm run dev"`)
-  lines.push('dev_autostart = false')
   const block = lines.join('\n')
 
   console.log(`# Proposed config for ${repoName}\n`)

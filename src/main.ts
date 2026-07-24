@@ -20,7 +20,7 @@ up: bootstrap a worktree (per repo config) and open it as a Herdr tab
   --prompt <text>    task to hand the agent once it is idle
   --agent <cmd>      agent executable (default: repo config, then claude)
   --no-agent         skip starting an agent in the main pane
-  --no-dev           skip the dev pane
+  --no-dev           skip the extra panes from repo config
   --focus            focus the new tab (default: stay where you are)
 
 down: remove the worktree and close its tab

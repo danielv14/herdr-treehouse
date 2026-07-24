@@ -4,6 +4,7 @@ import { createInterface } from 'node:readline/promises'
 import {
   buildTemplateContext,
   expandArgv,
+  expandTemplate,
   resolveRepoConfig,
   resolveWorktreePath,
   type RepoConfig,
@@ -160,23 +161,34 @@ export const up = async (argv: string[]) => {
   const tabId = tab.tab.tab_id
   const mainPaneId = tab.root_pane.pane_id
 
-  let devPaneId: string | undefined
-  if (repoConfig.dev_command && !options.noDev) {
-    const split = herdr([
-      'pane', 'split', mainPaneId,
-      '--direction', repoConfig.dev_split ?? 'down',
-      '--ratio', String(repoConfig.dev_ratio ?? 0.3),
-      '--cwd', worktreePath,
-      '--no-focus',
-    ])
-    devPaneId = split.pane.pane_id as string
-    herdr(['pane', 'rename', devPaneId, 'dev'])
-    if (repoConfig.dev_autostart) {
-      herdr(['pane', 'run', devPaneId, repoConfig.dev_command])
-    } else {
-      // Pre-fill without Enter: verification is one keypress away, but two
-      // tabs never end up racing for the same docker containers/ports.
-      herdr(['pane', 'send-text', devPaneId, repoConfig.dev_command])
+  const paneSummaries: string[] = []
+  if (!options.noDev) {
+    let previousPaneId = mainPaneId
+    for (const paneConfig of repoConfig.panes ?? []) {
+      const split = herdr([
+        'pane', 'split', previousPaneId,
+        '--direction', paneConfig.split ?? 'down',
+        '--ratio', String(paneConfig.ratio ?? 0.5),
+        '--cwd', worktreePath,
+        '--no-focus',
+      ])
+      const paneId = split.pane.pane_id as string
+      if (paneConfig.label) herdr(['pane', 'rename', paneId, paneConfig.label])
+      if (paneConfig.command) {
+        const command = expandTemplate(paneConfig.command, context)
+        if (paneConfig.autostart) {
+          herdr(['pane', 'run', paneId, command])
+          paneSummaries.push(`${paneId}${paneConfig.label ? ` (${paneConfig.label})` : ''}: "${command}" startad`)
+        } else {
+          // Pre-fill without Enter: verification is one keypress away, but two
+          // tabs never end up racing for the same docker containers/ports.
+          herdr(['pane', 'send-text', paneId, command])
+          paneSummaries.push(`${paneId}${paneConfig.label ? ` (${paneConfig.label})` : ''}: "${command}" förifylld (Enter för att starta)`)
+        }
+      } else {
+        paneSummaries.push(`${paneId}${paneConfig.label ? ` (${paneConfig.label})` : ''}: shell`)
+      }
+      previousPaneId = paneId
     }
   }
 
@@ -192,8 +204,6 @@ export const up = async (argv: string[]) => {
   console.log(`worktree:  ${worktreePath}`)
   console.log(`branch:    ${context.branch}`)
   console.log(`tab:       ${tabId} (${label}) i workspace ${workspaceId}`)
-  if (devPaneId) {
-    console.log(`dev pane:  ${devPaneId} — "${repoConfig.dev_command}" ${repoConfig.dev_autostart ? 'startad' : 'förifylld (tryck Enter för att starta)'}`)
-  }
+  for (const summary of paneSummaries) console.log(`pane:      ${summary}`)
   if (!options.noAgent) console.log(`agent:     ${agent} i ${mainPaneId}`)
 }
