@@ -21,8 +21,8 @@ width = "70%"
 height = 14
 command = ["bash", "bin/treehouse", "up", "--interactive"]
 
-# Ctrl+click a Jira ticket or GitHub issue anywhere in a terminal:
-# opens a worktree tab in the current repo and hands the ticket to an agent.
+# Keybinding/UI entrypoint for teardown: confirm-and-remove popup targeting
+# the focused pane's worktree.
 [[actions]]
 id = "down"
 title = "Treehouse: tear down this worktree tab"
@@ -37,6 +37,8 @@ width = "70%"
 height = 14
 command = ["bash", "bin/treehouse", "down", "--interactive"]
 
+# Ctrl+click a Jira ticket or GitHub issue anywhere in a terminal: opens a
+# worktree tab in the clicked pane's repo with a bare agent (no task prompt).
 [[actions]]
 id = "up-from-link"
 title = "Treehouse: start from clicked link"

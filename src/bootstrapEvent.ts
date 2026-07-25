@@ -3,24 +3,27 @@ import { buildTemplateContext, expandArgv, resolveRepoConfig, type TemplateConte
 import { findMainRepoRoot } from './git.ts'
 
 // Handler for the worktree.created event (Herdr's native worktree flow).
-// The context payload shape is not fully documented, so this handler is
-// deliberately defensive: it logs what it receives (visible via
-// `herdr plugin log list --plugin treehouse`) and only acts when it can find
-// a worktree path and branch.
+// Event hooks receive the payload in HERDR_PLUGIN_EVENT_JSON; the invocation
+// context (HERDR_PLUGIN_CONTEXT_JSON) does NOT carry branch or path. Per
+// `herdr api schema`, worktree_created event data is
+// { type, workspace: WorkspaceInfo, worktree: WorktreeInfo } where
+// WorktreeInfo has `path` and `branch`. Not yet observed live; the raw
+// payload is logged (visible via `herdr plugin log list --plugin treehouse`)
+// so a real event can confirm the shape.
 export const bootstrapFromEvent = async () => {
-  const raw = process.env.HERDR_PLUGIN_CONTEXT_JSON
+  const raw = process.env.HERDR_PLUGIN_EVENT_JSON
   if (!raw) {
-    console.error('no HERDR_PLUGIN_CONTEXT_JSON in environment, nothing to do')
+    console.error('no HERDR_PLUGIN_EVENT_JSON in environment, nothing to do')
     return
   }
-  console.error(`event context: ${raw}`)
+  console.error(`event payload: ${raw}`)
 
-  const context = JSON.parse(raw)
-  const worktreePath: string | undefined =
-    context?.worktree?.path ?? context?.worktree?.checkout_path
-  const branch: string | undefined = context?.worktree?.branch
+  const payload = JSON.parse(raw)
+  const worktree = payload?.data?.worktree ?? payload?.worktree
+  const worktreePath: string | undefined = worktree?.path ?? worktree?.checkout_path
+  const branch: string | undefined = worktree?.branch
   if (!worktreePath || !branch) {
-    console.error('could not find worktree path/branch in event context, skipping bootstrap')
+    console.error('could not find worktree path/branch in event payload, skipping bootstrap')
     return
   }
 

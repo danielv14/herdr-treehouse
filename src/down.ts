@@ -31,7 +31,13 @@ const confirmInteractively = async (worktreeRoot: string): Promise<boolean> => {
 
 const SHELL_NAMES = new Set(['zsh', 'bash', 'fish', 'sh', '-zsh', '-bash'])
 
-type PaneRecord = { pane_id: string; tab_id: string; cwd?: string }
+type PaneRecord = {
+  pane_id: string
+  tab_id: string
+  cwd?: string
+  agent?: string
+  agent_status?: string
+}
 
 const panesInWorktree = (workspaceId: string, worktreePath: string): PaneRecord[] => {
   const listed = herdr(['pane', 'list', '--workspace', workspaceId])
@@ -86,34 +92,37 @@ export const down = async (argv: string[]) => {
   }
 
   // Closing the tab kills its PTYs, so anything still running (dev servers,
-  // agents) blocks teardown; the user shuts those down manually by design.
+  // busy agents) blocks teardown; the user shuts those down manually by
+  // design. Inspection failures abort rather than degrade: proceeding without
+  // the busy check could delete a worktree under a running dev server.
   let tabIds: string[] = []
   if (insideHerdr()) {
-    try {
-      const listed = herdr(['worktree', 'list', '--cwd', mainRepoRoot])
-      const workspaceId = listed?.source?.source_workspace_id
-      if (workspaceId) {
-        const panes = panesInWorktree(workspaceId, worktreeRoot)
-        // Skip the caller's own pane: when down runs from inside the worktree
-        // tab, the engine itself would otherwise count as a busy process.
-        const ownPaneId = process.env.HERDR_PANE_ID
-        const candidates = panes.filter((pane) => pane.pane_id !== ownPaneId)
-        const busy: string[] = []
-        for (const pane of candidates) {
-          const commands = await confirmedBusyProcesses(pane.pane_id)
-          busy.push(...commands.map((cmd) => `  ${pane.pane_id}: ${cmd}`))
-        }
-        if (busy.length > 0) {
-          throw new Error(
-            `panes in the worktree tab still run processes:\n${busy.join('\n')}\n` +
-              'Close them manually, then run down again.',
-          )
-        }
-        tabIds = [...new Set(panes.map((pane) => pane.tab_id))]
+    const listed = herdr(['worktree', 'list', '--cwd', mainRepoRoot])
+    const workspaceId = listed?.source?.source_workspace_id
+    if (!workspaceId) {
+      console.log('repo has no open workspace in Herdr; removing the worktree only')
+    } else {
+      const panes = panesInWorktree(workspaceId, worktreeRoot)
+      // Skip the caller's own pane: when down runs from inside the worktree
+      // tab, the engine itself would otherwise count as a busy process.
+      const ownPaneId = process.env.HERDR_PANE_ID
+      const candidates = panes.filter((pane) => pane.pane_id !== ownPaneId)
+      const busy: string[] = []
+      for (const pane of candidates) {
+        // A registered agent that is idle/done is just waiting at its prompt;
+        // tearing it down with the tab is the whole point. Only agents mid-work
+        // (or blocked on input) and non-agent processes count as busy.
+        if (pane.agent && (pane.agent_status === 'idle' || pane.agent_status === 'done')) continue
+        const commands = await confirmedBusyProcesses(pane.pane_id)
+        busy.push(...commands.map((cmd) => `  ${pane.pane_id}: ${cmd}`))
       }
-    } catch (error) {
-      if (error instanceof Error && error.message.includes('still run processes')) throw error
-      console.error(`warning: could not inspect Herdr panes (${error}), removing worktree only`)
+      if (busy.length > 0) {
+        throw new Error(
+          `panes in the worktree tab still run processes:\n${busy.join('\n')}\n` +
+            'Close them manually, then run down again.',
+        )
+      }
+      tabIds = [...new Set(panes.map((pane) => pane.tab_id))]
     }
   }
 

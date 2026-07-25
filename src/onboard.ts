@@ -38,7 +38,7 @@ const scanRepo = async (repoRoot: string): Promise<RepoScan> => {
     else if (existsSync(join(repoRoot, 'bun.lock')) || existsSync(join(repoRoot, 'bun.lockb'))) scan.installCommand = 'bun install --frozen-lockfile'
     else if (existsSync(join(repoRoot, 'yarn.lock'))) scan.installCommand = 'yarn install --frozen-lockfile'
   } else {
-    scan.notes.push('no package.json found; set dev_command manually')
+    scan.notes.push('no package.json found; set the dev pane command manually')
   }
 
   scan.envFiles = readdirSync(repoRoot).filter(
@@ -54,7 +54,7 @@ const scanRepo = async (repoRoot: string): Promise<RepoScan> => {
     )
   }
   if (scan.hasDockerCompose) {
-    scan.notes.push('docker compose detected: keep dev_autostart = false to avoid container/port clashes between tabs')
+    scan.notes.push('docker compose detected: keep autostart = false on the dev pane to avoid container/port clashes between tabs')
   }
   return scan
 }

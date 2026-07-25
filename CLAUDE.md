@@ -32,6 +32,8 @@ Herdr CLI responses are JSON; `src/herdr.ts` wraps invocation and returns the pa
 
 ## Status / open ends
 
-- `worktree.created` hook payload shape is unverified; `bootstrapFromEvent` logs its context defensively and only acts when it finds path + branch.
+- `worktree.created` hook reads `HERDR_PLUGIN_EVENT_JSON` per the shape from `herdr api schema` (authoritative payload reference); not yet observed live, raw payload is logged for confirmation.
+- Multiline text through `pane run` arrives as ONE paste + one submit (live-verified, herdr 0.7.4) — no per-line splitting; multiline `--prompt` is safe.
+- `down` treats a registered agent in `idle`/`done` as not busy (tearing it down is the point); `working`/`blocked` agents and non-agent processes still refuse.
 - `up` currently requires `HERDR_ENV=1`. Planned (pending the owner deciding Herdr is a keeper): degrade gracefully outside Herdr by running bootstrap only and skipping tab/panes/agent.
 - Overlap with the `vk-branch` skill's worktree mode is known and intentionally left until that decision. Details in `~/.claude/CLAUDE.md` under "Herdr + treehouse".

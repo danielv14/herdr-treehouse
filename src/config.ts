@@ -62,6 +62,27 @@ export const loadConfig = async (): Promise<TreehouseConfig> => {
   return { repos: parsed.repos ?? {} }
 }
 
+// The TOML is cast straight to the types, so typos (dev_command, autostart at
+// repo level, ...) would otherwise be ignored silently and features just not
+// happen. Warn loudly instead of failing: an unknown key is never fatal.
+const KNOWN_REPO_KEYS = new Set(['root', 'worktree_dir', 'base', 'bootstrap', 'setup', 'panes', 'agent'])
+const KNOWN_PANE_KEYS = new Set(['split', 'ratio', 'label', 'command', 'autostart'])
+
+const warnUnknownKeys = (repoName: string, config: RepoConfig) => {
+  for (const key of Object.keys(config)) {
+    if (!KNOWN_REPO_KEYS.has(key)) {
+      console.error(`warning: unknown config key "${key}" for repo ${repoName} (ignored). Known keys: ${[...KNOWN_REPO_KEYS].join(', ')}`)
+    }
+  }
+  for (const pane of config.panes ?? []) {
+    for (const key of Object.keys(pane)) {
+      if (!KNOWN_PANE_KEYS.has(key)) {
+        console.error(`warning: unknown pane key "${key}" for repo ${repoName} (ignored). Known keys: ${[...KNOWN_PANE_KEYS].join(', ')}`)
+      }
+    }
+  }
+}
+
 const sameDir = (a: string, b: string) => {
   try {
     return realpathSync(a) === realpathSync(b)
@@ -83,6 +104,7 @@ export const resolveRepoConfig = async (mainRepoRoot: string): Promise<{ name: s
     const local = Bun.TOML.parse(await Bun.file(localPath).text()) as Partial<RepoConfig>
     config = { ...config, ...local, root: mainRepoRoot }
   }
+  warnUnknownKeys(name, config)
   return { name, config }
 }
 

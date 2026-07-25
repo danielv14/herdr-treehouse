@@ -45,10 +45,16 @@ treehouse onboard --apply           # append it to the plugin config
 ```toml
 # ~/.config/herdr/config.toml
 [[keys.command]]
-key = "prefix+shift+u"
+key = "prefix+u"
 type = "plugin_action"
 command = "treehouse.up"
 description = "treehouse: new worktree tab"
+
+[[keys.command]]
+key = "prefix+shift+u"
+type = "plugin_action"
+command = "treehouse.down"
+description = "treehouse: tear down worktree tab"
 ```
 
 ### Link handlers
@@ -57,6 +63,7 @@ Ctrl+click a Jira ticket URL (`*.atlassian.net/browse/ABC-1234`) or GitHub issue
 
 ## Status / iteration notes
 
-- `worktree.created` hook: logs its context payload (`herdr plugin log list --plugin treehouse`) and bootstraps when it can find path + branch; payload shape needs verifying against a real event.
+- `worktree.created` hook: reads `HERDR_PLUGIN_EVENT_JSON` per the shape documented by `herdr api schema` (worktree with `path` + `branch`); not yet observed live, so it still logs the raw payload (`herdr plugin log list --plugin treehouse`).
+- Multiline `--prompt` is safe: `pane run` delivers it as a single paste + one submit (verified against a live agent, herdr 0.7.4).
 - Herdr's native worktree flow opens worktrees as workspaces; this plugin intentionally does not use it (tab model instead).
 - Claude skills that wrap this engine live in the skills repo: `herdr-worktree`, `herdr-worktree-teardown`, `herdr-repo-onboard`.

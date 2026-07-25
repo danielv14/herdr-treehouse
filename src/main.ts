@@ -30,6 +30,8 @@ down: remove the worktree and close its tab
 onboard: scan the current repo and propose a config entry
   --apply            append the proposal to the plugin config
 
+bootstrap --from-event: internal, used by the worktree.created plugin hook
+
 Config: config.toml in the plugin config dir (herdr plugin config-dir treehouse),
         optionally overridden per repo by <repo>/.treehouse.toml`
 

@@ -110,6 +110,16 @@ const runBootstrap = (repoConfig: RepoConfig, mainRepoRoot: string, context: Tem
   if (branchExists(mainRepoRoot, context.branch)) {
     git(mainRepoRoot, ['worktree', 'add', context.worktree, context.branch])
   } else {
+    // Refresh the base ref so new branches don't silently fork from a stale
+    // fetch. Offline is survivable; branching from the local ref then.
+    const baseMatch = context.base.match(/^([^/]+)\/(.+)$/)
+    if (baseMatch) {
+      try {
+        git(mainRepoRoot, ['fetch', baseMatch[1], baseMatch[2]])
+      } catch (error) {
+        console.error(`warning: could not fetch ${context.base}, branching from the local ref (${error instanceof Error ? error.message : error})`)
+      }
+    }
     git(mainRepoRoot, ['worktree', 'add', context.worktree, '-b', context.branch, '--no-track', context.base])
   }
 }
@@ -136,14 +146,33 @@ const findWorkspaceId = (mainRepoRoot: string): string => {
   return workspaceId
 }
 
+// Plugin-invoked processes (actions, link handlers, plugin panes) run with
+// cwd = plugin root, but Herdr injects the invocation context; the repo the
+// user was actually in is the focused pane's cwd.
+const pluginContextCwd = (): string | undefined => {
+  const raw = process.env.HERDR_PLUGIN_CONTEXT_JSON
+  if (!raw) return undefined
+  try {
+    const context = JSON.parse(raw)
+    return context.focused_pane_cwd ?? context.workspace_cwd ?? undefined
+  } catch {
+    return undefined
+  }
+}
+
 export const up = async (argv: string[]) => {
   const options = parseUpArgs(argv)
   if (options.fromLink) applyLinkContext(options)
   if (!insideHerdr()) throw new Error('not inside a Herdr session (HERDR_ENV != 1)')
 
-  // TREEHOUSE_REPO carries the focused workspace's cwd into the popup, whose own
-  // cwd is the plugin root rather than the repo the user is working in.
-  const startDir = options.repo ?? process.env.TREEHOUSE_REPO ?? process.cwd()
+  // Explicit --repo wins, then TREEHOUSE_REPO (set by the popup shims), then
+  // the plugin invocation context. Falling back to process.cwd() would target
+  // the plugin repo itself for plugin-invoked runs, so refuse in that case.
+  const ambientCwd = process.env.TREEHOUSE_REPO ?? pluginContextCwd()
+  if (options.fromLink && !options.repo && !ambientCwd) {
+    throw new Error('link invocation: could not derive the target repo from the plugin context')
+  }
+  const startDir = options.repo ?? ambientCwd ?? process.cwd()
   const mainRepoRoot = findMainRepoRoot(startDir)
   const { name: repoName, config: repoConfig } = await resolveRepoConfig(mainRepoRoot)
   const base = repoConfig.base ?? 'origin/master'
@@ -163,6 +192,9 @@ export const up = async (argv: string[]) => {
   // Setup only on a fresh worktree: re-running `up` on an existing one should
   // not trigger another npm ci.
   if (!worktreeExistedBefore) runSetup(repoConfig, context)
+  else if (repoConfig.setup?.length) {
+    console.log('worktree already existed; setup commands skipped (run them manually if deps are missing)')
+  }
 
   const workspaceId = findWorkspaceId(mainRepoRoot)
   const label = options.label ?? context.id
@@ -213,6 +245,10 @@ export const up = async (argv: string[]) => {
     if (options.prompt) {
       herdr(['wait', 'agent-status', mainPaneId, '--status', 'idle', '--timeout', '60000'])
       herdr(['pane', 'run', mainPaneId, options.prompt])
+      // A long prompt lands in the agent input as a [Pasted text] block and
+      // bracketed paste swallows the trailing Enter, so it sits unsent. Submit
+      // it explicitly with a separate keystroke.
+      herdr(['pane', 'send-keys', mainPaneId, 'enter'])
     }
   }
 

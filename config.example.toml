@@ -8,7 +8,8 @@
 #   {id}          {ticket} if present, otherwise {slug}
 #   {worktree}    resolved worktree path
 #   {root}        main checkout path
-#   {base}        base ref (default origin/master)
+#   {base}        base ref (default origin/master); only used by the built-in
+#                 worktree creation - a custom bootstrap owns its own base
 #   {targets...}  expands to one argv entry per --target (bootstrap only)
 #
 # Worktree setup, two tiers:
