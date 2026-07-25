@@ -77,26 +77,18 @@ const askInteractively = async (options: UpOptions, repoName: string, repoConfig
   options.focus = true
 }
 
-// A clicked link carries no judgment, so derive a mechanical wip branch and
-// let the agent in the new tab rename it once it has read the ticket.
+// A clicked link carries no judgment, so the engine stays mechanical: derive
+// a wip branch and open the tab with a bare agent. What to DO about the
+// ticket (explore, fix, just read up) is the user's or a skill's call; the
+// engine never injects a task prompt on its own.
 const applyLinkContext = (options: UpOptions) => {
   const url = process.env.HERDR_PLUGIN_CLICKED_URL ?? ''
   const jiraMatch = url.match(/atlassian\.net\/browse\/([A-Z]+-\d+)/)
   const githubMatch = url.match(/github\.com\/[^/]+\/([^/]+)\/issues\/(\d+)/)
   if (jiraMatch) {
     options.branch = `${jiraMatch[1]}/wip`
-    options.prompt = [
-      `Read up on ${jiraMatch[1]} (${url}).`,
-      'You are in a freshly created git worktree on a temporary branch.',
-      'Rename the branch per the repo conventions (git branch -m), then resolve the ticket.',
-    ].join(' ')
   } else if (githubMatch) {
     options.branch = `issue-${githubMatch[2]}/wip`
-    options.prompt = [
-      `Read GitHub issue ${url} (e.g. via gh issue view ${githubMatch[2]}).`,
-      'You are in a freshly created git worktree on a temporary branch.',
-      'Rename the branch if needed, then resolve the issue.',
-    ].join(' ')
   } else {
     throw new Error(`could not derive a branch from clicked url: ${url}`)
   }

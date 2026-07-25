@@ -53,7 +53,7 @@ description = "workon: new worktree tab"
 
 ### Link handlers
 
-Ctrl+click a Jira ticket URL (`*.atlassian.net/browse/ABC-1234`) or GitHub issue URL in any pane. Since a click carries no judgment, the engine creates a mechanical `ABC-1234/wip` branch and prompts the agent in the new tab to read the ticket and rename the branch per repo conventions.
+Ctrl+click a Jira ticket URL (`*.atlassian.net/browse/ABC-1234`) or GitHub issue URL in any pane. Since a click carries no judgment, the engine stays mechanical: it creates an `ABC-1234/wip` branch and opens the tab with a bare agent. What to do about the ticket (explore, fix, just read up) is yours to type; the engine never injects a task prompt on its own. `--prompt` exists for callers (skills) that DO carry that judgment.
 
 ## Status / iteration notes
 
