@@ -239,6 +239,9 @@ export const up = async (argv: string[]) => {
     }
   }
 
+  // repoConfig.agent already has [defaults].agent layered under it; bare
+  // `claude` is the last resort so the user's own Claude Code settings decide
+  // things like permission mode when nothing here is configured.
   const agent = options.agent ?? repoConfig.agent ?? 'claude'
   if (!options.noAgent) {
     herdr(['pane', 'run', mainPaneId, agent])

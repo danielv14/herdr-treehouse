@@ -40,6 +40,18 @@ treehouse onboard --apply           # append it to the plugin config
 
 `down` removes the worktree and closes its tab, but never kills running processes and never uses `git worktree remove --force`; it tells you what is in the way instead.
 
+### Agent command
+
+The command that starts the agent in the main pane resolves in this order, first match wins:
+
+1. `treehouse up --agent "<cmd>"`
+2. `agent` in the repo's `.treehouse.toml`
+3. `agent` in the repo's `[repos.X]` block in `config.toml`
+4. `agent` in the `[defaults]` block in `config.toml`, which applies to every repo
+5. bare `claude`
+
+Left unset, a bare `claude` inherits your own Claude Code settings, so permission mode stays one decision in `~/.claude/settings.json`. Set `[defaults]` instead when you want flags in every worktree tab, including ones with no settings.json equivalent such as `--allow-dangerously-skip-permissions`. A per-repo `agent` is for repos that genuinely deserve different treatment, not for restating something global.
+
 ### Keybinding
 
 ```toml

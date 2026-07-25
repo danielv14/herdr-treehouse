@@ -24,10 +24,21 @@ export type RepoConfig = {
   // (the first splits the main/agent pane), so a 1|1 layout with the right
   // column halved is: [{split: "right"}, {split: "down"}].
   panes?: PaneConfig[]
+  // Command that starts the coding agent in the main pane. Overrides
+  // [defaults].agent; `treehouse up --agent` overrides both.
+  agent?: string
+}
+
+// Settings that apply to every repo, each overridable per repo. A table rather
+// than bare top-level keys on purpose: TOML bare keys attach to whatever table
+// precedes them, so an `agent = "..."` line appended below a [repos.X] block
+// would silently become that repo's setting instead of the global one.
+export type DefaultsConfig = {
   agent?: string
 }
 
 export type TreehouseConfig = {
+  defaults: DefaultsConfig
   repos: Record<string, RepoConfig>
 }
 
@@ -57,16 +68,40 @@ export const configPath = () => join(configDir(), 'config.toml')
 
 export const loadConfig = async (): Promise<TreehouseConfig> => {
   const path = configPath()
-  if (!existsSync(path)) return { repos: {} }
+  if (!existsSync(path)) return { defaults: {}, repos: {} }
   const parsed = Bun.TOML.parse(await Bun.file(path).text()) as Partial<TreehouseConfig>
-  return { repos: parsed.repos ?? {} }
+  warnUnknownTopLevelKeys(parsed)
+  return { defaults: knownDefaults(parsed.defaults ?? {}), repos: parsed.repos ?? {} }
 }
 
 // The TOML is cast straight to the types, so typos (dev_command, autostart at
 // repo level, ...) would otherwise be ignored silently and features just not
 // happen. Warn loudly instead of failing: an unknown key is never fatal.
+const KNOWN_TOP_LEVEL_KEYS = new Set(['defaults', 'repos'])
+const KNOWN_DEFAULTS_KEYS = new Set(['agent'])
 const KNOWN_REPO_KEYS = new Set(['root', 'worktree_dir', 'base', 'bootstrap', 'setup', 'panes', 'agent'])
 const KNOWN_PANE_KEYS = new Set(['split', 'ratio', 'label', 'command', 'autostart'])
+
+// Catches an `agent = "..."` line placed at the top of the file instead of
+// inside [defaults], which would otherwise be parsed and dropped in silence.
+const warnUnknownTopLevelKeys = (parsed: Partial<TreehouseConfig>) => {
+  for (const key of Object.keys(parsed)) {
+    if (!KNOWN_TOP_LEVEL_KEYS.has(key)) {
+      console.error(`warning: unknown top-level key "${key}" in config.toml (ignored). Known keys: ${[...KNOWN_TOP_LEVEL_KEYS].join(', ')}`)
+    }
+  }
+}
+
+// Unknown keys are dropped instead of merged into every repo, so a typo in
+// [defaults] is reported once against [defaults] rather than once per repo.
+const knownDefaults = (defaults: Record<string, unknown>): DefaultsConfig => {
+  const result: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(defaults)) {
+    if (KNOWN_DEFAULTS_KEYS.has(key)) result[key] = value
+    else console.error(`warning: unknown key "${key}" in [defaults] (ignored). Known keys: ${[...KNOWN_DEFAULTS_KEYS].join(', ')}`)
+  }
+  return result as DefaultsConfig
+}
 
 const warnUnknownKeys = (repoName: string, config: RepoConfig) => {
   for (const key of Object.keys(config)) {
@@ -91,13 +126,14 @@ const sameDir = (a: string, b: string) => {
   }
 }
 
-// Repo config from the central config.toml, overridden by a repo-local
-// .treehouse.toml at the main checkout root when present.
+// Config for a repo, layered lowest to highest: [defaults] from the central
+// config.toml, then its [repos.X] entry, then a repo-local .treehouse.toml at
+// the main checkout root.
 export const resolveRepoConfig = async (mainRepoRoot: string): Promise<{ name: string; config: RepoConfig }> => {
-  const { repos } = await loadConfig()
+  const { defaults, repos } = await loadConfig()
   const entry = Object.entries(repos).find(([, repo]) => sameDir(expandHome(repo.root), mainRepoRoot))
   let name = entry?.[0] ?? basename(mainRepoRoot)
-  let config: RepoConfig = entry?.[1] ?? { root: mainRepoRoot }
+  let config: RepoConfig = { ...defaults, ...(entry?.[1] ?? { root: mainRepoRoot }) }
 
   const localPath = join(mainRepoRoot, '.treehouse.toml')
   if (existsSync(localPath)) {

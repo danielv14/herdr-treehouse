@@ -18,7 +18,7 @@ up: bootstrap a worktree (per repo config) and open it as a Herdr tab
   --targets a,b      comma-separated form of --target
   --label <text>     tab label (default: ticket id or branch slug)
   --prompt <text>    task to hand the agent once it is idle
-  --agent <cmd>      agent executable (default: repo config, then claude)
+  --agent <cmd>      agent command (default: repo config, [defaults], then claude)
   --no-agent         skip starting an agent in the main pane
   --no-dev           skip the extra panes from repo config
   --focus            focus the new tab (default: stay where you are)

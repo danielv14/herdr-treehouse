@@ -23,6 +23,17 @@
 # A repo can override any of this with a .treehouse.toml in its root
 # (same fields, no [repos.*] wrapper).
 
+# Applies to every repo below. Any [repos.X] entry can override it, and
+# `treehouse up --agent "..."` overrides both. Keep the keys inside this table:
+# a bare `agent = "..."` line further down the file would attach to whichever
+# [repos.X] block precedes it instead of applying globally.
+[defaults]
+# How the coding agent is started in the main pane. Omit it and treehouse runs
+# a bare `claude`, which is usually what you want: the agent then picks up your
+# own Claude Code settings, including permission mode. Set it here only for
+# flags you want in every repo.
+# agent = "claude --allow-dangerously-skip-permissions"
+
 [repos.my-awesome-repo]
 root = "~/dev/my-awesome-repo"
 # Sibling layout: worktrees live next to the main checkout.
