@@ -3,13 +3,13 @@ import { down } from './down.ts'
 import { onboard } from './onboard.ts'
 import { up } from './up.ts'
 
-const HELP = `workon — worktree-as-tab workflow engine for Herdr
+const HELP = `treehouse — worktree-as-tab workflow engine for Herdr
 
 Usage:
-  workon up --branch <name> [--target <dir>]... [options]
-  workon up --interactive
-  workon down [--path <worktree>]
-  workon onboard [--apply]
+  treehouse up --branch <name> [--target <dir>]... [options]
+  treehouse up --interactive
+  treehouse down [--path <worktree>]
+  treehouse onboard [--apply]
 
 up: bootstrap a worktree (per repo config) and open it as a Herdr tab
   --repo <path>      repo to operate on (default: repo of cwd)
@@ -30,8 +30,8 @@ down: remove the worktree and close its tab
 onboard: scan the current repo and propose a config entry
   --apply            append the proposal to the plugin config
 
-Config: config.toml in the plugin config dir (herdr plugin config-dir workon),
-        optionally overridden per repo by <repo>/.workon.toml`
+Config: config.toml in the plugin config dir (herdr plugin config-dir treehouse),
+        optionally overridden per repo by <repo>/.treehouse.toml`
 
 const main = async () => {
   const [command, ...rest] = process.argv.slice(2)
@@ -55,7 +55,7 @@ const main = async () => {
       console.log(HELP)
       break
     default:
-      throw new Error(`unknown command: ${command} (see workon --help)`)
+      throw new Error(`unknown command: ${command} (see treehouse --help)`)
   }
 }
 
@@ -73,7 +73,7 @@ try {
   await main()
   await holdForInteractive()
 } catch (error) {
-  console.error(`workon: ${error instanceof Error ? error.message : error}`)
+  console.error(`treehouse: ${error instanceof Error ? error.message : error}`)
   await holdForInteractive()
   process.exit(1)
 }

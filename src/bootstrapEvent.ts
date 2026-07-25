@@ -5,7 +5,7 @@ import { findMainRepoRoot } from './git.ts'
 // Handler for the worktree.created event (Herdr's native worktree flow).
 // The context payload shape is not fully documented, so this handler is
 // deliberately defensive: it logs what it receives (visible via
-// `herdr plugin log list --plugin workon`) and only acts when it can find
+// `herdr plugin log list --plugin treehouse`) and only acts when it can find
 // a worktree path and branch.
 export const bootstrapFromEvent = async () => {
   const raw = process.env.HERDR_PLUGIN_CONTEXT_JSON

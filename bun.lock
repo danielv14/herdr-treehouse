@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "herdr-workon",
+      "name": "herdr-treehouse",
       "devDependencies": {
         "@types/bun": "^1.3.0",
         "typescript": "^5.7.0",

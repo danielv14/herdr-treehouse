@@ -62,9 +62,9 @@ const confirmedBusyProcesses = async (paneId: string): Promise<string[]> => {
 
 export const down = async (argv: string[]) => {
   const options = parseDownArgs(argv)
-  // WORKON_DOWN_PATH carries the focused pane's cwd into the popup (whose own
+  // TREEHOUSE_DOWN_PATH carries the focused pane's cwd into the popup (whose own
   // cwd is the plugin root).
-  const worktreePath = resolve(options.path ?? process.env.WORKON_DOWN_PATH ?? process.cwd())
+  const worktreePath = resolve(options.path ?? process.env.TREEHOUSE_DOWN_PATH ?? process.cwd())
 
   if (!isLinkedWorktree(worktreePath)) {
     throw new Error(`${worktreePath} is not a linked worktree (refusing to touch a main checkout)`)
@@ -81,7 +81,7 @@ export const down = async (argv: string[]) => {
   if (dirty.length > 0) {
     throw new Error(
       `worktree has uncommitted changes, refusing to remove:\n${dirty.join('\n')}\n` +
-        'Commit, stash, or clean up first (workon never uses --force).',
+        'Commit, stash, or clean up first (treehouse never uses --force).',
     )
   }
 

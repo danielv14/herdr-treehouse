@@ -141,9 +141,9 @@ export const up = async (argv: string[]) => {
   if (options.fromLink) applyLinkContext(options)
   if (!insideHerdr()) throw new Error('not inside a Herdr session (HERDR_ENV != 1)')
 
-  // WORKON_REPO carries the focused workspace's cwd into the popup, whose own
+  // TREEHOUSE_REPO carries the focused workspace's cwd into the popup, whose own
   // cwd is the plugin root rather than the repo the user is working in.
-  const startDir = options.repo ?? process.env.WORKON_REPO ?? process.cwd()
+  const startDir = options.repo ?? process.env.TREEHOUSE_REPO ?? process.cwd()
   const mainRepoRoot = findMainRepoRoot(startDir)
   const { name: repoName, config: repoConfig } = await resolveRepoConfig(mainRepoRoot)
   const base = repoConfig.base ?? 'origin/master'

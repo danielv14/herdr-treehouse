@@ -1,4 +1,4 @@
-# workon repo config. Lives at: $(herdr plugin config-dir workon)/config.toml
+# treehouse repo config. Lives at: $(herdr plugin config-dir treehouse)/config.toml
 #
 # Placeholders available in worktree_dir, bootstrap, setup, and pane commands:
 #   {repo}        repo name (config key)
@@ -19,7 +19,7 @@
 #   bootstrap = ["path/to/script.sh", ...]     # replaces worktree creation entirely;
 #                                              # for repos needing real logic (monorepos)
 #
-# A repo can override any of this with a .workon.toml in its root
+# A repo can override any of this with a .treehouse.toml in its root
 # (same fields, no [repos.*] wrapper).
 
 [repos.my-awesome-repo]

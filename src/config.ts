@@ -27,7 +27,7 @@ export type RepoConfig = {
   agent?: string
 }
 
-export type WorkonConfig = {
+export type TreehouseConfig = {
   repos: Record<string, RepoConfig>
 }
 
@@ -48,17 +48,17 @@ export const expandHome = (path: string) =>
 
 export const configDir = (): string => {
   if (process.env.HERDR_PLUGIN_CONFIG_DIR) return process.env.HERDR_PLUGIN_CONFIG_DIR
-  const reported = herdr(['plugin', 'config-dir', 'workon'])
+  const reported = herdr(['plugin', 'config-dir', 'treehouse'])
   if (typeof reported === 'string' && reported !== '') return expandHome(reported)
-  throw new Error('could not resolve config dir (HERDR_PLUGIN_CONFIG_DIR unset and `herdr plugin config-dir workon` gave nothing)')
+  throw new Error('could not resolve config dir (HERDR_PLUGIN_CONFIG_DIR unset and `herdr plugin config-dir treehouse` gave nothing)')
 }
 
 export const configPath = () => join(configDir(), 'config.toml')
 
-export const loadConfig = async (): Promise<WorkonConfig> => {
+export const loadConfig = async (): Promise<TreehouseConfig> => {
   const path = configPath()
   if (!existsSync(path)) return { repos: {} }
-  const parsed = Bun.TOML.parse(await Bun.file(path).text()) as Partial<WorkonConfig>
+  const parsed = Bun.TOML.parse(await Bun.file(path).text()) as Partial<TreehouseConfig>
   return { repos: parsed.repos ?? {} }
 }
 
@@ -71,14 +71,14 @@ const sameDir = (a: string, b: string) => {
 }
 
 // Repo config from the central config.toml, overridden by a repo-local
-// .workon.toml at the main checkout root when present.
+// .treehouse.toml at the main checkout root when present.
 export const resolveRepoConfig = async (mainRepoRoot: string): Promise<{ name: string; config: RepoConfig }> => {
   const { repos } = await loadConfig()
   const entry = Object.entries(repos).find(([, repo]) => sameDir(expandHome(repo.root), mainRepoRoot))
   let name = entry?.[0] ?? basename(mainRepoRoot)
   let config: RepoConfig = entry?.[1] ?? { root: mainRepoRoot }
 
-  const localPath = join(mainRepoRoot, '.workon.toml')
+  const localPath = join(mainRepoRoot, '.treehouse.toml')
   if (existsSync(localPath)) {
     const local = Bun.TOML.parse(await Bun.file(localPath).text()) as Partial<RepoConfig>
     config = { ...config, ...local, root: mainRepoRoot }

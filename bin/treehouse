@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Stable entrypoint for the workon engine. Callable from anywhere:
+# Stable entrypoint for the treehouse engine. Callable from anywhere:
 # Claude skills, lazygit custom commands, Herdr plugin actions, keybindings.
 set -euo pipefail
 

@@ -18,13 +18,13 @@ try {
 
 args=(
   plugin pane open
-  --plugin workon
+  --plugin treehouse
   --entrypoint down-interactive
   --placement popup
   --focus
 )
 if [[ -n "$focused_cwd" ]]; then
-  args+=(--env "WORKON_DOWN_PATH=$focused_cwd")
+  args+=(--env "TREEHOUSE_DOWN_PATH=$focused_cwd")
 fi
 
 exec "$herdr_bin" "${args[@]}"

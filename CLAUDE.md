@@ -1,4 +1,4 @@
-# herdr-workon
+# herdr-treehouse
 
 Herdr plugin + CLI engine for a worktree-as-tab workflow. Mental model: **a Herdr workspace is a repo, a tab is a worktree**. See README.md for install and usage.
 
@@ -6,9 +6,9 @@ Herdr plugin + CLI engine for a worktree-as-tab workflow. Mental model: **a Herd
 
 Three layers, strictly separated:
 
-1. **Engine** (`src/`, entrypoint `bin/workon`): all mechanics. Plain Bun/TypeScript CLI, no runtime deps. The plugin manifest, Claude skills, lazygit commands, and keybindings are all just call sites for this one binary.
+1. **Engine** (`src/`, entrypoint `bin/treehouse`): all mechanics. Plain Bun/TypeScript CLI, no runtime deps. The plugin manifest, Claude skills, lazygit commands, and keybindings are all just call sites for this one binary.
 2. **Manifest** (`herdr-plugin.toml`): declares how Herdr reaches the engine (actions, popup pane, link handlers, `worktree.created` hook). Actions cannot take free arguments; context arrives via env (`HERDR_PLUGIN_CONTEXT_JSON`, `HERDR_PLUGIN_CLICKED_URL`).
-3. **Personal wiring** (NOT in this repo): `$(herdr plugin config-dir workon)` = `~/.config/herdr/plugins/config/workon/`, holding `config.toml` and `bootstraps/*.sh`. This repo only ships `config.example.toml`. Keep the committed code generic (no employer-specific repo names, ticket prefixes, or Atlassian sites); that separation is deliberate so the repo stays shareable.
+3. **Personal wiring** (NOT in this repo): `$(herdr plugin config-dir treehouse)` = `~/.config/herdr/plugins/config/treehouse/`, holding `config.toml` and `bootstraps/*.sh`. This repo only ships `config.example.toml`. Keep the committed code generic (no employer-specific repo names, ticket prefixes, or Atlassian sites); that separation is deliberate so the repo stays shareable.
 
 ## Key decisions (don't undo casually)
 
@@ -25,7 +25,7 @@ Three layers, strictly separated:
 bun install
 bun run typecheck        # tsc --noEmit, no build step (bun runs .ts directly)
 herdr plugin link .      # re-run after editing herdr-plugin.toml
-herdr plugin log list --plugin workon   # event/action stderr logs
+herdr plugin log list --plugin treehouse   # event/action stderr logs
 ```
 
 Herdr CLI responses are JSON; `src/herdr.ts` wraps invocation and returns the parsed `result`. Never construct pane/tab IDs; always read them from responses.
@@ -34,4 +34,4 @@ Herdr CLI responses are JSON; `src/herdr.ts` wraps invocation and returns the pa
 
 - `worktree.created` hook payload shape is unverified; `bootstrapFromEvent` logs its context defensively and only acts when it finds path + branch.
 - `up` currently requires `HERDR_ENV=1`. Planned (pending the owner deciding Herdr is a keeper): degrade gracefully outside Herdr by running bootstrap only and skipping tab/panes/agent.
-- Overlap with the `vk-branch` skill's worktree mode is known and intentionally left until that decision. Details in `~/.claude/CLAUDE.md` under "Herdr + workon".
+- Overlap with the `vk-branch` skill's worktree mode is known and intentionally left until that decision. Details in `~/.claude/CLAUDE.md` under "Herdr + treehouse".

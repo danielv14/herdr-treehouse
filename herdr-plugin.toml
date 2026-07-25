@@ -1,5 +1,5 @@
-id = "workon"
-name = "Workon"
+id = "treehouse"
+name = "Treehouse"
 version = "0.1.0"
 min_herdr_version = "0.7.0"
 description = "Worktree-as-tab workflow: bootstrap a git worktree per repo config and open it as a Herdr tab with a prepped dev pane."
@@ -9,48 +9,48 @@ platforms = ["macos", "linux"]
 # (an action runs headless, so prompting must happen in a plugin pane).
 [[actions]]
 id = "up"
-title = "Workon: new worktree tab"
+title = "Treehouse: new worktree tab"
 contexts = ["workspace"]
-command = ["bash", "bin/workon-action-up.sh"]
+command = ["bash", "bin/treehouse-action-up.sh"]
 
 [[panes]]
 id = "up-interactive"
-title = "Workon"
+title = "Treehouse"
 placement = "popup"
 width = "70%"
 height = 14
-command = ["bash", "bin/workon", "up", "--interactive"]
+command = ["bash", "bin/treehouse", "up", "--interactive"]
 
 # Ctrl+click a Jira ticket or GitHub issue anywhere in a terminal:
 # opens a worktree tab in the current repo and hands the ticket to an agent.
 [[actions]]
 id = "down"
-title = "Workon: tear down this worktree tab"
+title = "Treehouse: tear down this worktree tab"
 contexts = ["workspace"]
-command = ["bash", "bin/workon-action-down.sh"]
+command = ["bash", "bin/treehouse-action-down.sh"]
 
 [[panes]]
 id = "down-interactive"
-title = "Workon teardown"
+title = "Treehouse teardown"
 placement = "popup"
 width = "70%"
 height = 14
-command = ["bash", "bin/workon", "down", "--interactive"]
+command = ["bash", "bin/treehouse", "down", "--interactive"]
 
 [[actions]]
 id = "up-from-link"
-title = "Workon: start from clicked link"
-command = ["bash", "bin/workon", "up", "--from-link"]
+title = "Treehouse: start from clicked link"
+command = ["bash", "bin/treehouse", "up", "--from-link"]
 
 [[link_handlers]]
 id = "jira-ticket"
-title = "Workon: start from Jira ticket"
+title = "Treehouse: start from Jira ticket"
 pattern = "^https://[^./]+\\.atlassian\\.net/browse/[A-Z]+-[0-9]+/?$"
 action = "up-from-link"
 
 [[link_handlers]]
 id = "github-issue"
-title = "Workon: start from GitHub issue"
+title = "Treehouse: start from GitHub issue"
 pattern = "^https://github\\.com/[^/]+/[^/]+/issues/[0-9]+/?$"
 action = "up-from-link"
 
@@ -58,4 +58,4 @@ action = "up-from-link"
 # bootstrap (env files, node_modules) if the repo is configured.
 [[events]]
 on = "worktree.created"
-command = ["bash", "bin/workon", "bootstrap", "--from-event"]
+command = ["bash", "bin/treehouse", "bootstrap", "--from-event"]

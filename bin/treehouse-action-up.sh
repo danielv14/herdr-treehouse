@@ -20,13 +20,13 @@ try {
 
 args=(
   plugin pane open
-  --plugin workon
+  --plugin treehouse
   --entrypoint up-interactive
   --placement popup
   --focus
 )
 if [[ -n "$workspace_cwd" ]]; then
-  args+=(--env "WORKON_REPO=$workspace_cwd")
+  args+=(--env "TREEHOUSE_REPO=$workspace_cwd")
 fi
 
 exec "$herdr_bin" "${args[@]}"
