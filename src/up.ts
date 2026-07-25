@@ -61,11 +61,18 @@ const parseUpArgs = (argv: string[]): UpOptions => {
   return options
 }
 
-const askInteractively = async (options: UpOptions) => {
+// Runs after repo resolution so the popup can say which repo it targets and
+// only ask questions that apply to it.
+const askInteractively = async (options: UpOptions, repoName: string, repoConfig: RepoConfig) => {
   const readline = createInterface({ input: process.stdin, output: process.stdout })
-  options.branch = (await readline.question('Branch (t.ex. ABC-1234/fix-thing): ')).trim()
-  const targets = (await readline.question('Targets, kommaseparerade (tomt för inga): ')).trim()
-  if (targets !== '') options.targets.push(...targets.split(',').map((t) => t.trim()).filter(Boolean))
+  console.log(`New worktree tab in ${repoName}\n`)
+  options.branch = (await readline.question('Branch name (e.g. ABC-1234/fix-thing): ')).trim()
+  if (repoConfig.bootstrap?.includes('{targets...}')) {
+    console.log('\nTargets: repo-relative dirs the bootstrap should install dependencies')
+    console.log('for (e.g. services/foo, packages/bar). Leave empty to skip.')
+    const targets = (await readline.question('Targets (comma-separated): ')).trim()
+    if (targets !== '') options.targets.push(...targets.split(',').map((t) => t.trim()).filter(Boolean))
+  }
   readline.close()
   options.focus = true
 }
@@ -79,16 +86,16 @@ const applyLinkContext = (options: UpOptions) => {
   if (jiraMatch) {
     options.branch = `${jiraMatch[1]}/wip`
     options.prompt = [
-      `Läs på om ${jiraMatch[1]} (${url}).`,
-      'Du står i ett nyskapat git worktree med en tillfällig branch.',
-      'Döp om branchen enligt repots konventioner (git branch -m) och lös sedan ärendet.',
+      `Read up on ${jiraMatch[1]} (${url}).`,
+      'You are in a freshly created git worktree on a temporary branch.',
+      'Rename the branch per the repo conventions (git branch -m), then resolve the ticket.',
     ].join(' ')
   } else if (githubMatch) {
     options.branch = `issue-${githubMatch[2]}/wip`
     options.prompt = [
-      `Läs GitHub-issue ${url} (t.ex. via gh issue view ${githubMatch[2]}).`,
-      'Du står i ett nyskapat git worktree med en tillfällig branch.',
-      'Döp om branchen om det behövs och lös sedan ärendet.',
+      `Read GitHub issue ${url} (e.g. via gh issue view ${githubMatch[2]}).`,
+      'You are in a freshly created git worktree on a temporary branch.',
+      'Rename the branch if needed, then resolve the issue.',
     ].join(' ')
   } else {
     throw new Error(`could not derive a branch from clicked url: ${url}`)
@@ -139,9 +146,7 @@ const findWorkspaceId = (mainRepoRoot: string): string => {
 
 export const up = async (argv: string[]) => {
   const options = parseUpArgs(argv)
-  if (options.interactive) await askInteractively(options)
   if (options.fromLink) applyLinkContext(options)
-  if (!options.branch) throw new Error('up requires --branch (or --interactive / --from-link)')
   if (!insideHerdr()) throw new Error('not inside a Herdr session (HERDR_ENV != 1)')
 
   // WORKON_REPO carries the focused workspace's cwd into the popup, whose own
@@ -150,6 +155,9 @@ export const up = async (argv: string[]) => {
   const mainRepoRoot = findMainRepoRoot(startDir)
   const { name: repoName, config: repoConfig } = await resolveRepoConfig(mainRepoRoot)
   const base = repoConfig.base ?? 'origin/master'
+
+  if (options.interactive) await askInteractively(options, repoName, repoConfig)
+  if (!options.branch) throw new Error('up requires --branch (or --interactive / --from-link)')
 
   const partialContext = buildTemplateContext(repoName, options.branch, base, options.targets, mainRepoRoot)
   const worktreePath = resolveWorktreePath(repoConfig, mainRepoRoot, partialContext)
@@ -193,12 +201,12 @@ export const up = async (argv: string[]) => {
         const command = expandTemplate(paneConfig.command, context)
         if (paneConfig.autostart) {
           herdr(['pane', 'run', paneId, command])
-          paneSummaries.push(`${paneId}${paneConfig.label ? ` (${paneConfig.label})` : ''}: "${command}" startad`)
+          paneSummaries.push(`${paneId}${paneConfig.label ? ` (${paneConfig.label})` : ''}: "${command}" started`)
         } else {
           // Pre-fill without Enter: verification is one keypress away, but two
           // tabs never end up racing for the same docker containers/ports.
           herdr(['pane', 'send-text', paneId, command])
-          paneSummaries.push(`${paneId}${paneConfig.label ? ` (${paneConfig.label})` : ''}: "${command}" förifylld (Enter för att starta)`)
+          paneSummaries.push(`${paneId}${paneConfig.label ? ` (${paneConfig.label})` : ''}: "${command}" prefilled (press Enter to start)`)
         }
       } else {
         paneSummaries.push(`${paneId}${paneConfig.label ? ` (${paneConfig.label})` : ''}: shell`)
@@ -218,7 +226,7 @@ export const up = async (argv: string[]) => {
 
   console.log(`worktree:  ${worktreePath}`)
   console.log(`branch:    ${context.branch}`)
-  console.log(`tab:       ${tabId} (${label}) i workspace ${workspaceId}`)
+  console.log(`tab:       ${tabId} (${label}) in workspace ${workspaceId}`)
   for (const summary of paneSummaries) console.log(`pane:      ${summary}`)
-  if (!options.noAgent) console.log(`agent:     ${agent} i ${mainPaneId}`)
+  if (!options.noAgent) console.log(`agent:     ${agent} in ${mainPaneId}`)
 }

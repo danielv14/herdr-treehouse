@@ -24,7 +24,7 @@ const parseDownArgs = (argv: string[]): DownOptions => {
 const confirmInteractively = async (worktreeRoot: string): Promise<boolean> => {
   const { createInterface } = await import('node:readline/promises')
   const readline = createInterface({ input: process.stdin, output: process.stdout })
-  const answer = await readline.question(`Ta bort worktree ${worktreeRoot} och stäng dess tabb? [y/N] `)
+  const answer = await readline.question(`Remove worktree ${worktreeRoot} and close its tab? [y/N] `)
   readline.close()
   return answer.trim().toLowerCase() === 'y'
 }
@@ -73,7 +73,7 @@ export const down = async (argv: string[]) => {
   const mainRepoRoot = findMainRepoRoot(worktreePath)
 
   if (options.interactive && !(await confirmInteractively(worktreeRoot))) {
-    console.log('Avbrutet.')
+    console.log('Aborted.')
     return
   }
 
@@ -106,7 +106,7 @@ export const down = async (argv: string[]) => {
         if (busy.length > 0) {
           throw new Error(
             `panes in the worktree tab still run processes:\n${busy.join('\n')}\n` +
-              'Stäng dem manuellt först, kör sedan down igen.',
+              'Close them manually, then run down again.',
           )
         }
         tabIds = [...new Set(panes.map((pane) => pane.tab_id))]

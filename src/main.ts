@@ -65,7 +65,7 @@ const holdForInteractive = async () => {
   if (!process.argv.includes('--interactive')) return
   const { createInterface } = await import('node:readline/promises')
   const readline = createInterface({ input: process.stdin, output: process.stdout })
-  await readline.question('\n[Enter] stänger')
+  await readline.question('\n[Enter] to close')
   readline.close()
 }
 
