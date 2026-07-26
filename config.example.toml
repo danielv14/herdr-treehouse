@@ -10,7 +10,12 @@
 #   {root}        main checkout path
 #   {base}        base ref (default origin/master); only used by the built-in
 #                 worktree creation - a custom bootstrap owns its own base
-#   {targets...}  expands to one argv entry per --target (bootstrap only)
+#   {targets...}  expands to one argv entry per --target (bootstrap only, and
+#                 only as an argv entry of its own)
+#
+# Anything else in braces is an error, not a literal: a typo'd {wortkree} stops
+# the run instead of reaching a shell command as text. Unknown *keys* only warn;
+# a wrong value type (setup = "npm ci", autostart = "false") stops the run.
 #
 # Worktree setup, two tiers:
 #   setup     = ["corepack enable", "npm ci"]  # simple shell commands run inside a
