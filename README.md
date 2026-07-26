@@ -8,12 +8,12 @@ The mental model: **a workspace is a repo, a tab is a worktree**. Work happens i
 
 ```
 herdr-plugin.toml   manifest: actions, popup pane, link handlers, worktree.created hook
-bin/treehouse          stable engine entrypoint (bash shim -> bun)
-src/                the engine: up | down | onboard
+bin/treehouse       stable engine entrypoint (bash shim -> bun)
+src/                the engine: up | down | onboard | action
 config.example.toml per-repo config reference
 ```
 
-The engine is deliberately a plain CLI. The plugin manifest is just one of its call sites; Claude skills, lazygit custom commands, and keybindings call the same `bin/treehouse`.
+The engine is deliberately a plain CLI. The plugin manifest is just one of its call sites; Claude skills, lazygit custom commands, and keybindings call the same `bin/treehouse`. That includes the manifest's own actions: `treehouse action up|down` reads Herdr's invocation context and opens the right popup pane, so no manifest entry needs a script of its own.
 
 ## Install
 
@@ -24,7 +24,7 @@ mkdir -p "$(herdr plugin config-dir treehouse)"
 cp config.example.toml "$(herdr plugin config-dir treehouse)/config.toml"   # then edit
 ```
 
-Requires bun on PATH and Herdr >= 0.7.
+Requires bun on PATH and Herdr >= 0.7. `bun test` and `bun run typecheck` cover the engine without a Herdr session.
 
 ## Usage
 
@@ -84,7 +84,7 @@ Ctrl+click a Jira ticket URL (`*.atlassian.net/browse/ABC-1234`) or GitHub issue
 
 ## Status / iteration notes
 
-- `worktree.created` hook: reads `HERDR_PLUGIN_EVENT_JSON` per the shape documented by `herdr api schema` (worktree with `path` + `branch`); not yet observed live, so it still logs the raw payload (`herdr plugin log list --plugin treehouse`).
-- Multiline `--prompt` is safe: `pane run` delivers it as a single paste + one submit (verified against a live agent, herdr 0.7.4).
+- `worktree.created` hook: verified live on herdr 0.7.5, payload as documented by `herdr api schema` (worktree with `path` + `branch`). It runs the same provisioning as `treehouse up`, so a repo configured with only `setup` gets its dependencies here too. The raw payload is still logged (`herdr plugin log list --plugin treehouse`).
+- `--prompt` is handed to `herdr agent prompt` once the agent reports idle, so multiline prompts and submission are Herdr's business rather than a paste workaround (herdr 0.7.5).
 - Herdr's native worktree flow opens worktrees as workspaces; this plugin intentionally does not use it (tab model instead).
 - Claude skills that wrap this engine live in the skills repo: `herdr-worktree`, `herdr-worktree-teardown`, `herdr-repo-onboard`.
