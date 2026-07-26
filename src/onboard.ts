@@ -1,21 +1,19 @@
 import { appendFileSync, existsSync, mkdirSync, readdirSync } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
+import { parseFlags, type CommandSpec } from './cli.ts'
 import { LOCAL_CONFIG_FILE, configPath, loadConfig } from './config.ts'
+import type { EngineDeps } from './deps.ts'
+import { reportDiagnostics } from './diagnostics.ts'
 import { findMainRepoRoot } from './git.ts'
 
-type OnboardOptions = {
-  apply: boolean
-  local: boolean
-}
-
-const parseOnboardArgs = (argv: string[]): OnboardOptions => {
-  const options: OnboardOptions = { apply: false, local: false }
-  for (const arg of argv) {
-    if (arg === '--apply') options.apply = true
-    else if (arg === '--local') options.local = true
-    else throw new Error(`unknown option for onboard: ${arg}`)
-  }
-  return options
+export const ONBOARD_COMMAND: CommandSpec = {
+  name: 'onboard',
+  usage: ['treehouse onboard [--apply]'],
+  summary: 'scan the current repo and propose a config entry',
+  flags: [
+    { flag: '--apply', kind: 'boolean', key: 'apply', help: 'write the proposal to the config' },
+    { flag: '--local', kind: 'boolean', key: 'local', help: `target <repo>/${LOCAL_CONFIG_FILE} instead of the plugin config` },
+  ],
 }
 
 type RepoScan = {
@@ -89,26 +87,30 @@ const buildBlock = (repoName: string, repoRoot: string, scan: RepoScan, local: b
   ].join('\n')
 }
 
-export const onboard = async (argv: string[]) => {
-  const options = parseOnboardArgs(argv)
+export const onboard = async (argv: string[], deps: EngineDeps) => {
+  const flags = parseFlags(ONBOARD_COMMAND, argv)
+  const apply = flags.flag('apply')
+  const local = flags.flag('local')
   const repoRoot = findMainRepoRoot(process.cwd())
   const repoName = basename(repoRoot)
   const localPath = join(repoRoot, LOCAL_CONFIG_FILE)
+  const centralPath = configPath(deps.invoke)
 
   // Either location already configuring this repo means there is nothing to
   // onboard. Naming the file matters here: moving a repo between the two is a
   // question of removing the old entry, which only the reader can decide.
-  const existing = await loadConfig()
-  if (existing.repos[repoName]) {
-    throw new Error(`"${repoName}" is already configured in ${configPath()} (remove that block first if you are moving it to ${LOCAL_CONFIG_FILE})`)
+  const existing = await loadConfig(deps.invoke)
+  reportDiagnostics(existing.diagnostics, deps.warn)
+  if (existing.config.repos[repoName]) {
+    throw new Error(`"${repoName}" is already configured in ${centralPath} (remove that block first if you are moving it to ${LOCAL_CONFIG_FILE})`)
   }
   if (existsSync(localPath)) {
-    throw new Error(`${localPath} already exists (delete it first if you are moving this repo to ${configPath()})`)
+    throw new Error(`${localPath} already exists (delete it first if you are moving this repo to ${centralPath})`)
   }
 
   const scan = await scanRepo(repoRoot)
-  const block = buildBlock(repoName, repoRoot, scan, options.local)
-  const target = options.local ? localPath : configPath()
+  const block = buildBlock(repoName, repoRoot, scan, local)
+  const target = local ? localPath : centralPath
 
   console.log(`# Proposed config for ${repoName} (${target})\n`)
   console.log(block)
@@ -117,15 +119,15 @@ export const onboard = async (argv: string[]) => {
     for (const note of scan.notes) console.log(`# - ${note}`)
   }
 
-  if (!options.apply) {
-    const other = options.local
-      ? `omit --local to target ${configPath()} instead`
+  if (!apply) {
+    const other = local
+      ? `omit --local to target ${centralPath} instead`
       : `add --local to write ${LOCAL_CONFIG_FILE} in the repo instead`
     console.log(`\nRun again with --apply to write this to ${target}`)
     console.log(`(${other})`)
     return
   }
-  if (options.local) {
+  if (local) {
     await Bun.write(localPath, `${block}\n`)
     console.log(`\nWrote ${localPath}`)
     return
