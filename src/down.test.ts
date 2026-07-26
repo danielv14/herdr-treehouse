@@ -1,0 +1,191 @@
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import { existsSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+import type { EngineDeps } from './deps.ts'
+import { down } from './down.ts'
+import { expectRejection } from './testing/expectRejection.ts'
+import { createFakeHerdr, type FakeHerdr } from './testing/fakeHerdr.ts'
+import { createTempRepo, type TempRepo } from './testing/tempRepo.ts'
+
+let repo: TempRepo
+let worktree: string
+let logged: string[]
+let sleeps: number[]
+let originalCwd: string
+let savedEnv: Record<string, string | undefined>
+
+const ENV_KEYS = ['HERDR_TAB_ID', 'HERDR_PANE_ID', 'TREEHOUSE_TARGET_PATH', 'HERDR_PLUGIN_CONTEXT_JSON']
+
+const deps = (fake: FakeHerdr, insideHerdr = true): EngineDeps => ({
+  invoke: fake.invoke,
+  insideHerdr: () => insideHerdr,
+  sleep: async (ms) => {
+    sleeps.push(ms)
+  },
+  log: (message) => logged.push(message),
+  warn: (message) => logged.push(message),
+})
+
+const busyProcess = (cmdline: string) => ({
+  process_info: { foreground_processes: [{ name: 'node', cmdline }] },
+})
+
+const paneList = (panes: Array<Record<string, unknown>>) => ({ panes })
+
+beforeEach(() => {
+  originalCwd = process.cwd()
+  savedEnv = Object.fromEntries(ENV_KEYS.map((key) => [key, process.env[key]]))
+  for (const key of ENV_KEYS) delete process.env[key]
+  repo = createTempRepo('my-repo')
+  worktree = join(repo.parent, 'my-repo-abc-1')
+  repo.git('worktree', 'add', worktree, '-b', 'ABC-1/fix', '--no-track', 'master')
+  logged = []
+  sleeps = []
+})
+
+afterEach(() => {
+  process.chdir(originalCwd)
+  for (const [key, value] of Object.entries(savedEnv)) {
+    if (value === undefined) delete process.env[key]
+    else process.env[key] = value
+  }
+  repo.cleanup()
+})
+
+describe('down', () => {
+  test('removes the worktree, leaves the branch and closes its tab', async () => {
+    const fake = createFakeHerdr({
+      'worktree list': { source: { source_workspace_id: 'wA' } },
+      'pane list': paneList([{ pane_id: 'p1', tab_id: 't1', cwd: worktree }]),
+      'pane process-info': { process_info: { foreground_processes: [{ name: 'zsh' }] } },
+      'tab close': {},
+    })
+    await down(['--path', worktree], deps(fake))
+
+    expect(existsSync(worktree)).toBe(false)
+    expect(repo.git('branch', '--list', 'ABC-1/fix')).toContain('ABC-1/fix')
+    expect(fake.commands()).toContain('tab close t1')
+    expect(logged).toContain(`removed worktree: ${worktree}`)
+    expect(logged).toContain('branch left in place (cleaned up via PR merge as usual)')
+  })
+
+  test('refuses when a pane reports a confirmed busy process, and keeps the worktree', async () => {
+    const fake = createFakeHerdr({
+      'worktree list': { source: { source_workspace_id: 'wA' } },
+      'pane list': paneList([{ pane_id: 'p1', tab_id: 't1', cwd: worktree }]),
+      'pane process-info': busyProcess('npm run dev'),
+    })
+    await expectRejection(
+      down(['--path', worktree], deps(fake)),
+      'panes in the worktree tab still run processes:\n  p1: npm run dev',
+    )
+    expect(existsSync(worktree)).toBe(true)
+    expect(fake.callsMatching('tab close')).toHaveLength(0)
+    // Two snapshots, 750ms apart: one is not enough to tell a dev server from
+    // prompt tooling.
+    expect(fake.callsMatching('pane process-info')).toHaveLength(2)
+    expect(sleeps).toEqual([750])
+  })
+
+  test('a process that is gone on the second look does not block teardown', async () => {
+    const fake = createFakeHerdr({
+      'worktree list': { source: { source_workspace_id: 'wA' } },
+      'pane list': paneList([{ pane_id: 'p1', tab_id: 't1', cwd: worktree }]),
+      'pane process-info': [busyProcess('starship prompt'), { process_info: { foreground_processes: [] } }],
+      'tab close': {},
+    })
+    await down(['--path', worktree], deps(fake))
+    expect(existsSync(worktree)).toBe(false)
+  })
+
+  test('an idle agent in the tab is not a reason to refuse', async () => {
+    const fake = createFakeHerdr({
+      'worktree list': { source: { source_workspace_id: 'wA' } },
+      'pane list': paneList([
+        { pane_id: 'p1', tab_id: 't1', cwd: worktree, agent: 'claude', agent_status: 'idle' },
+      ]),
+      'tab close': {},
+    })
+    await down(['--path', worktree], deps(fake))
+    expect(existsSync(worktree)).toBe(false)
+  })
+
+  test('the caller\'s own tab is closed last', async () => {
+    process.env.HERDR_TAB_ID = 't1'
+    process.env.HERDR_PANE_ID = 'p1'
+    const fake = createFakeHerdr({
+      'worktree list': { source: { source_workspace_id: 'wA' } },
+      'pane list': paneList([
+        { pane_id: 'p1', tab_id: 't1', cwd: worktree },
+        { pane_id: 'p9', tab_id: 't2', cwd: join(worktree, 'services/web') },
+      ]),
+      'pane process-info': { process_info: { foreground_processes: [{ name: 'zsh' }] } },
+      'tab close': {},
+    })
+    await down(['--path', worktree], deps(fake))
+    expect(fake.callsMatching('tab close').map((call) => call[2])).toEqual(['t2', 't1'])
+    expect(logged).toContain('closing this tab last (the teardown ran from inside it)')
+  })
+
+  test('the caller\'s own pane is not probed for busy processes', async () => {
+    process.env.HERDR_PANE_ID = 'p1'
+    const fake = createFakeHerdr({
+      'worktree list': { source: { source_workspace_id: 'wA' } },
+      'pane list': paneList([{ pane_id: 'p1', tab_id: 't1', cwd: worktree }]),
+      'tab close': {},
+    })
+    await down(['--path', worktree], deps(fake))
+    expect(fake.callsMatching('pane process-info')).toHaveLength(0)
+    expect(existsSync(worktree)).toBe(false)
+  })
+
+  test('uncommitted changes stop the teardown before any Herdr call', async () => {
+    writeFileSync(join(worktree, 'dirty.txt'), 'work in progress')
+    const fake = createFakeHerdr({})
+    await expectRejection(
+      down(['--path', worktree], deps(fake)),
+      'worktree has uncommitted changes, refusing to remove',
+    )
+    expect(existsSync(worktree)).toBe(true)
+    expect(fake.calls).toHaveLength(0)
+  })
+
+  test('a main checkout is refused', async () => {
+    await expectRejection(
+      down(['--path', repo.root], deps(createFakeHerdr({}))),
+      'is not a linked worktree (refusing to touch a main checkout)',
+    )
+    expect(existsSync(repo.root)).toBe(true)
+  })
+
+  test('a repo with no open workspace still removes the worktree', async () => {
+    const fake = createFakeHerdr({ 'worktree list': {} })
+    await down(['--path', worktree], deps(fake))
+    expect(logged).toContain('repo has no open workspace in Herdr; removing the worktree only')
+    expect(existsSync(worktree)).toBe(false)
+  })
+
+  test('outside a Herdr session it removes the worktree without touching tabs', async () => {
+    const fake = createFakeHerdr({})
+    await down(['--path', worktree], deps(fake, false))
+    expect(fake.calls).toHaveLength(0)
+    expect(existsSync(worktree)).toBe(false)
+  })
+
+  test('the target path comes from the popup env convention when no --path is given', async () => {
+    process.env.TREEHOUSE_TARGET_PATH = worktree
+    const fake = createFakeHerdr({ 'worktree list': {} })
+    await down([], deps(fake))
+    expect(existsSync(worktree)).toBe(false)
+  })
+
+  test('the target path falls back to the focused pane from the plugin context', async () => {
+    process.env.HERDR_PLUGIN_CONTEXT_JSON = JSON.stringify({
+      workspace_cwd: repo.root,
+      focused_pane_cwd: worktree,
+    })
+    const fake = createFakeHerdr({ 'worktree list': {} })
+    await down([], deps(fake))
+    expect(existsSync(worktree)).toBe(false)
+  })
+})

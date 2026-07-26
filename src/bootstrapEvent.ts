@@ -1,6 +1,9 @@
-import { spawnSync } from 'node:child_process'
-import { buildTemplateContext, expandArgv, resolveRepoConfig, type TemplateContext } from './config.ts'
+import { resolveRepoConfig } from './config.ts'
+import type { EngineDeps } from './deps.ts'
+import { reportDiagnostics } from './diagnostics.ts'
 import { findMainRepoRoot } from './git.ts'
+import { buildWorktreePlan } from './plan.ts'
+import { provisionWorktree } from './provision.ts'
 
 // Handler for the worktree.created event (Herdr's native worktree flow).
 // Event hooks receive the payload in HERDR_PLUGIN_EVENT_JSON; the invocation
@@ -10,37 +13,43 @@ import { findMainRepoRoot } from './git.ts'
 // WorktreeInfo has `path` and `branch`. Not yet observed live; the raw
 // payload is logged (visible via `herdr plugin log list --plugin treehouse`)
 // so a real event can confirm the shape.
-export const bootstrapFromEvent = async () => {
+//
+// Everything after decoding the payload is the same provisioning module `up`
+// uses, so a repo configured with only `setup` gets its dependencies here too.
+export const bootstrapFromEvent = async (deps: EngineDeps) => {
+  const log = deps.warn ?? console.error
   const raw = process.env.HERDR_PLUGIN_EVENT_JSON
   if (!raw) {
-    console.error('no HERDR_PLUGIN_EVENT_JSON in environment, nothing to do')
+    log('no HERDR_PLUGIN_EVENT_JSON in environment, nothing to do')
     return
   }
-  console.error(`event payload: ${raw}`)
+  log(`event payload: ${raw}`)
 
   const payload = JSON.parse(raw)
   const worktree = payload?.data?.worktree ?? payload?.worktree
   const worktreePath: string | undefined = worktree?.path ?? worktree?.checkout_path
   const branch: string | undefined = worktree?.branch
   if (!worktreePath || !branch) {
-    console.error('could not find worktree path/branch in event payload, skipping bootstrap')
+    log('could not find worktree path/branch in event payload, skipping bootstrap')
     return
   }
 
   const mainRepoRoot = findMainRepoRoot(worktreePath)
-  const { name: repoName, config: repoConfig } = await resolveRepoConfig(mainRepoRoot)
-  if (!repoConfig.bootstrap) {
-    console.error(`no bootstrap configured for ${repoName}, skipping`)
+  const { name: repoName, config: repoConfig, diagnostics } = await resolveRepoConfig(mainRepoRoot, deps.invoke)
+  reportDiagnostics(diagnostics, log)
+  if (!repoConfig.bootstrap && !repoConfig.setup?.length) {
+    log(`no bootstrap or setup configured for ${repoName}, skipping`)
     return
   }
 
-  const base = repoConfig.base ?? 'origin/master'
-  const templateContext: TemplateContext = {
-    ...buildTemplateContext(repoName, branch, base, [], mainRepoRoot),
+  const plan = buildWorktreePlan({
+    repoName,
+    branch,
+    mainRepoRoot,
+    repoConfig,
+    // Herdr created the checkout, so its path is a given rather than a
+    // worktree_dir question.
     worktree: worktreePath,
-  }
-  const argv = expandArgv(repoConfig.bootstrap, templateContext)
-  console.error(`running bootstrap: ${argv.join(' ')}`)
-  const result = spawnSync(argv[0], argv.slice(1), { cwd: mainRepoRoot, stdio: 'inherit' })
-  if (result.status !== 0) throw new Error(`bootstrap failed (exit ${result.status})`)
+  })
+  provisionWorktree(plan, repoConfig, { worktreeState: 'just-created', log, warn: log })
 }

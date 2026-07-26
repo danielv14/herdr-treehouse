@@ -1,61 +1,35 @@
+import { action } from './actions.ts'
 import { bootstrapFromEvent } from './bootstrapEvent.ts'
+import { help } from './commands.ts'
+import type { EngineDeps } from './deps.ts'
 import { down } from './down.ts'
+import { createHerdrInvoker } from './herdr.ts'
 import { onboard } from './onboard.ts'
 import { up } from './up.ts'
 
-const HELP = `treehouse — worktree-as-tab workflow engine for Herdr
-
-Usage:
-  treehouse up --branch <name> [--target <dir>]... [options]
-  treehouse up --interactive
-  treehouse down [--path <worktree>]
-  treehouse onboard [--apply]
-
-up: bootstrap a worktree (per repo config) and open it as a Herdr tab
-  --repo <path>      repo to operate on (default: repo of cwd)
-  --branch, -b       branch name, e.g. ABC-1234/fix-thing
-  --target, -t       repo-relative dir passed to the bootstrap script (repeatable)
-  --targets a,b      comma-separated form of --target
-  --label <text>     tab label (default: ticket id or branch slug)
-  --prompt <text>    task to hand the agent once it is idle
-  --agent <cmd>      agent command (default: repo config, [defaults], then claude)
-  --no-agent         skip starting an agent in the main pane
-  --no-dev           skip the extra panes from repo config
-  --focus            focus the new tab (default: stay where you are)
-
-down: remove the worktree and close its tab
-  Refuses on uncommitted changes and on panes with running processes.
-  --path <worktree>  worktree to tear down (default: cwd)
-
-onboard: scan the current repo and propose a config entry
-  --apply            write the proposal to the config
-  --local            target <repo>/.treehouse.toml instead of the plugin config
-
-bootstrap --from-event: internal, used by the worktree.created plugin hook
-
-Config: config.toml in the plugin config dir (herdr plugin config-dir treehouse),
-        optionally overridden per repo by <repo>/.treehouse.toml`
-
-const main = async () => {
+const main = async (deps: EngineDeps) => {
   const [command, ...rest] = process.argv.slice(2)
   switch (command) {
     case 'up':
-      await up(rest)
+      await up(rest, deps)
       break
     case 'down':
-      await down(rest)
+      await down(rest, deps)
       break
     case 'onboard':
-      await onboard(rest)
+      await onboard(rest, deps)
+      break
+    case 'action':
+      await action(rest, deps)
       break
     case 'bootstrap':
-      if (rest[0] === '--from-event') await bootstrapFromEvent()
+      if (rest[0] === '--from-event') await bootstrapFromEvent(deps)
       else throw new Error('bootstrap only supports --from-event (used by the worktree.created hook)')
       break
     case undefined:
     case '--help':
     case '-h':
-      console.log(HELP)
+      console.log(help())
       break
     default:
       throw new Error(`unknown command: ${command} (see treehouse --help)`)
@@ -73,7 +47,7 @@ const holdForInteractive = async () => {
 }
 
 try {
-  await main()
+  await main({ invoke: createHerdrInvoker() })
   await holdForInteractive()
 } catch (error) {
   console.error(`treehouse: ${error instanceof Error ? error.message : error}`)

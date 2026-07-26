@@ -1,17 +1,24 @@
 import { spawnSync } from 'node:child_process'
 
-const herdrBin = process.env.HERDR_BIN_PATH ?? 'herdr'
+// Reaching Herdr is a dependency the engine accepts, not something it creates:
+// the spawning adapter below is one implementation, the recording fake in
+// src/testing/fakeHerdr.ts is the other. Responses stay `unknown` on purpose so
+// decoding happens once, at the seam in tabs.ts, instead of at every call site.
+export type HerdrInvoker = (args: string[]) => unknown
 
-export const herdr = (args: string[]): any => {
-  const result = spawnSync(herdrBin, args, { encoding: 'utf8' })
-  if (result.error) throw new Error(`failed to spawn ${herdrBin}: ${result.error.message}`)
-  if (result.status !== 0) {
-    throw new Error(`herdr ${args.join(' ')} failed: ${(result.stderr || result.stdout).trim()}`)
-  }
-  try {
-    return JSON.parse(result.stdout).result
-  } catch {
-    return result.stdout.trim()
+export const createHerdrInvoker = (): HerdrInvoker => {
+  const herdrBin = process.env.HERDR_BIN_PATH ?? 'herdr'
+  return (args) => {
+    const result = spawnSync(herdrBin, args, { encoding: 'utf8' })
+    if (result.error) throw new Error(`failed to spawn ${herdrBin}: ${result.error.message}`)
+    if (result.status !== 0) {
+      throw new Error(`herdr ${args.join(' ')} failed: ${(result.stderr || result.stdout).trim()}`)
+    }
+    try {
+      return JSON.parse(result.stdout).result
+    } catch {
+      return result.stdout.trim()
+    }
   }
 }
 
