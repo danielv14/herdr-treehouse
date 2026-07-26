@@ -181,3 +181,13 @@ describe('the worktree.created path', () => {
     expect(existsSync(join(worktree, 'bootstrapped.txt'))).toBe(true)
   })
 })
+
+describe('an empty bootstrap list', () => {
+  // `bootstrap = []` is truthy but has no argv[0]; spawning it crashed with a
+  // Node type error. Treated as "no bootstrap configured" instead.
+  test('creates the worktree with git instead of crashing', () => {
+    const { plan, result } = provision({ bootstrap: [] })
+    expect(existsSync(plan.worktree)).toBe(true)
+    expect(result.created).toBe(true)
+  })
+})

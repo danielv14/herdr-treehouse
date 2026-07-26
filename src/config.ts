@@ -72,9 +72,10 @@ type FieldSpec =
   | { kind: 'number' }
   | { kind: 'boolean' }
   | { kind: 'string-list' }
-  | { kind: 'table'; shape: Shape }
-  | { kind: 'table-list'; shape: Shape }
-  | { kind: 'table-map'; shape: Shape }
+  | { kind: 'table'; shape: Shape; required?: readonly string[] }
+  | { kind: 'table-list'; shape: Shape; required?: readonly string[] }
+  // `required` applies to each entry of the map, not to the map itself.
+  | { kind: 'table-map'; shape: Shape; required?: readonly string[] }
 
 type Shape = Record<string, FieldSpec>
 
@@ -102,7 +103,10 @@ const DEFAULTS_SHAPE: Shape = {
 
 const TOP_LEVEL_SHAPE: Shape = {
   defaults: { kind: 'table', shape: DEFAULTS_SHAPE },
-  repos: { kind: 'table-map', shape: REPO_SHAPE },
+  // `root` is what matches a [repos.X] block to a checkout. Without it the block
+  // can only be dead weight, and an empty root resolves to the caller's cwd, so
+  // the block would silently claim whichever repo you ran from.
+  repos: { kind: 'table-map', shape: REPO_SHAPE, required: ['root'] },
 }
 
 // A repo-local .treehouse.toml holds the same fields without the [repos.X]
@@ -119,7 +123,13 @@ const LOCAL_SHAPE: Shape = Object.fromEntries(
 // stays at the call site (see reportDiagnostics in diagnostics.ts). Unknown keys
 // are warnings - never fatal, the config still works. A wrong value shape is an
 // error: guessing what was meant is how "false" started dev servers.
-export type Diagnostic = { severity: 'warning' | 'error'; message: string }
+export type Diagnostic = {
+  severity: 'warning' | 'error'
+  message: string
+  // TOML path the diagnostic belongs to, e.g. "repos.npm-packages.setup". Lets a
+  // caller tell "my repo's block is broken" from "some other repo's block is".
+  key?: string
+}
 
 type Scope = {
   file: string
@@ -136,8 +146,10 @@ const child = (scope: Scope, key: string): Scope => ({
 const tableLabel = (scope: Scope) =>
   scope.prefix === '' ? `the top level of ${scope.file}` : `[${scope.prefix}] in ${scope.file}`
 
-const keyLabel = (scope: Scope, key: string) =>
-  scope.prefix === '' ? `${key} in ${scope.file}` : `${scope.prefix}.${key} in ${scope.file}`
+const keyPath = (scope: Scope, key: string) =>
+  scope.prefix === '' ? key : `${scope.prefix}.${key}`
+
+const keyLabel = (scope: Scope, key: string) => `${keyPath(scope, key)} in ${scope.file}`
 
 const isTable = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -188,6 +200,7 @@ const validateField = (
   const reject = (found = describe(raw)) => {
     diagnostics.push({
       severity: 'error',
+      key: keyPath(scope, key),
       message: `${keyLabel(scope, key)}: expected ${expected(spec)}, found ${found}`,
     })
     return undefined
@@ -210,15 +223,16 @@ const validateField = (
     }
     case 'table':
       if (!isTable(raw)) return reject()
-      return validateTable(raw, spec.shape, child(scope, key), diagnostics)
+      return validateTable(raw, spec.shape, child(scope, key), diagnostics, spec.required)
     case 'table-list': {
       if (isTable(raw)) {
         // The single-vs-double bracket mistake: [repos.X.panes] parses as one
         // table, [[repos.X.panes]] as a list of them. Worth its own message,
         // because the generic "expected a list" says nothing about the fix.
-        const path = scope.prefix === '' ? key : `${scope.prefix}.${key}`
+        const path = keyPath(scope, key)
         diagnostics.push({
           severity: 'error',
+          key: path,
           message: `${keyLabel(scope, key)}: expected ${expected(spec)}, found a single table. Write [[${path}]] (double brackets) so each ${key.replace(/s$/, '')} is its own entry, not [${path}].`,
         })
         return undefined
@@ -228,11 +242,12 @@ const validateField = (
         if (!isTable(entry)) {
           diagnostics.push({
             severity: 'error',
+            key: `${keyPath(scope, key)}[${index}]`,
             message: `${keyLabel(scope, key)}[${index}]: expected a table, found ${describe(entry)}`,
           })
           return undefined
         }
-        return validateTable(entry, spec.shape, child(scope, `${key}[${index}]`), diagnostics)
+        return validateTable(entry, spec.shape, child(scope, `${key}[${index}]`), diagnostics, spec.required)
       })
       return entries.filter((entry) => entry !== undefined)
     }
@@ -243,11 +258,18 @@ const validateField = (
         if (!isTable(entry)) {
           diagnostics.push({
             severity: 'error',
+            key: keyPath(child(scope, key), name),
             message: `${keyLabel(child(scope, key), name)}: expected a table, found ${describe(entry)}`,
           })
           continue
         }
-        result[name] = validateTable(entry, spec.shape, child(child(scope, key), name), diagnostics)
+        result[name] = validateTable(
+          entry,
+          spec.shape,
+          child(child(scope, key), name),
+          diagnostics,
+          spec.required,
+        )
       }
       return result
     }
@@ -261,6 +283,7 @@ const validateTable = (
   shape: Shape,
   scope: Scope,
   diagnostics: Diagnostic[],
+  required: readonly string[] = [],
 ): Record<string, unknown> => {
   const result: Record<string, unknown> = {}
   for (const [key, value] of Object.entries(raw)) {
@@ -268,12 +291,22 @@ const validateTable = (
     if (!spec) {
       diagnostics.push({
         severity: 'warning',
+        key: keyPath(scope, key),
         message: `unknown key "${key}" in ${tableLabel(scope)} (ignored). Known keys: ${Object.keys(shape).join(', ')}`,
       })
       continue
     }
     const validated = validateField(spec, value, scope, key, diagnostics)
     if (validated !== undefined) result[key] = validated
+  }
+  for (const key of required) {
+    if (result[key] === undefined) {
+      diagnostics.push({
+        severity: 'error',
+        key: keyPath(scope, key),
+        message: `${tableLabel(scope)}: missing required key "${key}"`,
+      })
+    }
   }
   return result
 }
@@ -342,12 +375,46 @@ export const loadConfig = async (
 }
 
 const sameDir = (a: string, b: string) => {
+  // realpathSync('') resolves to the process cwd, so an empty root would match
+  // whichever repo the caller happens to stand in. A block without a usable root
+  // matches nothing (validation reports it separately).
+  if (a === '' || b === '') return false
   try {
     return realpathSync(a) === realpathSync(b)
   } catch {
     return false
   }
 }
+
+// Which [repos.X] block belongs to a checkout, by path rather than by name: the
+// config key is a label, `root` is the identity. Shared with onboard so both
+// answer "is this repo already configured" the same way.
+export const findRepoEntry = (
+  repos: Record<string, RepoConfig>,
+  mainRepoRoot: string,
+): [string, RepoConfig] | undefined =>
+  Object.entries(repos).find(([, repo]) => sameDir(expandHome(repo.root ?? ''), mainRepoRoot))
+
+// A broken block in some other repo's config must not stop work in this one: a
+// typo in [repos.b] would otherwise break every command for repo a, including
+// the worktree.created hook. Pass the resolved repo name, or undefined when no
+// single repo is in scope.
+export const diagnosticsForRepo = (
+  diagnostics: Diagnostic[],
+  repoName: string | undefined,
+): Diagnostic[] =>
+  diagnostics.map((diagnostic) => {
+    if (diagnostic.severity !== 'error' || !diagnostic.key?.startsWith('repos.')) return diagnostic
+    const mine =
+      repoName !== undefined &&
+      (diagnostic.key === `repos.${repoName}` || diagnostic.key.startsWith(`repos.${repoName}.`))
+    if (mine) return diagnostic
+    return {
+      ...diagnostic,
+      severity: 'warning',
+      message: `${diagnostic.message} (another repo's block, ignored here)`,
+    }
+  })
 
 // Config for a repo, layered lowest to highest: [defaults] from the central
 // config.toml, then its [repos.X] entry, then a repo-local .treehouse.toml at
@@ -357,7 +424,7 @@ export const resolveRepoConfig = async (
   invoke: HerdrInvoker,
 ): Promise<{ name: string; config: RepoConfig; diagnostics: Diagnostic[] }> => {
   const { config: loaded, diagnostics } = await loadConfig(invoke)
-  const entry = Object.entries(loaded.repos).find(([, repo]) => sameDir(expandHome(repo.root ?? ''), mainRepoRoot))
+  const entry = findRepoEntry(loaded.repos, mainRepoRoot)
   const name = entry?.[0] ?? basename(mainRepoRoot)
   let config: RepoConfig = { ...loaded.defaults, ...(entry?.[1] ?? {}), root: mainRepoRoot }
 
@@ -367,5 +434,5 @@ export const resolveRepoConfig = async (
     diagnostics.push(...local.diagnostics)
     config = { ...config, ...local.config, root: mainRepoRoot }
   }
-  return { name, config, diagnostics }
+  return { name, config, diagnostics: diagnosticsForRepo(diagnostics, entry?.[0]) }
 }

@@ -64,12 +64,17 @@ export const parseFlags = (command: CommandSpec, argv: string[]): ParsedFlags =>
     }
     index += 1
     const value = argv[index]
-    if (value === undefined) throw new Error(`${arg} requires a value`)
+    // An empty value counts as missing: `down --path ""` used to fail here, and
+    // silently falling back to cwd would tear down whichever worktree the
+    // caller happened to stand in.
+    if (value === undefined || value === '') throw new Error(`${arg} requires a value`)
     if (spec.kind === 'value') {
       values[spec.key] = value
       continue
     }
-    const entries = spec.split ? value.split(spec.split).filter((entry) => entry !== '') : [value]
+    const entries = spec.split
+      ? value.split(spec.split).map((entry) => entry.trim()).filter((entry) => entry !== '')
+      : [value]
     lists[spec.key] = [...(lists[spec.key] ?? []), ...entries]
   }
 

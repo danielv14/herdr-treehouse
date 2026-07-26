@@ -37,7 +37,7 @@ export const bootstrapFromEvent = async (deps: EngineDeps) => {
   const mainRepoRoot = findMainRepoRoot(worktreePath)
   const { name: repoName, config: repoConfig, diagnostics } = await resolveRepoConfig(mainRepoRoot, deps.invoke)
   reportDiagnostics(diagnostics, log)
-  if (!repoConfig.bootstrap && !repoConfig.setup?.length) {
+  if (!repoConfig.bootstrap?.length && !repoConfig.setup?.length) {
     log(`no bootstrap or setup configured for ${repoName}, skipping`)
     return
   }

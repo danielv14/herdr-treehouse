@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import { parseFlags } from './cli.ts'
-import { COMMANDS, help } from './commands.ts'
+import { COMMANDS, commandHelp, help } from './commands.ts'
 import { DOWN_COMMAND } from './down.ts'
 import { ONBOARD_COMMAND } from './onboard.ts'
 import { UP_COMMAND } from './up.ts'
@@ -108,5 +108,26 @@ describe('help', () => {
   test('names every command', () => {
     const rendered = help()
     for (const command of COMMANDS) expect(rendered).toContain(`${command.name}: ${command.summary}`)
+  })
+})
+
+describe('review fixes', () => {
+  test('an empty value counts as missing, so down --path "" cannot retarget cwd', () => {
+    expect(() => parseFlags(DOWN_COMMAND, ['--path', ''])).toThrow('--path requires a value')
+    expect(() => parseFlags(UP_COMMAND, ['--branch', ''])).toThrow('--branch requires a value')
+  })
+
+  test('comma-split entries are trimmed, matching the interactive prompt', () => {
+    expect(parseFlags(UP_COMMAND, ['--targets', 'services/a, packages/b ']).list('targets')).toEqual([
+      'services/a',
+      'packages/b',
+    ])
+  })
+
+  test('per-command help renders that command only', () => {
+    const rendered = commandHelp('up')
+    expect(rendered).toContain('--from-link')
+    expect(rendered).not.toContain('--path <worktree>')
+    expect(commandHelp('nope')).toBeUndefined()
   })
 })

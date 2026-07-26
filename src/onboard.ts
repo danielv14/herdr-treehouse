@@ -1,7 +1,7 @@
 import { appendFileSync, existsSync, mkdirSync, readdirSync } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
 import { parseFlags, type CommandSpec } from './cli.ts'
-import { LOCAL_CONFIG_FILE, configPath, loadConfig } from './config.ts'
+import { LOCAL_CONFIG_FILE, configPath, diagnosticsForRepo, findRepoEntry, loadConfig } from './config.ts'
 import type { EngineDeps } from './deps.ts'
 import { reportDiagnostics } from './diagnostics.ts'
 import { findMainRepoRoot } from './git.ts'
@@ -99,10 +99,19 @@ export const onboard = async (argv: string[], deps: EngineDeps) => {
   // Either location already configuring this repo means there is nothing to
   // onboard. Naming the file matters here: moving a repo between the two is a
   // question of removing the old entry, which only the reader can decide.
+  //
+  // Matched by `root` rather than by the directory name, the same way config
+  // resolution matches: a block keyed differently from the directory still
+  // configures this repo, and appending a second one would leave two blocks
+  // fighting over it.
   const existing = await loadConfig(deps.invoke)
-  reportDiagnostics(existing.diagnostics, deps.warn)
-  if (existing.config.repos[repoName]) {
-    throw new Error(`"${repoName}" is already configured in ${centralPath} (remove that block first if you are moving it to ${LOCAL_CONFIG_FILE})`)
+  const configuredEntry = findRepoEntry(existing.config.repos, repoRoot)
+  // Another repo's broken block is not this repo's problem; onboard only needs
+  // the block names out of the file.
+  reportDiagnostics(diagnosticsForRepo(existing.diagnostics, configuredEntry?.[0]), deps.warn)
+  if (configuredEntry) {
+    const asKey = configuredEntry[0] === repoName ? '' : ` as [repos.${configuredEntry[0]}]`
+    throw new Error(`"${repoName}" is already configured${asKey} in ${centralPath} (remove that block first if you are moving it to ${LOCAL_CONFIG_FILE})`)
   }
   if (existsSync(localPath)) {
     throw new Error(`${localPath} already exists (delete it first if you are moving this repo to ${centralPath})`)

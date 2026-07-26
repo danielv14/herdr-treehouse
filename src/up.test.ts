@@ -87,7 +87,7 @@ autostart = false
       `pane send-text wA:p7 npm run dev --prefix ${worktree}`,
       'pane run wA:p5 claude --resume',
       'agent wait wA:p5 --until idle --timeout 60000',
-      'agent prompt wA:p5 solve ABC-1',
+      'agent prompt wA:p5 solve ABC-1 --wait --until working --timeout 5000',
     ])
     expect(logged).toContain(`worktree:  ${worktree}`)
     expect(logged).toContain('tab:       wA:t3 (abc-1) in workspace wA')
@@ -248,5 +248,46 @@ describe('invocation context', () => {
       if (previousUrl === undefined) delete process.env.HERDR_PLUGIN_CLICKED_URL
       else process.env.HERDR_PLUGIN_CLICKED_URL = previousUrl
     }
+  })
+})
+
+describe('review fixes', () => {
+  test('--prompt with --no-agent is refused rather than silently dropped', async () => {
+    writeLocalConfig('base = "master"\n')
+    const fake = createFakeHerdr(RESPONSES)
+    await expectRejection(
+      up(['--repo', repo.root, '--branch', 'ABC-1/fix', '--no-agent', '--prompt', 'do it'], deps(fake)),
+      '--prompt needs an agent to hand the task to',
+    )
+    expect(fake.calls).toHaveLength(0)
+  })
+
+  test('a placeholder typo in a pane command fails before the worktree is created', async () => {
+    writeLocalConfig(`
+base = "master"
+setup = ["echo ran > ran.txt"]
+
+[[panes]]
+split = "down"
+command = "npm run dev --prefix {wortkree}"
+`)
+    const fake = createFakeHerdr(RESPONSES)
+    await expectRejection(
+      up(['--repo', repo.root, '--branch', 'ABC-1/fix', '--no-agent'], deps(fake)),
+      'unknown placeholder {wortkree}',
+    )
+    expect(existsSync(join(repo.parent, 'my-repo-abc-1'))).toBe(false)
+  })
+
+  test('a broken block for another repo does not stop this one', async () => {
+    writeFileSync(
+      join(configDir, 'config.toml'),
+      `[repos.somewhere-else]\nroot = "/nowhere/at/all"\nsetup = "npm ci"\n`,
+    )
+    writeLocalConfig('base = "master"\n')
+    const fake = createFakeHerdr(RESPONSES)
+    await up(['--repo', repo.root, '--branch', 'ABC-1/fix', '--no-agent'], deps(fake))
+    expect(logged.join('\n')).toContain("another repo's block, ignored here")
+    expect(existsSync(join(repo.parent, 'my-repo-abc-1'))).toBe(true)
   })
 })

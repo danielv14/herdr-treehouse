@@ -147,3 +147,27 @@ describe('bootstrap argv', () => {
     )
   })
 })
+
+describe('braces that are not placeholders', () => {
+  // Config values are shell commands, so braces are ordinary there. Only
+  // single-word braces are placeholders.
+  test.each([
+    "docker compose ps --format '{{.Names}}'",
+    "kubectl get pods -o jsonpath='{.items[0].metadata.name}'",
+    "awk '{print $1}' log.txt",
+    'echo ${SHELL}',
+    'find . -exec rm {} \;',
+  ])('passes %p through untouched', (template) => {
+    expect(plan('VKT-1/x').expand(template, 'setup')).toBe(template)
+  })
+
+  test('but a single-word brace is still checked', () => {
+    expect(() => plan('VKT-1/x').expand('{wortkree}/x', 'setup')).toThrow('unknown placeholder {wortkree}')
+  })
+
+  test('{targets...} anywhere in a plain template is refused', () => {
+    expect(() => plan('VKT-1/x').expand('--dirs={targets...}', 'a pane command')).toThrow(
+      '{targets...} only expands as a standalone bootstrap argv entry',
+    )
+  })
+})

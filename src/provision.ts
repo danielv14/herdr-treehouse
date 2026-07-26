@@ -39,11 +39,16 @@ export const provisionWorktree = (
   const justCreated = options.worktreeState === 'just-created'
   const existedBefore = justCreated ? false : existsSync(plan.worktree)
 
-  if (repoConfig.bootstrap) {
+  // `?.length`, not just presence: `bootstrap = []` is a truthy empty argv, and
+  // spawning argv[0] === undefined crashes with a Node type error instead of
+  // doing the obvious thing (no bootstrap configured).
+  const hasBootstrap = Boolean(repoConfig.bootstrap?.length)
+
+  if (hasBootstrap) {
     // A bootstrap replaces worktree creation entirely: it owns branching, env
     // files and dependencies. It runs on the hook path too, where the checkout
     // already exists, because the rest of what it does is still needed.
-    const argv = plan.expandArgv(repoConfig.bootstrap)
+    const argv = plan.expandArgv(repoConfig.bootstrap ?? [])
     log(`bootstrap: ${argv.join(' ')}`)
     const result = spawnSync(argv[0], argv.slice(1), { cwd: plan.root, stdio: 'inherit' })
     if (result.status !== 0) throw new Error(`bootstrap failed (exit ${result.status})`)
@@ -57,7 +62,7 @@ export const provisionWorktree = (
 
   if (!existsSync(plan.worktree)) {
     throw new Error(
-      repoConfig.bootstrap
+      hasBootstrap
         ? `bootstrap finished but worktree is missing: ${plan.worktree}`
         : `worktree is missing after creation: ${plan.worktree}`,
     )

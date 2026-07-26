@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { validateConfigFile, validateLocalConfigFile } from './config.ts'
+import { diagnosticsForRepo, validateConfigFile, validateLocalConfigFile } from './config.ts'
 import { reportDiagnostics } from './diagnostics.ts'
 
 const FILE = '/cfg/config.toml'
@@ -228,5 +228,59 @@ describe('reportDiagnostics', () => {
         () => {},
       ),
     ).toThrow('invalid config:\n  first\n  second')
+  })
+})
+
+describe('a [repos.X] block without root', () => {
+  // realpathSync('') resolves to the process cwd, so an empty or missing root
+  // would make the block claim whichever repo you happened to run from.
+  test('is an error naming the missing key', () => {
+    const found = errors(`
+[repos.x]
+base = "origin/main"
+`)
+    expect(found).toEqual(['[repos.x] in /cfg/config.toml: missing required key "root"'])
+  })
+
+  test('and a wrong-typed root is reported once, as a type error', () => {
+    expect(errors('repos = { x = { root = 3 } }')).toEqual([
+      'repos.x.root in /cfg/config.toml: expected a string, found a number (3)',
+      '[repos.x] in /cfg/config.toml: missing required key "root"',
+    ])
+  })
+
+  test('a repo-local file still needs no root', () => {
+    const { diagnostics } = validateLocalConfigFile(Bun.TOML.parse('base = "origin/main"'), '/repo/.treehouse.toml')
+    expect(diagnostics).toEqual([])
+  })
+})
+
+describe('diagnosticsForRepo', () => {
+  const diagnostics = [
+    { severity: 'error' as const, key: 'repos.mine.setup', message: 'mine is broken' },
+    { severity: 'error' as const, key: 'repos.other.setup', message: 'other is broken' },
+    { severity: 'error' as const, key: 'defaults.agent', message: 'defaults is broken' },
+    { severity: 'warning' as const, key: 'repos.other.nope', message: 'unknown key' },
+  ]
+
+  test('keeps errors for this repo and for shared blocks fatal', () => {
+    const scoped = diagnosticsForRepo(diagnostics, 'mine')
+    expect(scoped[0]).toEqual(diagnostics[0])
+    expect(scoped[2]).toEqual(diagnostics[2])
+  })
+
+  test('demotes another repo\'s errors, so one bad block cannot break every command', () => {
+    const scoped = diagnosticsForRepo(diagnostics, 'mine')
+    expect(scoped[1].severity).toBe('warning')
+    expect(scoped[1].message).toContain("another repo's block, ignored here")
+  })
+
+  test('with no repo in scope, every repo-scoped error is demoted', () => {
+    const scoped = diagnosticsForRepo(diagnostics, undefined)
+    expect(scoped.filter((d) => d.severity === 'error').map((d) => d.key)).toEqual(['defaults.agent'])
+  })
+
+  test('leaves warnings alone', () => {
+    expect(diagnosticsForRepo(diagnostics, 'mine')[3]).toEqual(diagnostics[3])
   })
 })

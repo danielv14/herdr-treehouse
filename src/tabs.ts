@@ -117,6 +117,15 @@ const BUSY_RECHECK_MS = 750
 const AGENT_IDLE_TIMEOUT_MS = 60_000
 const AGENT_REGISTRATION_POLL_MS = 500
 
+// A freshly started agent can report idle while its TUI is still starting, and a
+// prompt submitted in that window is dropped on the floor (live-observed on
+// herdr 0.7.5: the tab opens, the task never arrives). `agent prompt --wait`
+// requires an observed state change and reports agent_prompt_stalled when the
+// text was not picked up, which is the signal to submit again.
+const PROMPT_DELIVERY_TIMEOUT_MS = 5000
+const PROMPT_RETRY_MS = 1000
+const PROMPT_ATTEMPTS = 3
+
 export const createTabChoreography = (
   invoke: HerdrInvoker,
   options: { sleep?: (ms: number) => Promise<void>; now?: () => number } = {},
@@ -124,19 +133,23 @@ export const createTabChoreography = (
   const sleep = options.sleep ?? defaultSleep
   const now = options.now ?? Date.now
 
-  const findWorkspace = (mainRepoRoot: string): string | undefined => {
-    try {
-      const listed = invoke(['worktree', 'list', '--cwd', mainRepoRoot])
-      return readString(listed, 'source', 'source_workspace_id')
-    } catch {
-      // Not an error: a repo with no open workspace is a normal state, and both
-      // callers have a sensible answer for it.
-      return undefined
-    }
-  }
+  // A repo with no open workspace is a normal answer, and Herdr reports it by
+  // leaving source_workspace_id out of a successful response. A thrown error is
+  // therefore a real failure and is NOT swallowed: `down` decides whether to
+  // tear a worktree down based on this, and degrading to "no workspace" would
+  // skip the busy-process check entirely.
+  const findWorkspace = (mainRepoRoot: string): string | undefined =>
+    readString(invoke(['worktree', 'list', '--cwd', mainRepoRoot]), 'source', 'source_workspace_id')
 
   const resolveWorkspace = (mainRepoRoot: string): string => {
-    const existing = findWorkspace(mainRepoRoot)
+    let existing: string | undefined
+    try {
+      existing = findWorkspace(mainRepoRoot)
+    } catch {
+      // Opening a tab can recover from a failed lookup by creating the
+      // workspace; the worst case is one extra workspace, not a lost worktree.
+      existing = undefined
+    }
     if (existing) return existing
     const created = invoke(['workspace', 'create', '--cwd', mainRepoRoot, '--no-focus'])
     const workspaceId =
@@ -160,6 +173,28 @@ export const createTabChoreography = (
         const message = error instanceof Error ? error.message : String(error)
         if (!message.includes('agent_not_found')) throw error
         await sleep(AGENT_REGISTRATION_POLL_MS)
+      }
+    }
+  }
+
+  // Retries only on the explicit "nothing was picked up" code, so a delivered
+  // prompt is never submitted twice; anything else fails loudly, because a tab
+  // that silently never received its task is worse than an error.
+  const submitPrompt = async (paneId: string, prompt: string) => {
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        invoke([
+          'agent', 'prompt', paneId, prompt,
+          '--wait', '--until', 'working',
+          '--timeout', String(PROMPT_DELIVERY_TIMEOUT_MS),
+        ])
+        return
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        if (!message.includes('agent_prompt_stalled') || attempt >= PROMPT_ATTEMPTS) {
+          throw new Error(`could not hand the prompt to the agent in ${paneId}: ${message}`)
+        }
+        await sleep(PROMPT_RETRY_MS)
       }
     }
   }
@@ -214,7 +249,7 @@ export const createTabChoreography = (
         // sequence was a 0.7.4 workaround for bracketed paste swallowing the
         // trailing Enter, and `wait agent-status` is gone as of 0.7.5.
         await waitForAgentIdle(mainPaneId)
-        invoke(['agent', 'prompt', mainPaneId, request.prompt])
+        await submitPrompt(mainPaneId, request.prompt)
       }
     }
 

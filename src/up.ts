@@ -126,6 +126,11 @@ export const up = async (argv: string[], deps: EngineDeps) => {
 
   if (options.interactive) await askInteractively(options, repoName, repoConfig)
   if (!options.branch) throw new Error('up requires --branch (or --interactive / --from-link)')
+  // Silently dropping the task would be worse than refusing: the tab would open
+  // and nothing would ever act on it.
+  if (options.prompt && options.noAgent) {
+    throw new Error('--prompt needs an agent to hand the task to (drop --no-agent, or drop --prompt)')
+  }
 
   const plan = buildWorktreePlan({
     repoName,
@@ -134,6 +139,10 @@ export const up = async (argv: string[], deps: EngineDeps) => {
     repoConfig,
     targets: options.targets,
   })
+
+  // Expand the pane commands before provisioning: a placeholder typo in a pane
+  // command should fail before a worktree exists, not after npm ci.
+  const panes = options.noDev ? [] : paneSpecs(repoConfig, plan.expand)
 
   provisionWorktree(plan, repoConfig, { log, warn })
 
@@ -148,7 +157,7 @@ export const up = async (argv: string[], deps: EngineDeps) => {
     cwd: plan.worktree,
     label,
     focus: options.focus,
-    panes: options.noDev ? [] : paneSpecs(repoConfig, plan.expand),
+    panes,
     agent: options.noAgent ? undefined : agent,
     prompt: options.prompt,
   })
