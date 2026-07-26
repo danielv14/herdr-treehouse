@@ -28,7 +28,8 @@ down: remove the worktree and close its tab
   --path <worktree>  worktree to tear down (default: cwd)
 
 onboard: scan the current repo and propose a config entry
-  --apply            append the proposal to the plugin config
+  --apply            write the proposal to the config
+  --local            target <repo>/.treehouse.toml instead of the plugin config
 
 bootstrap --from-event: internal, used by the worktree.created plugin hook
 

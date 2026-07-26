@@ -40,6 +40,15 @@ treehouse onboard --apply           # append it to the plugin config
 
 `down` removes the worktree and closes its tab, but never kills running processes and never uses `git worktree remove --force`; it tells you what is in the way instead.
 
+### Where a repo's config lives
+
+Two homes, same fields:
+
+- **Central**: a `[repos.X]` block in `$(herdr plugin config-dir treehouse)/config.toml`. Nothing enters the repo, which is what you want for repos you don't own.
+- **Repo-local**: `<repo>/.treehouse.toml`, the same fields without the `[repos.X]` wrapper and without `root` (the file's location is the repo root). Works with or without a central entry, and whether or not you commit it.
+
+Layering is `[defaults]` → `[repos.X]` → `.treehouse.toml`, last one wins, so a repo-local file can also refine a central entry rather than replace it. `treehouse onboard --local` generates the repo-local shape.
+
 ### Agent command
 
 The command that starts the agent in the main pane resolves in this order, first match wins:

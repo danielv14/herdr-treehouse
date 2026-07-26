@@ -66,6 +66,10 @@ export const configDir = (): string => {
 
 export const configPath = () => join(configDir(), 'config.toml')
 
+// Per-repo config checked into (or gitignored inside) the repo itself, for
+// repos whose config has no reason to live in the user's plugin config dir.
+export const LOCAL_CONFIG_FILE = '.treehouse.toml'
+
 export const loadConfig = async (): Promise<TreehouseConfig> => {
   const path = configPath()
   if (!existsSync(path)) return { defaults: {}, repos: {} }
@@ -135,9 +139,12 @@ export const resolveRepoConfig = async (mainRepoRoot: string): Promise<{ name: s
   let name = entry?.[0] ?? basename(mainRepoRoot)
   let config: RepoConfig = { ...defaults, ...(entry?.[1] ?? { root: mainRepoRoot }) }
 
-  const localPath = join(mainRepoRoot, '.treehouse.toml')
+  const localPath = join(mainRepoRoot, LOCAL_CONFIG_FILE)
   if (existsSync(localPath)) {
     const local = Bun.TOML.parse(await Bun.file(localPath).text()) as Partial<RepoConfig>
+    if (local.root !== undefined) {
+      console.error(`warning: "root" in ${LOCAL_CONFIG_FILE} is ignored (the repo root is where the file lives)`)
+    }
     config = { ...config, ...local, root: mainRepoRoot }
   }
   warnUnknownKeys(name, config)
