@@ -7,11 +7,13 @@ platforms = ["macos", "linux"]
 
 # Keybinding/UI entrypoint. Opens the interactive picker in a popup pane
 # (an action runs headless, so prompting must happen in a plugin pane).
+# `action up` reads the invocation context and opens that pane itself, so this
+# is a call site for the engine like every other one.
 [[actions]]
 id = "up"
 title = "Treehouse: new worktree tab"
 contexts = ["workspace"]
-command = ["bash", "bin/treehouse-action-up.sh"]
+command = ["bash", "bin/treehouse", "action", "up"]
 
 [[panes]]
 id = "up-interactive"
@@ -27,7 +29,7 @@ command = ["bash", "bin/treehouse", "up", "--interactive"]
 id = "down"
 title = "Treehouse: tear down this worktree tab"
 contexts = ["workspace"]
-command = ["bash", "bin/treehouse-action-down.sh"]
+command = ["bash", "bin/treehouse", "action", "down"]
 
 [[panes]]
 id = "down-interactive"
