@@ -36,7 +36,9 @@
 
 [repos.my-awesome-repo]
 root = "~/dev/my-awesome-repo"
-# Sibling layout: worktrees live next to the main checkout.
+# Sibling layout: worktrees live next to the main checkout. This is also the
+# default (`../{repo}-{id}`), so the line is only needed for a different layout.
+# Relative paths resolve against the main checkout, not your cwd.
 worktree_dir = "../my-awesome-repo-{id}"
 base = "origin/master"
 # The script handles env copying, config, and node_modules for the new worktree.

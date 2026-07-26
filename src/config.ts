@@ -186,7 +186,14 @@ export const resolveWorktreePath = (
   mainRepoRoot: string,
   context: Omit<TemplateContext, 'worktree'>,
 ): string => {
-  const template = repoConfig.worktree_dir ?? '~/.herdr/worktrees/{repo}/{id}'
+  // Sibling by default: `cd ../{repo}-{id}` from the main checkout is the
+  // shortest path back and forth, worktrees sort next to the repo they belong
+  // to, and staying outside the checkout keeps them away from watchers, test
+  // globs and build contexts (which is why Claude Code's own
+  // <repo>/.claude/worktrees/ layout is a poor fit for long-lived tabs).
+  // {repo} is the config key, which for unconfigured repos is the directory
+  // name; set worktree_dir explicitly if a key deliberately differs from it.
+  const template = repoConfig.worktree_dir ?? '../{repo}-{id}'
   const expanded = expandHome(expandTemplate(template, context))
   return isAbsolute(expanded) ? expanded : resolve(mainRepoRoot, expanded)
 }

@@ -74,7 +74,7 @@ export const onboard = async (argv: string[]) => {
   const lines = [
     `[repos.${tomlKey}]`,
     `root = "${repoRoot}"`,
-    `# worktree_dir = "../${repoName}-{id}"  # sibling layout; default is ~/.herdr/worktrees/{repo}/{id}`,
+    `# worktree_dir = "../${repoName}-{id}"  # this is the default; set it only for a different layout`,
     `# base = "origin/master"`,
     `# bootstrap = ["path/to/bootstrap.sh", "--dir", "{worktree}", "{branch}", "{targets...}"]`,
     scan.installCommand ? `setup = ["${scan.installCommand}"]` : `# setup = ["npm ci"]  # commands run in a freshly created worktree`,
