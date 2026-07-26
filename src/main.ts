@@ -1,6 +1,6 @@
 import { action } from './actions.ts'
 import { bootstrapFromEvent } from './bootstrapEvent.ts'
-import { help } from './commands.ts'
+import { commandHelp, help } from './commands.ts'
 import type { EngineDeps } from './deps.ts'
 import { down } from './down.ts'
 import { createHerdrInvoker } from './herdr.ts'
@@ -9,6 +9,16 @@ import { up } from './up.ts'
 
 const main = async (deps: EngineDeps) => {
   const [command, ...rest] = process.argv.slice(2)
+
+  // `treehouse up --help` asks about up, not about the parser.
+  if (rest.includes('--help') || rest.includes('-h')) {
+    const rendered = command === undefined ? undefined : commandHelp(command)
+    if (rendered) {
+      console.log(rendered)
+      return
+    }
+  }
+
   switch (command) {
     case 'up':
       await up(rest, deps)

@@ -189,3 +189,14 @@ describe('down', () => {
     expect(existsSync(worktree)).toBe(false)
   })
 })
+
+describe('a failed workspace lookup', () => {
+  // down.ts promises that inspection failures abort rather than degrade:
+  // proceeding without the busy check could delete a worktree from under a
+  // running dev server.
+  test('aborts the teardown instead of removing the worktree unchecked', async () => {
+    const fake = createFakeHerdr({})
+    await expectRejection(down(['--path', worktree], deps(fake)), 'no response scripted')
+    expect(existsSync(worktree)).toBe(true)
+  })
+})

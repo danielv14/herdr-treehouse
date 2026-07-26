@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import { expectRejection } from './testing/expectRejection.ts'
-import { createFakeHerdr, type FakeResponses } from './testing/fakeHerdr.ts'
+import { createFakeHerdr, type FakeResponse, type FakeResponses } from './testing/fakeHerdr.ts'
 import { createTabChoreography } from './tabs.ts'
 
 const TAB_CREATED = { tab: { tab_id: 'wA:t7' }, root_pane: { pane_id: 'wA:p9' } }
@@ -36,10 +36,18 @@ describe('workspace lookup', () => {
     expect(fake.commands()).toContain('workspace create --cwd /dev/repo --no-focus')
   })
 
-  test('a failing worktree list is treated as "no workspace", not an error', () => {
-    const fake = createFakeHerdr({})
-    const tabs = createTabChoreography(fake.invoke)
+  test('a missing workspace id is "no workspace"; a failed lookup is an error', () => {
+    // Herdr answers a repo it does not know with a successful response that has
+    // no source_workspace_id. A thrown error means something else went wrong,
+    // and teardown must not read that as "no workspace, go ahead".
+    const { tabs } = choreography({ 'worktree list': { source: {} } })
     expect(tabs.findWorkspace('/dev/repo')).toBeUndefined()
+
+    const failing = createFakeHerdr({ 'workspace create': { workspace: { workspace_id: 'wB' } } })
+    const failingTabs = createTabChoreography(failing.invoke)
+    expect(() => failingTabs.findWorkspace('/dev/repo')).toThrow('no response scripted')
+    // Opening a tab can still recover by creating the workspace.
+    expect(failingTabs.resolveWorkspace('/dev/repo')).toBe('wB')
   })
 })
 
@@ -130,7 +138,7 @@ describe('openWorktreeTab', () => {
     expect(fake.commands().slice(1)).toEqual([
       'pane run wA:p9 claude',
       'agent wait wA:p9 --until idle --timeout 60000',
-      'agent prompt wA:p9 solve ABC-1',
+      'agent prompt wA:p9 solve ABC-1 --wait --until working --timeout 5000',
     ])
     expect(opened.agentStarted).toBe(true)
   })
@@ -169,7 +177,7 @@ describe('openWorktreeTab', () => {
     })
     expect(attempts).toBe(3)
     expect(sleeps).toEqual([500, 500])
-    expect(fake.commands()).toContain('agent prompt wA:p9 go')
+    expect(fake.commands()).toContain('agent prompt wA:p9 go --wait --until working --timeout 5000')
   })
 
   test('a prompt gives up if no agent ever registers', async () => {
@@ -368,5 +376,64 @@ describe('openPluginPane', () => {
     expect(fake.commands()).toEqual([
       'plugin pane open --plugin treehouse --entrypoint up-interactive --placement popup --focus --env TREEHOUSE_TARGET_PATH=/dev/repo',
     ])
+  })
+})
+
+describe('prompt delivery', () => {
+  // A freshly started agent can report idle while its TUI is still starting, and
+  // the submitted prompt is then dropped (live-observed): the tab opens and the
+  // task never arrives.
+  const openWithPrompt = async (promptResponse: FakeResponse) => {
+    const sleeps: number[] = []
+    const fake = createFakeHerdr({
+      'tab create': TAB_CREATED,
+      'pane run': {},
+      'agent wait': {},
+      'agent prompt': promptResponse,
+    })
+    const tabs = createTabChoreography(fake.invoke, {
+      sleep: async (ms) => {
+        sleeps.push(ms)
+      },
+    })
+    const opening = tabs.openWorktreeTab({
+      workspaceId: 'wA',
+      cwd: '/wt',
+      label: 'l',
+      focus: false,
+      panes: [],
+      agent: 'claude',
+      prompt: 'solve ABC-1',
+    })
+    return { fake, sleeps, opening }
+  }
+
+  test('a stalled submission is retried until it lands', async () => {
+    let attempts = 0
+    const { fake, sleeps, opening } = await openWithPrompt(() => {
+      attempts += 1
+      if (attempts < 3) throw new Error('herdr agent prompt failed: {"error":{"code":"agent_prompt_stalled"}}')
+      return {}
+    })
+    await opening
+    expect(attempts).toBe(3)
+    expect(sleeps).toEqual([1000, 1000])
+    expect(fake.callsMatching('agent prompt')).toHaveLength(3)
+  })
+
+  test('a prompt that never lands fails loudly rather than opening a task-less tab', async () => {
+    const { fake, opening } = await openWithPrompt(() => {
+      throw new Error('herdr agent prompt failed: {"error":{"code":"agent_prompt_stalled"}}')
+    })
+    await expectRejection(opening, 'could not hand the prompt to the agent in wA:p9')
+    expect(fake.callsMatching('agent prompt')).toHaveLength(3)
+  })
+
+  test('any other failure is not retried, so a delivered prompt is never doubled', async () => {
+    const { fake, opening } = await openWithPrompt(() => {
+      throw new Error('herdr agent prompt failed: {"error":{"code":"timeout"}}')
+    })
+    await expectRejection(opening, 'could not hand the prompt to the agent in wA:p9')
+    expect(fake.callsMatching('agent prompt')).toHaveLength(1)
   })
 })

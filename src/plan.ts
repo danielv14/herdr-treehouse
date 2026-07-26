@@ -47,17 +47,23 @@ export const ticketFromBranch = (branch: string) => {
 // An unknown placeholder used to pass through unexpanded into shell commands and
 // bootstrap argv, so a typo became a literal "{wortkree}" argument that some
 // script then mkdir'd. Fail instead, and say which placeholders exist.
+//
+// Only single-word braces not preceded by `$` are treated as placeholders.
+// Config values are shell commands, and braces are ordinary there:
+// `docker ps --format '{{.Names}}'`, `kubectl -o jsonpath='{.items[0]}'`,
+// `awk '{print $1}'`, `cp ${HOME}/.env .env`. Those never looked like a
+// placeholder and must keep passing through untouched.
 const expandWith = (
   template: string,
   values: Record<string, string>,
   where: string,
-): string =>
-  template.replace(/\{([^{}]*)\}/g, (_whole, key: string) => {
-    if (key === 'targets...') {
-      throw new Error(
-        `${TARGETS_PLACEHOLDER} only expands as a standalone bootstrap argv entry, not in ${where}: ${JSON.stringify(template)}`,
-      )
-    }
+): string => {
+  if (template.includes(TARGETS_PLACEHOLDER)) {
+    throw new Error(
+      `${TARGETS_PLACEHOLDER} only expands as a standalone bootstrap argv entry, not in ${where}: ${JSON.stringify(template)}`,
+    )
+  }
+  return template.replace(/(?<!\$)\{(\w+)\}/g, (_whole, key: string) => {
     const value = values[key]
     if (value !== undefined) return value
     if ((PLACEHOLDERS as readonly string[]).includes(key)) {
@@ -69,6 +75,7 @@ const expandWith = (
       ).join(', ')}, plus ${TARGETS_PLACEHOLDER} in bootstrap argv`,
     )
   })
+}
 
 export type PlanInput = {
   repoName: string
