@@ -1,27 +1,23 @@
-import { ACTION_COMMAND } from './actions.ts'
-import { renderHelp, type CommandSpec } from './cli.ts'
-import { DOWN_COMMAND } from './down.ts'
-import { ONBOARD_COMMAND } from './onboard.ts'
-import { UP_COMMAND } from './up.ts'
+import { ACTION_COMMAND, action } from './actions.ts'
+import { BOOTSTRAP_COMMAND, bootstrap } from './bootstrapEvent.ts'
+import { renderHelp, type Command, type CommandSpec } from './cli.ts'
+import { DOWN_COMMAND, down } from './down.ts'
+import { ONBOARD_COMMAND, onboard } from './onboard.ts'
+import { UP_COMMAND, up } from './up.ts'
 
-export const BOOTSTRAP_COMMAND: CommandSpec = {
-  name: 'bootstrap',
-  usage: ['treehouse bootstrap --from-event'],
-  summary: 'internal: used by the worktree.created plugin hook',
-  flags: [
-    { flag: '--from-event', kind: 'boolean', key: 'fromEvent', help: 'read the worktree from HERDR_PLUGIN_EVENT_JSON and provision it' },
-  ],
-}
-
-// Single registry: dispatch, --help and the tests that assert help covers every
-// accepted flag all read the same list.
-export const COMMANDS: CommandSpec[] = [
-  UP_COMMAND,
-  DOWN_COMMAND,
-  ONBOARD_COMMAND,
-  ACTION_COMMAND,
-  BOOTSTRAP_COMMAND,
+// The one registry. Dispatch, --help and flag parsing all read this list, so
+// help can never advertise a command the entrypoint does not route, and adding
+// a command is one entry here rather than an entry plus a switch case.
+export const COMMANDS: Command[] = [
+  { ...UP_COMMAND, run: up },
+  { ...DOWN_COMMAND, run: down },
+  { ...ONBOARD_COMMAND, run: onboard },
+  { ...ACTION_COMMAND, run: action },
+  { ...BOOTSTRAP_COMMAND, run: bootstrap },
 ]
+
+export const findCommand = (name: string): Command | undefined =>
+  COMMANDS.find((command) => command.name === name)
 
 const HEADER = 'treehouse - worktree-as-tab workflow engine for Herdr'
 
@@ -34,7 +30,5 @@ export const help = () => renderHelp(HEADER, COMMANDS, FOOTER)
 
 // `treehouse up --help` and friends: the declarations already carry the help
 // text, so a single command's help is the same render over one entry.
-export const commandHelp = (name: string): string | undefined => {
-  const command = COMMANDS.find((candidate) => candidate.name === name)
-  return command ? renderHelp(HEADER, [command], FOOTER) : undefined
-}
+export const commandHelp = (command: CommandSpec): string =>
+  renderHelp(HEADER, [command], FOOTER)
