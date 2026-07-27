@@ -1,4 +1,5 @@
 import { spawnSync } from 'node:child_process'
+import type { Environment } from './context.ts'
 
 // Reaching Herdr is a dependency the engine accepts, not something it creates:
 // the spawning adapter below is one implementation, the recording fake in
@@ -6,8 +7,8 @@ import { spawnSync } from 'node:child_process'
 // decoding happens once, at the seam in tabs.ts, instead of at every call site.
 export type HerdrInvoker = (args: string[]) => unknown
 
-export const createHerdrInvoker = (): HerdrInvoker => {
-  const herdrBin = process.env.HERDR_BIN_PATH ?? 'herdr'
+export const createHerdrInvoker = (env: Environment): HerdrInvoker => {
+  const herdrBin = env.HERDR_BIN_PATH ?? 'herdr'
   return (args) => {
     const result = spawnSync(herdrBin, args, { encoding: 'utf8' })
     if (result.error) throw new Error(`failed to spawn ${herdrBin}: ${result.error.message}`)
@@ -22,4 +23,4 @@ export const createHerdrInvoker = (): HerdrInvoker => {
   }
 }
 
-export const insideHerdr = () => process.env.HERDR_ENV === '1'
+export const insideHerdr = (env: Environment) => env.HERDR_ENV === '1'

@@ -57,7 +57,7 @@ const holdForInteractive = async () => {
 }
 
 try {
-  await main({ invoke: createHerdrInvoker() })
+  await main({ invoke: createHerdrInvoker(process.env) })
   await holdForInteractive()
 } catch (error) {
   console.error(`treehouse: ${error instanceof Error ? error.message : error}`)

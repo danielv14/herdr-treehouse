@@ -2,7 +2,7 @@ import { appendFileSync, existsSync, mkdirSync, readdirSync } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
 import { parseFlags, type CommandSpec } from './cli.ts'
 import { LOCAL_CONFIG_FILE, configPath, diagnosticsForRepo, findRepoEntry, loadConfig } from './config.ts'
-import type { EngineDeps } from './deps.ts'
+import { resolveDeps, type EngineDeps } from './deps.ts'
 import { reportDiagnostics } from './diagnostics.ts'
 import { findMainRepoRoot } from './git.ts'
 
@@ -88,13 +88,14 @@ const buildBlock = (repoName: string, repoRoot: string, scan: RepoScan, local: b
 }
 
 export const onboard = async (argv: string[], deps: EngineDeps) => {
+  const { env, warn } = resolveDeps(deps)
   const flags = parseFlags(ONBOARD_COMMAND, argv)
   const apply = flags.flag('apply')
   const local = flags.flag('local')
   const repoRoot = findMainRepoRoot(process.cwd())
   const repoName = basename(repoRoot)
   const localPath = join(repoRoot, LOCAL_CONFIG_FILE)
-  const centralPath = configPath(deps.invoke)
+  const centralPath = configPath(deps.invoke, env)
 
   // Either location already configuring this repo means there is nothing to
   // onboard. Naming the file matters here: moving a repo between the two is a
@@ -104,11 +105,11 @@ export const onboard = async (argv: string[], deps: EngineDeps) => {
   // resolution matches: a block keyed differently from the directory still
   // configures this repo, and appending a second one would leave two blocks
   // fighting over it.
-  const existing = await loadConfig(deps.invoke)
+  const existing = await loadConfig(deps.invoke, env)
   const configuredEntry = findRepoEntry(existing.config.repos, repoRoot)
   // Another repo's broken block is not this repo's problem; onboard only needs
   // the block names out of the file.
-  reportDiagnostics(diagnosticsForRepo(existing.diagnostics, configuredEntry?.[0]), deps.warn)
+  reportDiagnostics(diagnosticsForRepo(existing.diagnostics, configuredEntry?.[0]), warn)
   if (configuredEntry) {
     const asKey = configuredEntry[0] === repoName ? '' : ` as [repos.${configuredEntry[0]}]`
     throw new Error(`"${repoName}" is already configured${asKey} in ${centralPath} (remove that block first if you are moving it to ${LOCAL_CONFIG_FILE})`)

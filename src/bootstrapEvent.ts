@@ -1,5 +1,5 @@
 import { resolveRepoConfig } from './config.ts'
-import type { EngineDeps } from './deps.ts'
+import { resolveDeps, type EngineDeps } from './deps.ts'
 import { reportDiagnostics } from './diagnostics.ts'
 import { findMainRepoRoot } from './git.ts'
 import { buildWorktreePlan } from './plan.ts'
@@ -17,8 +17,8 @@ import { provisionWorktree } from './provision.ts'
 // Everything after decoding the payload is the same provisioning module `up`
 // uses, so a repo configured with only `setup` gets its dependencies here too.
 export const bootstrapFromEvent = async (deps: EngineDeps) => {
-  const log = deps.warn ?? console.error
-  const raw = process.env.HERDR_PLUGIN_EVENT_JSON
+  const { env, warn: log } = resolveDeps(deps)
+  const raw = env.HERDR_PLUGIN_EVENT_JSON
   if (!raw) {
     log('no HERDR_PLUGIN_EVENT_JSON in environment, nothing to do')
     return
@@ -35,7 +35,7 @@ export const bootstrapFromEvent = async (deps: EngineDeps) => {
   }
 
   const mainRepoRoot = findMainRepoRoot(worktreePath)
-  const { name: repoName, config: repoConfig, diagnostics } = await resolveRepoConfig(mainRepoRoot, deps.invoke)
+  const { name: repoName, config: repoConfig, diagnostics } = await resolveRepoConfig(mainRepoRoot, deps.invoke, env)
   reportDiagnostics(diagnostics, log)
   if (!repoConfig.bootstrap?.length && !repoConfig.setup?.length) {
     log(`no bootstrap or setup configured for ${repoName}, skipping`)

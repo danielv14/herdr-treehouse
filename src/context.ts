@@ -24,7 +24,7 @@ const readString = (source: Record<string, unknown>, key: string): string | unde
   return typeof value === 'string' && value !== '' ? value : undefined
 }
 
-export const readInvocationContext = (env: Environment = process.env): InvocationContext => {
+export const readInvocationContext = (env: Environment): InvocationContext => {
   const raw = env.HERDR_PLUGIN_CONTEXT_JSON
   const clickedFromEnv = env.HERDR_PLUGIN_CLICKED_URL
   if (!raw) return { clickedUrl: clickedFromEnv || undefined }
@@ -45,7 +45,7 @@ export const readInvocationContext = (env: Environment = process.env): Invocatio
   }
 }
 
-export const isPluginInvocation = (env: Environment = process.env) =>
+export const isPluginInvocation = (env: Environment) =>
   env.HERDR_PLUGIN_CONTEXT_JSON !== undefined
 
 export type TargetPathInput = {
@@ -54,7 +54,7 @@ export type TargetPathInput = {
   // 'pane' for anything about the focused worktree (teardown, a clicked link),
   // 'workspace' for anything about the repo as a whole.
   prefer: 'pane' | 'workspace'
-  env?: Environment
+  env: Environment
 }
 
 // Precedence: explicit flag, then the env convention the popup shims use, then
@@ -64,7 +64,7 @@ export type TargetPathInput = {
 export const invocationTargetPath = ({
   explicit,
   prefer,
-  env = process.env,
+  env,
 }: TargetPathInput): string | undefined => {
   if (explicit) return explicit
   const fromEnv = env[TARGET_PATH_ENV]
@@ -77,5 +77,5 @@ export const invocationTargetPath = ({
 
 // The caller's own pane/tab, so teardown can skip itself in a busy check and
 // close its own tab last.
-export const callerPaneId = (env: Environment = process.env) => env.HERDR_PANE_ID
-export const callerTabId = (env: Environment = process.env) => env.HERDR_TAB_ID
+export const callerPaneId = (env: Environment) => env.HERDR_PANE_ID
+export const callerTabId = (env: Environment) => env.HERDR_TAB_ID

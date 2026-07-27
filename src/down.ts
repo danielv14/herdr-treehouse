@@ -24,10 +24,10 @@ const confirmInteractively = async (worktreeRoot: string): Promise<boolean> => {
 }
 
 export const down = async (argv: string[], deps: EngineDeps) => {
-  const { tabs, insideHerdr, log } = resolveDeps(deps)
+  const { tabs, env, insideHerdr, log } = resolveDeps(deps)
   const flags = parseFlags(DOWN_COMMAND, argv)
   const worktreePath = resolve(
-    invocationTargetPath({ explicit: flags.value('path'), prefer: 'pane' }) ?? process.cwd(),
+    invocationTargetPath({ explicit: flags.value('path'), prefer: 'pane', env }) ?? process.cwd(),
   )
 
   if (!isLinkedWorktree(worktreePath)) {
@@ -54,7 +54,7 @@ export const down = async (argv: string[], deps: EngineDeps) => {
   // design. Inspection failures abort rather than degrade: proceeding without
   // the busy check could delete a worktree under a running dev server.
   let tabIds: string[] = []
-  if (insideHerdr()) {
+  if (insideHerdr) {
     const workspaceId = tabs.findWorkspace(mainRepoRoot)
     if (!workspaceId) {
       log('repo has no open workspace in Herdr; removing the worktree only')
@@ -62,7 +62,7 @@ export const down = async (argv: string[], deps: EngineDeps) => {
       // Skip the caller's own pane: when down runs from inside the worktree
       // tab, the engine itself would otherwise count as a busy process.
       const inspection = await tabs.inspectWorktreeTab(workspaceId, worktreeRoot, {
-        ignorePaneId: callerPaneId(),
+        ignorePaneId: callerPaneId(env),
       })
       if (inspection.busyPanes.length > 0) {
         const listed = inspection.busyPanes.map((pane) => `  ${pane.paneId}: ${pane.command}`)
@@ -83,7 +83,7 @@ export const down = async (argv: string[], deps: EngineDeps) => {
   log(`removed worktree: ${worktreeRoot}`)
   log('branch left in place (cleaned up via PR merge as usual)')
 
-  const ownTabId = callerTabId()
+  const ownTabId = callerTabId(env)
   if (ownTabId && tabIds.includes(ownTabId)) {
     log('closing this tab last (the teardown ran from inside it)')
   }

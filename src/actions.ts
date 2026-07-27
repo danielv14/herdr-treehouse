@@ -23,7 +23,7 @@ const POPUP_ENTRYPOINTS = {
 } as const
 
 export const action = async (argv: string[], deps: EngineDeps) => {
-  const { tabs, warn } = resolveDeps(deps)
+  const { tabs, env, warn } = resolveDeps(deps)
   const [name, ...rest] = argv
   if (name !== 'up' && name !== 'down') {
     throw new Error(`action expects up or down (got ${name ?? 'nothing'})`)
@@ -32,9 +32,9 @@ export const action = async (argv: string[], deps: EngineDeps) => {
 
   // Visible via `herdr plugin log list --plugin treehouse`, which is the only
   // way to see what Herdr actually sent an action.
-  warn(`invocation context: ${readInvocationContext().raw ?? '(none)'}`)
+  warn(`invocation context: ${readInvocationContext(env).raw ?? '(none)'}`)
 
   const { entrypoint, prefer } = POPUP_ENTRYPOINTS[name]
-  const target = invocationTargetPath({ prefer })
+  const target = invocationTargetPath({ prefer, env })
   tabs.openPluginPane({ entrypoint, env: target ? { [TARGET_PATH_ENV]: target } : undefined })
 }

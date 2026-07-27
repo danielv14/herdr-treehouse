@@ -106,22 +106,22 @@ const paneSpecs = (repoConfig: RepoConfig, expand: (template: string, where?: st
   }))
 
 export const up = async (argv: string[], deps: EngineDeps) => {
-  const { tabs, insideHerdr, log, warn } = resolveDeps(deps)
+  const { tabs, env, insideHerdr, log, warn } = resolveDeps(deps)
   const options = readOptions(argv)
-  if (options.fromLink) applyLinkContext(options, readInvocationContext().clickedUrl)
-  if (!insideHerdr()) throw new Error('not inside a Herdr session (HERDR_ENV != 1)')
+  if (options.fromLink) applyLinkContext(options, readInvocationContext(env).clickedUrl)
+  if (!insideHerdr) throw new Error('not inside a Herdr session (HERDR_ENV != 1)')
 
-  const target = invocationTargetPath({ explicit: options.repo, prefer: 'pane' })
+  const target = invocationTargetPath({ explicit: options.repo, prefer: 'pane', env })
   if (!target && options.fromLink) {
     throw new Error('link invocation: could not derive the target repo from the plugin context')
   }
   // Falling back to cwd for a plugin-invoked run would target the plugin repo
   // itself, so refuse rather than bootstrap a worktree of treehouse.
-  if (!target && isPluginInvocation()) {
+  if (!target && isPluginInvocation(env)) {
     throw new Error('plugin invocation: could not derive the target repo from the plugin context (refusing to fall back to the plugin repo)')
   }
   const mainRepoRoot = findMainRepoRoot(target ?? process.cwd())
-  const { name: repoName, config: repoConfig, diagnostics } = await resolveRepoConfig(mainRepoRoot, deps.invoke)
+  const { name: repoName, config: repoConfig, diagnostics } = await resolveRepoConfig(mainRepoRoot, deps.invoke, env)
   reportDiagnostics(diagnostics, warn)
 
   if (options.interactive) await askInteractively(options, repoName, repoConfig)
