@@ -52,8 +52,7 @@ export const isPluginInvocation = (env: Environment) =>
   env.HERDR_PLUGIN_CONTEXT_JSON !== undefined
 
 export type WorktreeCreatedEvent = {
-  // Same reason as the invocation context: an unexpected shape is only ever
-  // noticed through the plugin log, so the payload survives decoding.
+  // Kept for logging, same reason as InvocationContext.raw above.
   raw?: string
   path?: string
   branch?: string
