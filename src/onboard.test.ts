@@ -10,6 +10,7 @@ let repo: TempRepo
 let configDir: string
 let configFile: string
 let originalCwd: string
+let logged: string[]
 let warned: string[]
 
 beforeEach(() => {
@@ -18,6 +19,7 @@ beforeEach(() => {
   configDir = join(repo.parent, 'config')
   mkdirSync(configDir, { recursive: true })
   configFile = join(configDir, 'config.toml')
+  logged = []
   warned = []
   process.chdir(repo.root)
 })
@@ -32,6 +34,7 @@ afterEach(() => {
 const deps = () => ({
   invoke: createFakeHerdr({}).invoke,
   env: { HERDR_PLUGIN_CONFIG_DIR: configDir },
+  log: (message: string) => logged.push(message),
   warn: (message: string) => warned.push(message),
 })
 
@@ -54,6 +57,31 @@ describe('onboard', () => {
     await onboard([], deps())
     expect(existsSync(configFile)).toBe(false)
     expect(existsSync(join(repo.root, '.treehouse.toml'))).toBe(false)
+  })
+
+  // A dry run writes no file, so the printed block is its entire product. It
+  // used to be unassertable: the only thing a test could check was the absence
+  // of a file, which says nothing about what the reader is asked to paste.
+  test('a dry run emits the block it wants pasted, plus how to apply it', async () => {
+    await onboard([], deps())
+    const output = logged.join('\n')
+    expect(output).toContain(`# Proposed config for my-repo (${configFile})`)
+    expect(output).toContain('[repos.my-repo]')
+    expect(output).toContain(`root = "${repo.root}"`)
+    expect(output).toContain('[[repos.my-repo.panes]]')
+    expect(output).toContain('autostart = false')
+    expect(output).toContain('# - no package.json found; set the dev pane command manually')
+    expect(output).toContain(`Run again with --apply to write this to ${configFile}`)
+    expect(output).toContain('add --local to write .treehouse.toml in the repo instead')
+  })
+
+  test('--local proposes the wrapper-free shape and points back at the central config', async () => {
+    await onboard(['--local'], deps())
+    const output = logged.join('\n')
+    expect(output).toContain('[[panes]]')
+    expect(output).not.toContain('[repos.my-repo]')
+    expect(output).not.toContain('root =')
+    expect(output).toContain(`omit --local to target ${configFile} instead`)
   })
 
   // The duplicate check matches by root, the same way config resolution does: a

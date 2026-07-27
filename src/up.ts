@@ -64,14 +64,20 @@ const readOptions = (argv: string[]): UpOptions => {
 }
 
 // Runs after repo resolution so the popup can say which repo it targets and
-// only ask questions that apply to it.
-const askInteractively = async (options: UpOptions, repoName: string, repoConfig: RepoConfig) => {
+// only ask questions that apply to it. The prompt copy goes through the same
+// seam as the rest of the engine's output; only reading stdin stays direct.
+const askInteractively = async (
+  options: UpOptions,
+  repoName: string,
+  repoConfig: RepoConfig,
+  log: (message: string) => void,
+) => {
   const readline = createInterface({ input: process.stdin, output: process.stdout })
-  console.log(`New worktree tab in ${repoName}\n`)
+  log(`New worktree tab in ${repoName}\n`)
   options.branch = (await readline.question('Branch name (e.g. ABC-1234/fix-thing): ')).trim()
   if (repoConfig.bootstrap?.includes('{targets...}')) {
-    console.log('\nTargets: repo-relative dirs the bootstrap should install dependencies')
-    console.log('for (e.g. services/foo, packages/bar). Leave empty to skip.')
+    log('\nTargets: repo-relative dirs the bootstrap should install dependencies')
+    log('for (e.g. services/foo, packages/bar). Leave empty to skip.')
     const targets = (await readline.question('Targets (comma-separated): ')).trim()
     if (targets !== '') options.targets.push(...targets.split(',').map((target) => target.trim()).filter(Boolean))
   }
@@ -124,7 +130,7 @@ export const up = async (argv: string[], deps: EngineDeps) => {
   const { name: repoName, config: repoConfig, diagnostics } = await resolveRepoConfig(mainRepoRoot, deps.invoke, env)
   reportDiagnostics(diagnostics, warn)
 
-  if (options.interactive) await askInteractively(options, repoName, repoConfig)
+  if (options.interactive) await askInteractively(options, repoName, repoConfig, log)
   if (!options.branch) throw new Error('up requires --branch (or --interactive / --from-link)')
   // Silently dropping the task would be worse than refusing: the tab would open
   // and nothing would ever act on it.
