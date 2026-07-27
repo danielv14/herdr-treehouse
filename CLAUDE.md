@@ -26,6 +26,7 @@ Three layers, strictly separated:
 
 The commands are thin; everything reusable sits behind a module with one job. Keep it that way when adding features.
 
+- `branch.ts` — the naming convention in one place: branch to ticket, branch to slug, and clicked URL to branch. Pure functions returning values; `up` merges the derived branch and the focus decision itself. The URL patterns are declared twice by necessity (Herdr gates on the manifest's `[[link_handlers]]` before the engine runs), so `branch.test.ts` reads `herdr-plugin.toml` and pins one sample URL per handler to both declarations. Keep them anchored and host-scoped like the manifest.
 - `plan.ts` — everything derived about one worktree (path, base ref, slug/ticket/id, placeholder expansion) from a single `buildWorktreePlan()` call. Pure: no fs, no git, no Herdr. `DEFAULT_BASE` lives here and nowhere else. An unknown `{placeholder}` is an error, not a pass-through.
 - `provision.ts` — "make this worktree exist and be usable", shared by `up` and the `worktree.created` hook. `worktreeState: 'just-created'` is how the hook says Herdr already made the checkout but it is still fresh, so `setup` must run.
 - `tabs.ts` — the only module that knows Herdr: subcommand names, response decoding, and the quirks (split chain, autostart vs pre-fill, wait-idle + paste + explicit Enter, always an explicit `--pane`, the double busy snapshot). `up`/`down` must contain no herdr subcommand strings.

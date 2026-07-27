@@ -1,4 +1,5 @@
 import { isAbsolute, resolve } from 'node:path'
+import { slugFromBranch, ticketFromBranch } from './branch.ts'
 import { expandHome, type RepoConfig } from './config.ts'
 
 // Everything derived about one worktree, resolved in a single call: callers ask
@@ -30,18 +31,6 @@ export type WorktreePlan = {
   // Expand a bootstrap argv: `{targets...}` becomes one entry per target, every
   // other entry gets normal placeholder expansion plus ~ expansion.
   expandArgv: (argv: string[]) => string[]
-}
-
-export const slugFromBranch = (branch: string) =>
-  branch
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 40)
-
-export const ticketFromBranch = (branch: string) => {
-  const match = branch.match(/^([a-zA-Z]+-\d+)/)
-  return match ? match[1].toLowerCase() : ''
 }
 
 // An unknown placeholder used to pass through unexpanded into shell commands and

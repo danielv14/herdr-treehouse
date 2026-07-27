@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { homedir } from 'node:os'
 import type { RepoConfig } from './config.ts'
-import { DEFAULT_BASE, buildWorktreePlan, slugFromBranch, ticketFromBranch } from './plan.ts'
+import { DEFAULT_BASE, buildWorktreePlan } from './plan.ts'
 
 const MAIN = '/tmp/checkouts/my-repo'
 
@@ -27,16 +27,6 @@ describe('derived fields', () => {
     expect(result.ticket).toBe('')
     expect(result.slug).toBe('fix-login-bug')
     expect(result.id).toBe('fix-login-bug')
-  })
-
-  test('slugs are trimmed and capped at 40 characters', () => {
-    expect(slugFromBranch('--Fix/  Thing--')).toBe('fix-thing')
-    expect(slugFromBranch('a'.repeat(60)).length).toBe(40)
-  })
-
-  test('a ticket is only recognised at the start of the branch', () => {
-    expect(ticketFromBranch('feature/VKT-1234')).toBe('')
-    expect(ticketFromBranch('vkt-1234/x')).toBe('vkt-1234')
   })
 })
 
