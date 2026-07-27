@@ -1,4 +1,5 @@
 import { createInterface } from 'node:readline/promises'
+import { branchFromUrl } from './branch.ts'
 import { parseFlags, type CommandSpec } from './cli.ts'
 import { resolveRepoConfig, type RepoConfig } from './config.ts'
 import { invocationTargetPath, isPluginInvocation, readInvocationContext } from './context.ts'
@@ -65,41 +66,25 @@ const readOptions = (argv: string[]): UpOptions => {
 
 // Runs after repo resolution so the popup can say which repo it targets and
 // only ask questions that apply to it. Only reading stdin stays direct; the
-// prompt copy is output like any other.
+// prompt copy is output like any other. Returns what it learned rather than
+// editing the options it was handed.
 const askInteractively = async (
-  options: UpOptions,
-  repoName: string,
   repoConfig: RepoConfig,
+  repoName: string,
   log: (message: string) => void,
-) => {
+): Promise<{ branch: string; targets: string[] }> => {
   const readline = createInterface({ input: process.stdin, output: process.stdout })
   log(`New worktree tab in ${repoName}\n`)
-  options.branch = (await readline.question('Branch name (e.g. ABC-1234/fix-thing): ')).trim()
+  const branch = (await readline.question('Branch name (e.g. ABC-1234/fix-thing): ')).trim()
+  const targets: string[] = []
   if (repoConfig.bootstrap?.includes('{targets...}')) {
     log('\nTargets: repo-relative dirs the bootstrap should install dependencies')
     log('for (e.g. services/foo, packages/bar). Leave empty to skip.')
-    const targets = (await readline.question('Targets (comma-separated): ')).trim()
-    if (targets !== '') options.targets.push(...targets.split(',').map((target) => target.trim()).filter(Boolean))
+    const answer = (await readline.question('Targets (comma-separated): ')).trim()
+    if (answer !== '') targets.push(...answer.split(',').map((target) => target.trim()).filter(Boolean))
   }
   readline.close()
-  options.focus = true
-}
-
-// A clicked link carries no judgment, so the engine stays mechanical: derive
-// a wip branch and open the tab with a bare agent. What to DO about the
-// ticket (explore, fix, just read up) is the user's or a skill's call; the
-// engine never injects a task prompt on its own.
-const applyLinkContext = (options: UpOptions, url: string | undefined) => {
-  const jiraMatch = (url ?? '').match(/atlassian\.net\/browse\/([A-Z]+-\d+)/)
-  const githubMatch = (url ?? '').match(/github\.com\/[^/]+\/([^/]+)\/issues\/(\d+)/)
-  if (jiraMatch) {
-    options.branch = `${jiraMatch[1]}/wip`
-  } else if (githubMatch) {
-    options.branch = `issue-${githubMatch[2]}/wip`
-  } else {
-    throw new Error(`could not derive a branch from clicked url: ${url ?? '(none)'}`)
-  }
-  options.focus = true
+  return { branch, targets }
 }
 
 const paneSpecs = (repoConfig: RepoConfig, expand: (template: string, where?: string) => string): PaneSpec[] =>
@@ -114,7 +99,16 @@ const paneSpecs = (repoConfig: RepoConfig, expand: (template: string, where?: st
 export const up = async (argv: string[], deps: EngineDeps) => {
   const { tabs, env, insideHerdr, log, warn } = resolveDeps(deps)
   const options = readOptions(argv)
-  if (options.fromLink) applyLinkContext(options, readInvocationContext(env).clickedUrl)
+  // A clicked link or an interactive answer decides the branch, and both mean
+  // "take me there", so up merges the branch and the focus decision itself
+  // rather than letting either path reach into the options.
+  if (options.fromLink) {
+    const url = readInvocationContext(env).clickedUrl
+    const branch = branchFromUrl(url)
+    if (!branch) throw new Error(`could not derive a branch from clicked url: ${url ?? '(none)'}`)
+    options.branch = branch
+    options.focus = true
+  }
   if (!insideHerdr) throw new Error('not inside a Herdr session (HERDR_ENV != 1)')
 
   const target = invocationTargetPath({ explicit: options.repo, prefer: 'pane', env })
@@ -130,7 +124,12 @@ export const up = async (argv: string[], deps: EngineDeps) => {
   const { name: repoName, config: repoConfig, diagnostics } = await resolveRepoConfig(mainRepoRoot, deps.invoke, env)
   reportDiagnostics(diagnostics, warn)
 
-  if (options.interactive) await askInteractively(options, repoName, repoConfig, log)
+  if (options.interactive) {
+    const answers = await askInteractively(repoConfig, repoName, log)
+    options.branch = answers.branch
+    options.targets.push(...answers.targets)
+    options.focus = true
+  }
   if (!options.branch) throw new Error('up requires --branch (or --interactive / --from-link)')
   // Silently dropping the task would be worse than refusing: the tab would open
   // and nothing would ever act on it.
