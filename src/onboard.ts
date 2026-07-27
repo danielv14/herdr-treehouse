@@ -88,7 +88,7 @@ const buildBlock = (repoName: string, repoRoot: string, scan: RepoScan, local: b
 }
 
 export const onboard = async (argv: string[], deps: EngineDeps) => {
-  const { env, warn } = resolveDeps(deps)
+  const { env, log, warn } = resolveDeps(deps)
   const flags = parseFlags(ONBOARD_COMMAND, argv)
   const apply = flags.flag('apply')
   const local = flags.flag('local')
@@ -122,27 +122,30 @@ export const onboard = async (argv: string[], deps: EngineDeps) => {
   const block = buildBlock(repoName, repoRoot, scan, local)
   const target = local ? localPath : centralPath
 
-  console.log(`# Proposed config for ${repoName} (${target})\n`)
-  console.log(block)
+  // In its default mode the proposed block IS the product: nothing is written
+  // and the reader pastes it. It goes through the same seam as every other
+  // message so a test can assert the block, not just the absence of a file.
+  log(`# Proposed config for ${repoName} (${target})\n`)
+  log(block)
   if (scan.notes.length > 0) {
-    console.log('\n# Notes:')
-    for (const note of scan.notes) console.log(`# - ${note}`)
+    log('\n# Notes:')
+    for (const note of scan.notes) log(`# - ${note}`)
   }
 
   if (!apply) {
     const other = local
       ? `omit --local to target ${centralPath} instead`
       : `add --local to write ${LOCAL_CONFIG_FILE} in the repo instead`
-    console.log(`\nRun again with --apply to write this to ${target}`)
-    console.log(`(${other})`)
+    log(`\nRun again with --apply to write this to ${target}`)
+    log(`(${other})`)
     return
   }
   if (local) {
     await Bun.write(localPath, `${block}\n`)
-    console.log(`\nWrote ${localPath}`)
+    log(`\nWrote ${localPath}`)
     return
   }
   mkdirSync(dirname(target), { recursive: true })
   appendFileSync(target, `\n${block}\n`)
-  console.log(`\nAppended to ${target}`)
+  log(`\nAppended to ${target}`)
 }

@@ -20,13 +20,17 @@ afterEach(() => {
   repo.cleanup()
 })
 
-const options = (extra: ProvisionOptions = {}): ProvisionOptions => ({
+// Everything provisioning says goes through the caller's log and warn; there is
+// no console default to fall back to.
+type ProvisionExtras = Omit<ProvisionOptions, 'log' | 'warn'>
+
+const options = (extra: ProvisionExtras = {}): ProvisionOptions => ({
   log: (message) => logged.push(message),
   warn: (message) => warned.push(message),
   ...extra,
 })
 
-const provision = (repoConfig: Partial<RepoConfig>, extra: ProvisionOptions = {}, branch = 'ABC-1/fix') => {
+const provision = (repoConfig: Partial<RepoConfig>, extra: ProvisionExtras = {}, branch = 'ABC-1/fix') => {
   const config: RepoConfig = { root: repo.root, base: 'master', ...repoConfig }
   const plan = buildWorktreePlan({
     repoName: repo.name,

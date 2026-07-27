@@ -7,7 +7,7 @@ import type { Diagnostic } from './config.ts'
 // command per character).
 export const reportDiagnostics = (
   diagnostics: Diagnostic[],
-  warn: (message: string) => void = console.error,
+  warn: (message: string) => void,
 ) => {
   const errors = diagnostics.filter((diagnostic) => diagnostic.severity === 'error')
   for (const diagnostic of diagnostics) {

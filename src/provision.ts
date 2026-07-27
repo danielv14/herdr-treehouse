@@ -18,8 +18,10 @@ export type ProvisionOptions = {
   // by someone else (Herdr's native worktree flow, before the hook fires): there
   // is nothing to create, but it is still a fresh worktree, so setup must run.
   worktreeState?: 'unknown' | 'just-created'
-  log?: (message: string) => void
-  warn?: (message: string) => void
+  // Required, and no console default: what provisioning says is the caller's
+  // output, so there is one seam and it is always assertable.
+  log: (message: string) => void
+  warn: (message: string) => void
 }
 
 export type ProvisionResult = {
@@ -32,10 +34,9 @@ export type ProvisionResult = {
 export const provisionWorktree = (
   plan: WorktreePlan,
   repoConfig: RepoConfig,
-  options: ProvisionOptions = {},
+  options: ProvisionOptions,
 ): ProvisionResult => {
-  const log = options.log ?? console.log
-  const warn = options.warn ?? console.error
+  const { log, warn } = options
   const justCreated = options.worktreeState === 'just-created'
   const existedBefore = justCreated ? false : existsSync(plan.worktree)
 
