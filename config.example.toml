@@ -76,7 +76,7 @@ label = "shell"
 
 # Minimal example: a repo where a plain worktree + deps + dev server is enough.
 # [repos.side-project]
-# root = "~/dev-personal/side-project"
+# root = "~/dev/side-project"
 # setup = ["npm ci"]
 # [[repos.side-project.panes]]
 # split = "down"

@@ -18,11 +18,14 @@ The engine is deliberately a plain CLI. The plugin manifest is just one of its c
 ## Install
 
 ```bash
+cd /path/to/herdr-treehouse
 bun install                      # dev types only, engine has no runtime deps
-herdr plugin link ~/dev-personal/herdr-treehouse
+herdr plugin link .              # takes any path; the repo root is what it needs
 mkdir -p "$(herdr plugin config-dir treehouse)"
 cp config.example.toml "$(herdr plugin config-dir treehouse)/config.toml"   # then edit
 ```
+
+`bin/treehouse` resolves its own location, so it works from anywhere once linked; put it on your PATH (or alias it) if you want `treehouse` as a bare command.
 
 Requires bun on PATH and Herdr >= 0.7. `bun test` and `bun run typecheck` cover the engine without a Herdr session.
 
