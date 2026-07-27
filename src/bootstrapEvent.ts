@@ -15,8 +15,6 @@ export const BOOTSTRAP_COMMAND: CommandSpec = {
   ],
 }
 
-// The command as the registry dispatches it: the declaration above is what says
-// which flags exist, so the entrypoint never hand-checks argv for this one.
 export const bootstrap = async (argv: string[], deps: EngineDeps) => {
   const flags = parseFlags(BOOTSTRAP_COMMAND, argv)
   if (!flags.flag('fromEvent')) {

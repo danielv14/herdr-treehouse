@@ -5,11 +5,6 @@ import { runCommand } from './main.ts'
 import { expectRejection } from './testing/expectRejection.ts'
 import { createFakeHerdr, type FakeResponses } from './testing/fakeHerdr.ts'
 
-// The entrypoint used to invoke itself at import time and read argv from the
-// global, so dispatch, per-command help and the unknown-command error were the
-// only unverified parts of the engine. It now takes argv and deps, and the
-// process wiring sits behind an import.meta.main guard.
-
 let logged: string[]
 
 const deps = (responses: FakeResponses = {}): EngineDeps => ({
