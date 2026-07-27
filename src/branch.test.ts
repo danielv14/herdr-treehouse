@@ -14,10 +14,8 @@ describe('branch parts', () => {
   })
 })
 
-// "Which links we recognise" is declared twice by necessity: Herdr gates on the
-// manifest patterns before the engine runs, and the engine has to recognise the
-// URL again to name a branch. One sample per handler pins both declarations to
-// the same example, so tightening or widening either side stops being silent.
+// One sample per handler pins both declarations of "which links we recognise"
+// to the same example, so tightening or widening either side stops being silent.
 type LinkHandler = { id?: unknown; pattern?: unknown; action?: unknown }
 
 const manifestLinkHandlers = async (): Promise<LinkHandler[]> => {
