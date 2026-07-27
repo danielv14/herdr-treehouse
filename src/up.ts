@@ -64,8 +64,8 @@ const readOptions = (argv: string[]): UpOptions => {
 }
 
 // Runs after repo resolution so the popup can say which repo it targets and
-// only ask questions that apply to it. The prompt copy goes through the same
-// seam as the rest of the engine's output; only reading stdin stays direct.
+// only ask questions that apply to it. Only reading stdin stays direct; the
+// prompt copy is output like any other.
 const askInteractively = async (
   options: UpOptions,
   repoName: string,

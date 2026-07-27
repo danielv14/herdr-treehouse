@@ -20,8 +20,9 @@ afterEach(() => {
   repo.cleanup()
 })
 
-// Everything provisioning says goes through the caller's log and warn; there is
-// no console default to fall back to.
+// Everything but the sinks: log and warn are required, so taking them here too
+// would make every call site repeat them, and spreading `extra` last would let a
+// test quietly replace the recording sinks while still asserting on `logged`.
 type ProvisionExtras = Omit<ProvisionOptions, 'log' | 'warn'>
 
 const options = (extra: ProvisionExtras = {}): ProvisionOptions => ({
@@ -37,7 +38,7 @@ const provision = (repoConfig: Partial<RepoConfig>, extra: ProvisionExtras = {},
     branch,
     mainRepoRoot: repo.root,
     repoConfig: config,
-    targets: extra.worktreeState === 'just-created' ? [] : [],
+    targets: [],
     worktree: extra.worktreeState === 'just-created' ? join(repo.parent, 'my-repo-abc-1') : undefined,
   })
   return { plan, result: provisionWorktree(plan, config, options(extra)) }
