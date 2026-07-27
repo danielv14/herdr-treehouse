@@ -32,6 +32,7 @@ The commands are thin; everything reusable sits behind a module with one job. Ke
 - `herdr.ts` + `testing/fakeHerdr.ts` — the invoker is a dependency (`EngineDeps.invoke`), with a spawning adapter for production and a recording fake for tests. Responses stay `unknown` so decoding happens once, in `tabs.ts`.
 - `config.ts` — one shape declaration (keys *and* value shapes, per level) validated in one pass, returning a typed config plus diagnostics as data. `diagnostics.ts` decides at the call site: unknown keys warn, wrong value shapes stop the run.
 - `context.ts` — the only reader of `HERDR_PLUGIN_CONTEXT_JSON`, and the home of `TREEHOUSE_TARGET_PATH` (one env convention for "which repo or worktree"). `actions.ts` (`treehouse action up|down`) resolves it and opens the popup.
+- `deps.ts` — the environment is a dependency, not a global reach: `EngineDeps.env` defaults to `process.env` in `resolveDeps` and is threaded to every env fact the engine reads (invocation context, clicked url, target path, caller pane/tab, event payload, plugin config dir, `HERDR_ENV`). `src` reads the global in exactly two places, the entrypoint and that default.
 - `cli.ts` — each command declares its flags once with help text attached; parsing and `--help` both derive from the declaration, so help cannot drift.
 
 ## Development
@@ -46,7 +47,7 @@ herdr plugin log list --plugin treehouse   # event/action stderr logs
 
 Herdr CLI responses are JSON; `src/herdr.ts` wraps invocation and returns the parsed `result`. Never construct pane/tab IDs; always read them from responses.
 
-Tests run with no Herdr session and no `HERDR_ENV`: pass `{ invoke }` from `createFakeHerdr()` plus `insideHerdr: () => true`, and the whole command runs against scripted responses while recording the Herdr calls it made. Tests that need real git mechanics use `createTempRepo()` (throwaway repo, worktrees as siblings inside it). Live verification is still required for anything that touches Herdr's own behaviour; the fake proves the sequence, not that Herdr accepts it.
+Tests run with no Herdr session and no `HERDR_ENV`: pass `{ invoke }` from `createFakeHerdr()` plus the `env` the test wants (`{ HERDR_ENV: '1', ... }`), and the whole command runs against scripted responses while recording the Herdr calls it made. No test saves or restores `process.env`. Tests that need real git mechanics use `createTempRepo()` (throwaway repo, worktrees as siblings inside it). Live verification is still required for anything that touches Herdr's own behaviour; the fake proves the sequence, not that Herdr accepts it.
 
 ## Status / open ends
 

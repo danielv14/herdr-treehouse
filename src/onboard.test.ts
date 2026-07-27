@@ -9,7 +9,6 @@ import { createTempRepo, type TempRepo } from './testing/tempRepo.ts'
 let repo: TempRepo
 let configDir: string
 let configFile: string
-let previousConfigDir: string | undefined
 let originalCwd: string
 let warned: string[]
 
@@ -19,20 +18,22 @@ beforeEach(() => {
   configDir = join(repo.parent, 'config')
   mkdirSync(configDir, { recursive: true })
   configFile = join(configDir, 'config.toml')
-  previousConfigDir = process.env.HERDR_PLUGIN_CONFIG_DIR
-  process.env.HERDR_PLUGIN_CONFIG_DIR = configDir
   warned = []
   process.chdir(repo.root)
 })
 
 afterEach(() => {
   process.chdir(originalCwd)
-  if (previousConfigDir === undefined) delete process.env.HERDR_PLUGIN_CONFIG_DIR
-  else process.env.HERDR_PLUGIN_CONFIG_DIR = previousConfigDir
   repo.cleanup()
 })
 
-const deps = () => ({ invoke: createFakeHerdr({}).invoke, warn: (message: string) => warned.push(message) })
+// onboard still reads cwd from the process (it is about "the repo I am standing
+// in"), but the config dir it targets is an injected env fact.
+const deps = () => ({
+  invoke: createFakeHerdr({}).invoke,
+  env: { HERDR_PLUGIN_CONFIG_DIR: configDir },
+  warn: (message: string) => warned.push(message),
+})
 
 describe('onboard', () => {
   test('--apply --local writes a repo-local file', async () => {

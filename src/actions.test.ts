@@ -1,33 +1,31 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import { beforeEach, describe, expect, test } from 'bun:test'
 import { action } from './actions.ts'
+import type { Environment } from './context.ts'
 import { expectRejection } from './testing/expectRejection.ts'
 import { createFakeHerdr } from './testing/fakeHerdr.ts'
 
-let savedContext: string | undefined
 let warned: string[]
+let env: Environment
 
 beforeEach(() => {
-  savedContext = process.env.HERDR_PLUGIN_CONTEXT_JSON
   warned = []
-})
-
-afterEach(() => {
-  if (savedContext === undefined) delete process.env.HERDR_PLUGIN_CONTEXT_JSON
-  else process.env.HERDR_PLUGIN_CONTEXT_JSON = savedContext
+  env = {}
 })
 
 const run = async (name: string) => {
   const fake = createFakeHerdr({ 'plugin pane open': {} })
-  await action([name], { invoke: fake.invoke, warn: (message) => warned.push(message) })
+  await action([name], { invoke: fake.invoke, env, warn: (message) => warned.push(message) })
   return fake
 }
 
 describe('action', () => {
   beforeEach(() => {
-    process.env.HERDR_PLUGIN_CONTEXT_JSON = JSON.stringify({
-      workspace_cwd: '/dev/repo',
-      focused_pane_cwd: '/dev/repo-abc-1',
-    })
+    env = {
+      HERDR_PLUGIN_CONTEXT_JSON: JSON.stringify({
+        workspace_cwd: '/dev/repo',
+        focused_pane_cwd: '/dev/repo-abc-1',
+      }),
+    }
   })
 
   test('up opens the interactive popup targeting the focused workspace\'s repo', async () => {
@@ -50,25 +48,25 @@ describe('action', () => {
   })
 
   test('a context with no cwd opens the popup without a target, and the popup refuses', async () => {
-    process.env.HERDR_PLUGIN_CONTEXT_JSON = JSON.stringify({ invocation_source: 'keybinding' })
+    env = { HERDR_PLUGIN_CONTEXT_JSON: JSON.stringify({ invocation_source: 'keybinding' }) }
     const fake = await run('up')
     expect(fake.commands()[0]).not.toContain('--env')
   })
 
   test('an unknown action name is refused', async () => {
     await expectRejection(
-      action(['sideways'], { invoke: createFakeHerdr({}).invoke, warn: () => {} }),
+      action(['sideways'], { invoke: createFakeHerdr({}).invoke, env, warn: () => {} }),
       'action expects up or down (got sideways)',
     )
     await expectRejection(
-      action([], { invoke: createFakeHerdr({}).invoke, warn: () => {} }),
+      action([], { invoke: createFakeHerdr({}).invoke, env, warn: () => {} }),
       'action expects up or down (got nothing)',
     )
   })
 
   test('trailing arguments are refused rather than ignored', async () => {
     await expectRejection(
-      action(['up', '--branch', 'x'], { invoke: createFakeHerdr({}).invoke, warn: () => {} }),
+      action(['up', '--branch', 'x'], { invoke: createFakeHerdr({}).invoke, env, warn: () => {} }),
       'unknown option for action: --branch',
     )
   })

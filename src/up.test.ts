@@ -1,19 +1,20 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import type { Environment } from './context.ts'
 import type { EngineDeps } from './deps.ts'
 import { createFakeHerdr, type FakeHerdr, type FakeResponses } from './testing/fakeHerdr.ts'
 import { expectRejection } from './testing/expectRejection.ts'
 import { createTempRepo, type TempRepo } from './testing/tempRepo.ts'
 import { up } from './up.ts'
 
-// Drives `up` end to end with no Herdr session and no HERDR_ENV: the invoker is
-// the recording fake, and the Herdr check is a dependency like everything else.
+// Drives `up` end to end with no Herdr session and no HERDR_ENV of its own: the
+// invoker is the recording fake and the environment is constructed per test, so
+// nothing here touches process.env.
 
 let repo: TempRepo
 let configDir: string
 let logged: string[]
-let previousConfigDir: string | undefined
 
 const RESPONSES: FakeResponses = {
   'worktree list': { source: { source_workspace_id: 'wA' } },
@@ -27,9 +28,17 @@ const RESPONSES: FakeResponses = {
   'agent prompt': {},
 }
 
-const deps = (fake: FakeHerdr): EngineDeps => ({
+// Inside Herdr, pointed at this test's config dir. Anything else a test needs
+// (a plugin context, a clicked url) is another key in the same object.
+const env = (overrides: Environment = {}): Environment => ({
+  HERDR_ENV: '1',
+  HERDR_PLUGIN_CONFIG_DIR: configDir,
+  ...overrides,
+})
+
+const deps = (fake: FakeHerdr, overrides: Environment = {}): EngineDeps => ({
   invoke: fake.invoke,
-  insideHerdr: () => true,
+  env: env(overrides),
   sleep: async () => {},
   log: (message) => logged.push(message),
   warn: (message) => logged.push(message),
@@ -39,14 +48,10 @@ beforeEach(() => {
   repo = createTempRepo('my-repo')
   configDir = join(repo.parent, 'config')
   mkdirSync(configDir, { recursive: true })
-  previousConfigDir = process.env.HERDR_PLUGIN_CONFIG_DIR
-  process.env.HERDR_PLUGIN_CONFIG_DIR = configDir
   logged = []
 })
 
 afterEach(() => {
-  if (previousConfigDir === undefined) delete process.env.HERDR_PLUGIN_CONFIG_DIR
-  else process.env.HERDR_PLUGIN_CONFIG_DIR = previousConfigDir
   repo.cleanup()
 })
 
@@ -182,7 +187,7 @@ command = "npm run dev"
     await expectRejection(
       up(['--repo', repo.root, '--branch', 'ABC-1/fix'], {
         invoke: createFakeHerdr({}).invoke,
-        insideHerdr: () => false,
+        env: {},
       }),
       'not inside a Herdr session (HERDR_ENV != 1)',
     )
@@ -190,48 +195,31 @@ command = "npm run dev"
 })
 
 describe('invocation context', () => {
-  const withContextEnv = async (context: Record<string, unknown>, run: () => Promise<void>) => {
-    const previous = process.env.HERDR_PLUGIN_CONTEXT_JSON
-    process.env.HERDR_PLUGIN_CONTEXT_JSON = JSON.stringify(context)
-    try {
-      await run()
-    } finally {
-      if (previous === undefined) delete process.env.HERDR_PLUGIN_CONTEXT_JSON
-      else process.env.HERDR_PLUGIN_CONTEXT_JSON = previous
-    }
-  }
+  const context = (fields: Record<string, unknown>): Environment => ({
+    HERDR_PLUGIN_CONTEXT_JSON: JSON.stringify(fields),
+  })
 
   test('a plugin invocation with no cwd in the context refuses instead of targeting the plugin repo', async () => {
-    await withContextEnv({ invocation_source: 'keybinding' }, async () => {
-      await expectRejection(
-        up(['--branch', 'ABC-1/fix'], { invoke: createFakeHerdr({}).invoke, insideHerdr: () => true }),
-        'refusing to fall back to the plugin repo',
-      )
-    })
+    await expectRejection(
+      up(['--branch', 'ABC-1/fix'], deps(createFakeHerdr({}), context({ invocation_source: 'keybinding' }))),
+      'refusing to fall back to the plugin repo',
+    )
   })
 
   test('the focused pane cwd from the context is used as the repo', async () => {
     writeLocalConfig('base = "master"\n')
     const fake = createFakeHerdr(RESPONSES)
-    await withContextEnv({ focused_pane_cwd: repo.root }, async () => {
-      await up(['--branch', 'ABC-1/fix', '--no-agent'], deps(fake))
-    })
+    await up(['--branch', 'ABC-1/fix', '--no-agent'], deps(fake, context({ focused_pane_cwd: repo.root })))
     expect(fake.commands()[0]).toBe(`worktree list --cwd ${repo.root}`)
   })
 
   test('a clicked Jira link becomes a wip branch in the clicked pane\'s repo', async () => {
     writeLocalConfig('base = "master"\n')
     const fake = createFakeHerdr(RESPONSES)
-    const previousUrl = process.env.HERDR_PLUGIN_CLICKED_URL
-    process.env.HERDR_PLUGIN_CLICKED_URL = 'https://example.atlassian.net/browse/ABC-42'
-    try {
-      await withContextEnv({ focused_pane_cwd: repo.root }, async () => {
-        await up(['--from-link', '--no-agent'], deps(fake))
-      })
-    } finally {
-      if (previousUrl === undefined) delete process.env.HERDR_PLUGIN_CLICKED_URL
-      else process.env.HERDR_PLUGIN_CLICKED_URL = previousUrl
-    }
+    await up(['--from-link', '--no-agent'], deps(fake, {
+      ...context({ focused_pane_cwd: repo.root }),
+      HERDR_PLUGIN_CLICKED_URL: 'https://example.atlassian.net/browse/ABC-42',
+    }))
     expect(existsSync(join(repo.parent, 'my-repo-abc-42'))).toBe(true)
     expect(repo.git('branch', '--list', 'ABC-42/wip')).toContain('ABC-42/wip')
     // A click carries no judgment, so the tab is focused but no prompt is sent.
@@ -239,17 +227,10 @@ describe('invocation context', () => {
   })
 
   test('a link with no derivable ticket refuses', async () => {
-    const previousUrl = process.env.HERDR_PLUGIN_CLICKED_URL
-    process.env.HERDR_PLUGIN_CLICKED_URL = 'https://example.com/nope'
-    try {
-      await expectRejection(
-        up(['--from-link'], { invoke: createFakeHerdr({}).invoke, insideHerdr: () => true }),
-        'could not derive a branch from clicked url',
-      )
-    } finally {
-      if (previousUrl === undefined) delete process.env.HERDR_PLUGIN_CLICKED_URL
-      else process.env.HERDR_PLUGIN_CLICKED_URL = previousUrl
-    }
+    await expectRejection(
+      up(['--from-link'], deps(createFakeHerdr({}), { HERDR_PLUGIN_CLICKED_URL: 'https://example.com/nope' })),
+      'could not derive a branch from clicked url',
+    )
   })
 })
 

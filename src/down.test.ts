@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { existsSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import type { Environment } from './context.ts'
 import type { EngineDeps } from './deps.ts'
 import { down } from './down.ts'
 import { expectRejection } from './testing/expectRejection.ts'
@@ -12,13 +13,12 @@ let worktree: string
 let logged: string[]
 let sleeps: number[]
 let originalCwd: string
-let savedEnv: Record<string, string | undefined>
 
-const ENV_KEYS = ['HERDR_TAB_ID', 'HERDR_PANE_ID', 'TREEHOUSE_TARGET_PATH', 'HERDR_PLUGIN_CONTEXT_JSON']
-
-const deps = (fake: FakeHerdr, insideHerdr = true): EngineDeps => ({
+// Inside Herdr by default; a test that cares about the caller's pane/tab, the
+// popup env convention or the plugin context adds those keys itself.
+const deps = (fake: FakeHerdr, env: Environment = {}): EngineDeps => ({
   invoke: fake.invoke,
-  insideHerdr: () => insideHerdr,
+  env: { HERDR_ENV: '1', ...env },
   sleep: async (ms) => {
     sleeps.push(ms)
   },
@@ -34,8 +34,6 @@ const paneList = (panes: Array<Record<string, unknown>>) => ({ panes })
 
 beforeEach(() => {
   originalCwd = process.cwd()
-  savedEnv = Object.fromEntries(ENV_KEYS.map((key) => [key, process.env[key]]))
-  for (const key of ENV_KEYS) delete process.env[key]
   repo = createTempRepo('my-repo')
   worktree = join(repo.parent, 'my-repo-abc-1')
   repo.git('worktree', 'add', worktree, '-b', 'ABC-1/fix', '--no-track', 'master')
@@ -45,10 +43,6 @@ beforeEach(() => {
 
 afterEach(() => {
   process.chdir(originalCwd)
-  for (const [key, value] of Object.entries(savedEnv)) {
-    if (value === undefined) delete process.env[key]
-    else process.env[key] = value
-  }
   repo.cleanup()
 })
 
@@ -111,8 +105,6 @@ describe('down', () => {
   })
 
   test('the caller\'s own tab is closed last', async () => {
-    process.env.HERDR_TAB_ID = 't1'
-    process.env.HERDR_PANE_ID = 'p1'
     const fake = createFakeHerdr({
       'worktree list': { source: { source_workspace_id: 'wA' } },
       'pane list': paneList([
@@ -122,19 +114,18 @@ describe('down', () => {
       'pane process-info': { process_info: { foreground_processes: [{ name: 'zsh' }] } },
       'tab close': {},
     })
-    await down(['--path', worktree], deps(fake))
+    await down(['--path', worktree], deps(fake, { HERDR_TAB_ID: 't1', HERDR_PANE_ID: 'p1' }))
     expect(fake.callsMatching('tab close').map((call) => call[2])).toEqual(['t2', 't1'])
     expect(logged).toContain('closing this tab last (the teardown ran from inside it)')
   })
 
   test('the caller\'s own pane is not probed for busy processes', async () => {
-    process.env.HERDR_PANE_ID = 'p1'
     const fake = createFakeHerdr({
       'worktree list': { source: { source_workspace_id: 'wA' } },
       'pane list': paneList([{ pane_id: 'p1', tab_id: 't1', cwd: worktree }]),
       'tab close': {},
     })
-    await down(['--path', worktree], deps(fake))
+    await down(['--path', worktree], deps(fake, { HERDR_PANE_ID: 'p1' }))
     expect(fake.callsMatching('pane process-info')).toHaveLength(0)
     expect(existsSync(worktree)).toBe(false)
   })
@@ -167,25 +158,22 @@ describe('down', () => {
 
   test('outside a Herdr session it removes the worktree without touching tabs', async () => {
     const fake = createFakeHerdr({})
-    await down(['--path', worktree], deps(fake, false))
+    await down(['--path', worktree], deps(fake, { HERDR_ENV: undefined }))
     expect(fake.calls).toHaveLength(0)
     expect(existsSync(worktree)).toBe(false)
   })
 
   test('the target path comes from the popup env convention when no --path is given', async () => {
-    process.env.TREEHOUSE_TARGET_PATH = worktree
     const fake = createFakeHerdr({ 'worktree list': {} })
-    await down([], deps(fake))
+    await down([], deps(fake, { TREEHOUSE_TARGET_PATH: worktree }))
     expect(existsSync(worktree)).toBe(false)
   })
 
   test('the target path falls back to the focused pane from the plugin context', async () => {
-    process.env.HERDR_PLUGIN_CONTEXT_JSON = JSON.stringify({
-      workspace_cwd: repo.root,
-      focused_pane_cwd: worktree,
-    })
     const fake = createFakeHerdr({ 'worktree list': {} })
-    await down([], deps(fake))
+    await down([], deps(fake, {
+      HERDR_PLUGIN_CONTEXT_JSON: JSON.stringify({ workspace_cwd: repo.root, focused_pane_cwd: worktree }),
+    }))
     expect(existsSync(worktree)).toBe(false)
   })
 })
