@@ -23,6 +23,7 @@ const RESPONSES: FakeResponses = {
   'pane run': {},
   'pane send-text': {},
   'agent wait': {},
+  'agent get': { agent: { state_change_seq: 1 } },
   'agent prompt': {},
 }
 
@@ -87,7 +88,8 @@ autostart = false
       `pane send-text wA:p7 npm run dev --prefix ${worktree}`,
       'pane run wA:p5 claude --resume',
       'agent wait wA:p5 --until idle --timeout 60000',
-      'agent prompt wA:p5 solve ABC-1 --wait --until working --timeout 5000',
+      'agent get wA:p5',
+      'agent prompt wA:p5 solve ABC-1 --wait --until working --timeout 10000',
     ])
     expect(logged).toContain(`worktree:  ${worktree}`)
     expect(logged).toContain('tab:       wA:t3 (abc-1) in workspace wA')

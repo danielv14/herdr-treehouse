@@ -120,9 +120,14 @@ const AGENT_REGISTRATION_POLL_MS = 500
 // A freshly started agent can report idle while its TUI is still starting, and a
 // prompt submitted in that window is dropped on the floor (live-observed on
 // herdr 0.7.5: the tab opens, the task never arrives). `agent prompt --wait`
-// requires an observed state change and reports agent_prompt_stalled when the
-// text was not picked up, which is the signal to submit again.
-const PROMPT_DELIVERY_TIMEOUT_MS = 5000
+// requires an observed state change, so it fails when the text was not picked
+// up, which is the signal to submit again.
+//
+// Longer than Herdr's own 5000ms change-detection window on purpose: at exactly
+// 5000 the two race, and a swallowed prompt comes back as `timeout` rather than
+// `agent_prompt_stalled` (live-observed). Which code arrives is therefore not
+// something to branch on - see submitPrompt.
+const PROMPT_DELIVERY_TIMEOUT_MS = 10_000
 const PROMPT_RETRY_MS = 1000
 const PROMPT_ATTEMPTS = 3
 
@@ -177,11 +182,26 @@ export const createTabChoreography = (
     }
   }
 
-  // Retries only on the explicit "nothing was picked up" code, so a delivered
-  // prompt is never submitted twice; anything else fails loudly, because a tab
-  // that silently never received its task is worse than an error.
+  // Herdr's status sequence for a pane, which advances every time the agent
+  // changes state. Comparing it across a submission answers "did anything happen
+  // at all" without trusting an error code.
+  const agentStateSeq = (paneId: string): number | undefined => {
+    try {
+      const seq = asTable(asTable(invoke(['agent', 'get', paneId])).agent).state_change_seq
+      return typeof seq === 'number' ? seq : undefined
+    } catch {
+      return undefined
+    }
+  }
+
+  // Resubmits only when the agent demonstrably did not move, so a prompt that
+  // did land is never delivered twice and a tab never silently opens without its
+  // task. The error code alone is not enough to tell those apart: a swallowed
+  // prompt surfaces as agent_prompt_stalled or timeout depending on how Herdr's
+  // internal windows race.
   const submitPrompt = async (paneId: string, prompt: string) => {
     for (let attempt = 1; ; attempt += 1) {
+      const before = agentStateSeq(paneId)
       try {
         invoke([
           'agent', 'prompt', paneId, prompt,
@@ -190,8 +210,12 @@ export const createTabChoreography = (
         ])
         return
       } catch (error) {
+        // The agent moved, so it took the prompt; only the wait for `working`
+        // missed it (a turn short enough to be over already, say).
+        const after = agentStateSeq(paneId)
+        if (before !== undefined && after !== undefined && after !== before) return
         const message = error instanceof Error ? error.message : String(error)
-        if (!message.includes('agent_prompt_stalled') || attempt >= PROMPT_ATTEMPTS) {
+        if (attempt >= PROMPT_ATTEMPTS) {
           throw new Error(`could not hand the prompt to the agent in ${paneId}: ${message}`)
         }
         await sleep(PROMPT_RETRY_MS)

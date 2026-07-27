@@ -138,7 +138,8 @@ describe('openWorktreeTab', () => {
     expect(fake.commands().slice(1)).toEqual([
       'pane run wA:p9 claude',
       'agent wait wA:p9 --until idle --timeout 60000',
-      'agent prompt wA:p9 solve ABC-1 --wait --until working --timeout 5000',
+      'agent get wA:p9',
+      'agent prompt wA:p9 solve ABC-1 --wait --until working --timeout 10000',
     ])
     expect(opened.agentStarted).toBe(true)
   })
@@ -177,7 +178,7 @@ describe('openWorktreeTab', () => {
     })
     expect(attempts).toBe(3)
     expect(sleeps).toEqual([500, 500])
-    expect(fake.commands()).toContain('agent prompt wA:p9 go --wait --until working --timeout 5000')
+    expect(fake.commands()).toContain('agent prompt wA:p9 go --wait --until working --timeout 10000')
   })
 
   test('a prompt gives up if no agent ever registers', async () => {
@@ -383,12 +384,13 @@ describe('prompt delivery', () => {
   // A freshly started agent can report idle while its TUI is still starting, and
   // the submitted prompt is then dropped (live-observed): the tab opens and the
   // task never arrives.
-  const openWithPrompt = async (promptResponse: FakeResponse) => {
+  const openWithPrompt = async (promptResponse: FakeResponse, stateSeq: FakeResponse = { agent: { state_change_seq: 7 } }) => {
     const sleeps: number[] = []
     const fake = createFakeHerdr({
       'tab create': TAB_CREATED,
       'pane run': {},
       'agent wait': {},
+      'agent get': stateSeq,
       'agent prompt': promptResponse,
     })
     const tabs = createTabChoreography(fake.invoke, {
@@ -408,7 +410,7 @@ describe('prompt delivery', () => {
     return { fake, sleeps, opening }
   }
 
-  test('a stalled submission is retried until it lands', async () => {
+  test('a submission the agent never reacted to is retried until it lands', async () => {
     let attempts = 0
     const { fake, sleeps, opening } = await openWithPrompt(() => {
       attempts += 1
@@ -421,6 +423,19 @@ describe('prompt delivery', () => {
     expect(fake.callsMatching('agent prompt')).toHaveLength(3)
   })
 
+  test('the same retry happens when the swallowed prompt comes back as a timeout', async () => {
+    // Which code Herdr answers with depends on how its internal windows race, so
+    // the decision cannot hang on the code.
+    let attempts = 0
+    const { fake, opening } = await openWithPrompt(() => {
+      attempts += 1
+      if (attempts < 2) throw new Error('herdr agent prompt failed: {"error":{"code":"timeout"}}')
+      return {}
+    })
+    await opening
+    expect(fake.callsMatching('agent prompt')).toHaveLength(2)
+  })
+
   test('a prompt that never lands fails loudly rather than opening a task-less tab', async () => {
     const { fake, opening } = await openWithPrompt(() => {
       throw new Error('herdr agent prompt failed: {"error":{"code":"agent_prompt_stalled"}}')
@@ -429,11 +444,18 @@ describe('prompt delivery', () => {
     expect(fake.callsMatching('agent prompt')).toHaveLength(3)
   })
 
-  test('any other failure is not retried, so a delivered prompt is never doubled', async () => {
-    const { fake, opening } = await openWithPrompt(() => {
-      throw new Error('herdr agent prompt failed: {"error":{"code":"timeout"}}')
-    })
-    await expectRejection(opening, 'could not hand the prompt to the agent in wA:p9')
+  test('an agent that moved is left alone, so a delivered prompt is never doubled', async () => {
+    // The wait missed the transition, but the agent's state sequence advanced:
+    // it did take the prompt, and resubmitting would run the task twice.
+    let seq = 7
+    const { fake, opening } = await openWithPrompt(
+      () => {
+        seq += 2
+        throw new Error('herdr agent prompt failed: {"error":{"code":"timeout"}}')
+      },
+      () => ({ agent: { state_change_seq: seq } }),
+    )
+    await opening
     expect(fake.callsMatching('agent prompt')).toHaveLength(1)
   })
 })
