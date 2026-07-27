@@ -4,6 +4,7 @@ import {
   invocationTargetPath,
   isPluginInvocation,
   readInvocationContext,
+  readWorktreeCreatedEvent,
 } from './context.ts'
 
 const contextEnv = (context: Record<string, unknown>, extra: Record<string, string> = {}) => ({
@@ -46,6 +47,48 @@ describe('readInvocationContext', () => {
         .clickedUrl,
     ).toBe('from-env')
     expect(readInvocationContext(contextEnv({ clicked_url: 'from-context' })).clickedUrl).toBe('from-context')
+  })
+})
+
+describe('readWorktreeCreatedEvent', () => {
+  const eventEnv = (payload: unknown) => ({ HERDR_PLUGIN_EVENT_JSON: JSON.stringify(payload) })
+
+  // The shape herdr 0.7.5 actually sends, confirmed live in the plugin log.
+  const liveShape = {
+    event: 'worktree_created',
+    data: {
+      type: 'worktree_created',
+      workspace: { workspace_id: 'wD' },
+      worktree: { path: '/dev/repo-hook', branch: 'ABC-1/fix', is_linked_worktree: true },
+    },
+  }
+
+  test('reads the path and branch Herdr sends', () => {
+    const event = readWorktreeCreatedEvent(eventEnv(liveShape))
+    expect(event.path).toBe('/dev/repo-hook')
+    expect(event.branch).toBe('ABC-1/fix')
+  })
+
+  test('keeps the raw payload for the plugin log', () => {
+    expect(readWorktreeCreatedEvent(eventEnv(liveShape)).raw).toBe(JSON.stringify(liveShape))
+  })
+
+  test('a malformed payload yields no fields instead of throwing', () => {
+    const event = readWorktreeCreatedEvent({ HERDR_PLUGIN_EVENT_JSON: 'not json' })
+    expect(event.raw).toBe('not json')
+    expect(event.path).toBeUndefined()
+    expect(event.branch).toBeUndefined()
+  })
+
+  test('JSON that is not the expected shape yields no fields', () => {
+    expect(readWorktreeCreatedEvent(eventEnv('a string')).path).toBeUndefined()
+    expect(readWorktreeCreatedEvent(eventEnv(null)).path).toBeUndefined()
+    expect(readWorktreeCreatedEvent(eventEnv({ data: { worktree: 'not an object' } })).path).toBeUndefined()
+    expect(readWorktreeCreatedEvent(eventEnv({ data: { worktree: { path: 42 } } })).path).toBeUndefined()
+  })
+
+  test('no payload at all is empty, raw included', () => {
+    expect(readWorktreeCreatedEvent({})).toEqual({})
   })
 })
 

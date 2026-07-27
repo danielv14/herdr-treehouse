@@ -2,6 +2,10 @@ import { spawnSync } from 'node:child_process'
 
 export const git = (cwd: string, args: string[]): string => {
   const result = spawnSync('git', args, { cwd, encoding: 'utf8' })
+  // A spawn that never reached git (a cwd that does not exist, which the
+  // worktree.created hook can be handed) leaves status and both streams null,
+  // so reading stderr first replaced the real reason with a TypeError.
+  if (result.error) throw new Error(`git ${args.join(' ')} failed in ${cwd}: ${result.error.message}`)
   if (result.status !== 0) {
     throw new Error(`git ${args.join(' ')} failed: ${(result.stderr || result.stdout).trim()}`)
   }
