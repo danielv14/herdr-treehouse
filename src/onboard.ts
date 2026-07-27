@@ -123,8 +123,7 @@ export const onboard = async (argv: string[], deps: EngineDeps) => {
   const target = local ? localPath : centralPath
 
   // In its default mode the proposed block IS the product: nothing is written
-  // and the reader pastes it. It goes through the same seam as every other
-  // message so a test can assert the block, not just the absence of a file.
+  // and the reader pastes it.
   log(`# Proposed config for ${repoName} (${target})\n`)
   log(block)
   if (scan.notes.length > 0) {
