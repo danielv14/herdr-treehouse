@@ -5,10 +5,8 @@ import { branchExists, git } from './git.ts'
 import type { WorktreePlan } from './plan.ts'
 
 // One implementation of "make this worktree exist and be usable", shared by
-// `treehouse up` and the worktree.created hook. Before this existed the hook
-// path had its own copy that ran bootstrap only, so a repo configured with
-// setup = ["npm ci"] and no bootstrap got its dependencies from `up` and nothing
-// at all from Herdr's native worktree flow.
+// `treehouse up` and the worktree.created hook, so a repo configured with
+// setup = ["npm ci"] and no bootstrap is provisioned by both.
 //
 // This unifies invocation, not configuration: `setup` and `bootstrap` stay two
 // tiers with two meanings (see CLAUDE.md).
@@ -18,8 +16,7 @@ export type ProvisionOptions = {
   // by someone else (Herdr's native worktree flow, before the hook fires): there
   // is nothing to create, but it is still a fresh worktree, so setup must run.
   worktreeState?: 'unknown' | 'just-created'
-  // Required, and no console default: what provisioning says is the caller's
-  // output, so there is one seam and it is always assertable.
+  // No console default: what provisioning says is the caller's output.
   log: (message: string) => void
   warn: (message: string) => void
 }

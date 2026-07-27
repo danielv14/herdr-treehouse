@@ -10,8 +10,7 @@ import { createTempRepo, type TempRepo } from './testing/tempRepo.ts'
 
 // The hook is the only path in the engine that runs unattended, driven by a
 // payload another program owns, so every way that payload can disappoint it is
-// worth a test. Herdr has already made the checkout by the time the event
-// fires; the hook's job is the provisioning that follows.
+// worth a test.
 
 let repo: TempRepo
 let configDir: string
@@ -57,8 +56,8 @@ afterEach(() => {
 
 describe('a well-formed payload', () => {
   test('runs the setup commands of a repo configured with setup and no bootstrap', async () => {
-    // The reason provisioning is shared with `up`: this repo has no bootstrap
-    // script, and before that sharing it got nothing at all from Herdr's flow.
+    // The case sharing provisioning with `up` exists for: no bootstrap script,
+    // so the hook path used to leave this repo without dependencies.
     writeFileSync(join(repo.root, '.treehouse.toml'), 'setup = ["echo ran > ran.txt"]\n')
     createWorktreeLikeHerdrDoes()
 

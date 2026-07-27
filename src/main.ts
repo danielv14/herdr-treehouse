@@ -2,10 +2,8 @@ import { commandHelp, findCommand, help } from './commands.ts'
 import { resolveDeps, type EngineDeps } from './deps.ts'
 import { createHerdrInvoker } from './herdr.ts'
 
-// Dispatch is a lookup in the same registry help and parsing read: no
-// per-command switch, so a command cannot be documented without being routed.
-// Exported and argv-taking so it can be imported and driven in tests; the
-// process-level wiring below only runs when this file is the entrypoint.
+// Takes argv and deps rather than reading the globals, so it can be imported
+// and driven in tests; the process wiring below only runs as the entrypoint.
 export const runCommand = async (argv: string[], deps: EngineDeps) => {
   const { log } = resolveDeps(deps)
   const [name, ...rest] = argv

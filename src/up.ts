@@ -65,9 +65,7 @@ const readOptions = (argv: string[]): UpOptions => {
 }
 
 // Runs after repo resolution so the popup can say which repo it targets and
-// only ask questions that apply to it. Only reading stdin stays direct; the
-// prompt copy is output like any other. Returns what it learned rather than
-// editing the options it was handed.
+// only ask questions that apply to it. Only reading stdin stays direct.
 const askInteractively = async (
   repoConfig: RepoConfig,
   repoName: string,
@@ -99,9 +97,9 @@ const paneSpecs = (repoConfig: RepoConfig, expand: (template: string, where?: st
 export const up = async (argv: string[], deps: EngineDeps) => {
   const { tabs, env, insideHerdr, log, warn } = resolveDeps(deps)
   const options = readOptions(argv)
-  // A clicked link or an interactive answer decides the branch, and both mean
-  // "take me there", so up merges the branch and the focus decision itself
-  // rather than letting either path reach into the options.
+  // A clicked link and an interactive answer both mean "take me there", which
+  // is why either one focuses the tab that a bare --branch leaves in the
+  // background.
   if (options.fromLink) {
     const url = readInvocationContext(env).clickedUrl
     const branch = branchFromUrl(url)

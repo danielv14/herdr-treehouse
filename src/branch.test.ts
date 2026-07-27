@@ -53,8 +53,7 @@ describe('the manifest link handlers and branchFromUrl agree', () => {
 describe('urls the manifest does not hand over', () => {
   // The engine's patterns used to be unanchored substring matches while the
   // manifest's were anchored and host-scoped, so the engine would happily name
-  // a branch for URLs Herdr would never route to it. The clicked url is also
-  // readable outside the link handler path.
+  // a branch for URLs Herdr would never route to it.
   const NOT_LINKS = [
     'https://example.atlassian.net/browse/ABC-1234/comments',
     'https://example.atlassian.net/browse/abc-1234',

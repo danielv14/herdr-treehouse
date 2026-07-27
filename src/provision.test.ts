@@ -94,7 +94,7 @@ describe('existing worktree', () => {
     expect(logged).toContain(
       'worktree already existed; setup commands skipped (run them manually if deps are missing)',
     )
-    // Not run a second time.
+    // The setup command appends, so a second run would leave two lines.
     expect(readFileSync(join(second.plan.worktree, 'ran.txt'), 'utf8').trim()).toBe('ran')
   })
 })
@@ -159,8 +159,6 @@ describe('bootstrap path', () => {
 describe('the worktree.created path', () => {
   // Herdr creates the checkout before the hook fires, so provisioning must not
   // try to create it - but it is still a fresh worktree, and setup has to run.
-  // Before this module existed the hook path returned early for any repo without
-  // a bootstrap, so a setup-only repo got nothing at all.
   const createWorktreeLikeHerdrDoes = () => {
     const path = join(repo.parent, 'my-repo-abc-1')
     repo.git('worktree', 'add', path, '-b', 'ABC-1/fix', '--no-track', 'master')

@@ -1,13 +1,10 @@
 // The convention that turns a ticket into a branch and a branch back into its
-// parts, in one place. Two halves of one convention used to sit apart: the plan
-// derived a ticket and a slug out of a branch, and `up` derived a branch out of
-// a clicked URL. Pure functions returning values, so the link path can be
-// tested without driving the whole command.
+// parts, in one place, as pure functions.
 //
 // The URL patterns are declared twice by necessity: Herdr gates on the
 // `[[link_handlers]]` patterns in herdr-plugin.toml before the engine ever
-// runs, and the engine has to recognise the URL again to name a branch. They
-// are kept in step by branch.test.ts, which reads the manifest.
+// runs, and the engine has to recognise the URL again to name a branch.
+// branch.test.ts reads the manifest to keep the two in step.
 
 export const slugFromBranch = (branch: string) =>
   branch
@@ -38,8 +35,6 @@ const LINK_PATTERNS: Array<{ pattern: RegExp; branch: (match: RegExpMatchArray) 
 // A clicked link carries no judgment, so the branch is mechanical: a wip branch
 // named after the ticket. What to DO about it (explore, fix, just read up) is
 // the user's or a skill's call, which is why nothing here produces a prompt.
-// Undefined means "not a link we name branches from"; the caller decides what
-// that is worth.
 export const branchFromUrl = (url: string | undefined): string | undefined => {
   if (!url) return undefined
   for (const { pattern, branch } of LINK_PATTERNS) {

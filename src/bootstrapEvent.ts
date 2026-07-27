@@ -24,15 +24,13 @@ export const bootstrap = async (argv: string[], deps: EngineDeps) => {
   await bootstrapFromEvent(deps)
 }
 
-// Handler for the worktree.created event (Herdr's native worktree flow).
-// Decoding the payload belongs to context.ts, the module that already owns
-// reading Herdr's env conventions; everything after it is the same provisioning
-// module `up` uses, so a repo configured with only `setup` gets its
-// dependencies here too.
+// Handler for the worktree.created event (Herdr's native worktree flow). Past
+// decoding it is the same provisioning `up` uses, so a repo configured with
+// only `setup` gets its dependencies here too.
 //
-// The whole hook goes to stderr, which is where `herdr plugin log list
-// --plugin treehouse` can see it. The raw payload is logged on every run, so a
-// shape change shows up before the fields silently read as absent.
+// Everything goes to stderr, which is where `herdr plugin log list --plugin
+// treehouse` can see it, and the raw payload is logged on every run so a shape
+// change shows up before the fields silently read as absent.
 export const bootstrapFromEvent = async (deps: EngineDeps) => {
   const { env, warn: log } = resolveDeps(deps)
   const { raw, path: worktreePath, branch } = readWorktreeCreatedEvent(env)

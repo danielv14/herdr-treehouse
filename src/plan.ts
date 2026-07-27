@@ -3,9 +3,7 @@ import { slugFromBranch, ticketFromBranch } from './branch.ts'
 import { expandHome, type RepoConfig } from './config.ts'
 
 // Everything derived about one worktree, resolved in a single call: callers ask
-// once and read fields off the result instead of assembling a context, resolving
-// the path from it and spreading the answer back in. Pure: no filesystem, no
-// git, no Herdr.
+// once and read fields off the result. Pure: no filesystem, no git, no Herdr.
 
 export const DEFAULT_BASE = 'origin/master'
 

@@ -6,11 +6,9 @@ import { createTabChoreography, type TabChoreography } from './tabs.ts'
 // rest have production defaults and exist so tests can drive the engine with no
 // Herdr session, no HERDR_ENV and no real waiting.
 //
-// The environment is one of those dependencies rather than a global reach: every
-// env fact the engine reads (the plugin invocation context, the clicked url, the
-// target path convention, the caller pane and tab, the event payload, the plugin
-// config dir, HERDR_ENV) comes from here, so a test constructs the world it wants
-// instead of mutating process.env around itself.
+// The environment is one of those dependencies rather than a global reach: a
+// test constructs the world it wants instead of mutating process.env around
+// itself.
 export type EngineDeps = {
   invoke: HerdrInvoker
   env?: Environment

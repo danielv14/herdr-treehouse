@@ -15,8 +15,7 @@ export const ACTION_COMMAND: CommandSpec = {
 
 // Actions run headless, so anything that needs to prompt happens in a popup
 // plugin pane. The popup process runs with cwd = plugin root, so the target path
-// is resolved here (the only place that reads Herdr's context) and handed over
-// through one env convention.
+// is resolved here and handed over through the env convention instead.
 const POPUP_ENTRYPOINTS = {
   up: { entrypoint: 'up-interactive', prefer: 'workspace' },
   down: { entrypoint: 'down-interactive', prefer: 'pane' },

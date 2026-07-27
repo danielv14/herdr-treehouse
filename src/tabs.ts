@@ -112,8 +112,6 @@ const defaultSleep = (ms: number) => new Promise((done) => setTimeout(done, ms))
 // render, so a single busy snapshot gives false positives.
 const BUSY_RECHECK_MS = 750
 
-// How long to wait for an agent to reach idle, and how often to retry while
-// Herdr has not registered it yet.
 const AGENT_IDLE_TIMEOUT_MS = 60_000
 const AGENT_REGISTRATION_POLL_MS = 500
 
@@ -195,10 +193,8 @@ export const createTabChoreography = (
   }
 
   // Resubmits only when the agent demonstrably did not move, so a prompt that
-  // did land is never delivered twice and a tab never silently opens without its
-  // task. The error code alone is not enough to tell those apart: a swallowed
-  // prompt surfaces as agent_prompt_stalled or timeout depending on how Herdr's
-  // internal windows race.
+  // did land is never delivered twice and a tab never silently opens without
+  // its task.
   const submitPrompt = async (paneId: string, prompt: string) => {
     for (let attempt = 1; ; attempt += 1) {
       const before = agentStateSeq(paneId)
@@ -267,11 +263,9 @@ export const createTabChoreography = (
       // pane command; Herdr detects and registers the agent from there.
       invoke(['pane', 'run', mainPaneId, request.agent])
       if (request.prompt) {
-        // Wait for the agent to be ready for input, then hand the prompt to
-        // `agent prompt`, which owns submission. Both live-verified on herdr
-        // 0.7.5; the previous `wait agent-status` + `pane run` + explicit Enter
-        // sequence was a 0.7.4 workaround for bracketed paste swallowing the
-        // trailing Enter, and `wait agent-status` is gone as of 0.7.5.
+        // `agent prompt` owns submission (herdr 0.7.5). Do not go back to
+        // `pane run` + an explicit Enter: that was a 0.7.4 workaround for
+        // bracketed paste swallowing the trailing Enter.
         await waitForAgentIdle(mainPaneId)
         await submitPrompt(mainPaneId, request.prompt)
       }

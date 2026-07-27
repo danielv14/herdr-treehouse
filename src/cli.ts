@@ -43,8 +43,7 @@ export type CommandSpec = {
 // dependency on the engine's deps, so nothing here is imported at runtime.
 export type CommandHandler = (argv: string[], deps: EngineDeps) => Promise<void>
 
-// A registry entry: the declaration help and parsing read, plus the handler
-// dispatch runs. One list answers all three, so they cannot disagree.
+// A registry entry: the declaration plus the handler. Assembled in commands.ts.
 export type Command = CommandSpec & { run: CommandHandler }
 
 export type ParsedFlags = {

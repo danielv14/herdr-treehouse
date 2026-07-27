@@ -1,7 +1,7 @@
-// The only reader of Herdr's plugin invocation context. "Which repo or worktree
-// was the user in" used to be answered in three places (a bun -e snippet in each
-// action script, plus the engine) and carried onward through two env conventions
-// for the same fact; this module and TARGET_PATH_ENV replace all of that.
+// The only reader of the payloads Herdr hands the engine through the
+// environment: the plugin invocation context and the worktree.created event.
+// Both decode tolerantly, keeping the raw payload for the plugin log and
+// treating the fields as absent, because neither may take an invocation down.
 
 // Plugin-invoked processes (actions, link handlers, plugin panes) run with
 // cwd = plugin root, so the target path has to be carried explicitly.
@@ -36,8 +36,7 @@ export const readInvocationContext = (env: Environment): InvocationContext => {
     const candidate = JSON.parse(raw)
     if (isObject(candidate)) parsed = candidate
   } catch {
-    // Keep the raw payload for the log and treat the fields as absent; a
-    // malformed context must not take the whole invocation down.
+    // Malformed: the raw payload still goes back for the log, fields absent.
   }
   return {
     raw,
@@ -62,10 +61,6 @@ export type WorktreeCreatedEvent = {
 // variable (the invocation context carries no branch or path). Shape confirmed
 // live on herdr 0.7.5 and matching `herdr api schema`:
 // { event, data: { type, workspace, worktree: { path, branch, ... } } }.
-//
-// Decoded with the same care as the invocation context, and for a sharper
-// reason: the hook is the one path that runs unattended, so an uncaught throw
-// here leaves nothing behind but a failed plugin log entry.
 export const readWorktreeCreatedEvent = (env: Environment): WorktreeCreatedEvent => {
   const raw = env.HERDR_PLUGIN_EVENT_JSON
   if (!raw) return {}
@@ -76,7 +71,9 @@ export const readWorktreeCreatedEvent = (env: Environment): WorktreeCreatedEvent
     const candidate = isObject(data) ? data.worktree : undefined
     if (isObject(candidate)) worktree = candidate
   } catch {
-    // Keep the raw payload for the log and treat the fields as absent.
+    // Malformed: the raw payload still goes back for the log, fields absent.
+    // An uncaught throw here would leave only a failed plugin log entry, and
+    // the hook is the one path that runs unattended.
   }
   return { raw, path: readString(worktree, 'path'), branch: readString(worktree, 'branch') }
 }
