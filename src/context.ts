@@ -19,6 +19,9 @@ export type InvocationContext = {
   clickedUrl?: string
 }
 
+const isObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null
+
 const readString = (source: Record<string, unknown>, key: string): string | undefined => {
   const value = source[key]
   return typeof value === 'string' && value !== '' ? value : undefined
@@ -31,7 +34,7 @@ export const readInvocationContext = (env: Environment): InvocationContext => {
   let parsed: Record<string, unknown> = {}
   try {
     const candidate = JSON.parse(raw)
-    if (typeof candidate === 'object' && candidate !== null) parsed = candidate as Record<string, unknown>
+    if (isObject(candidate)) parsed = candidate
   } catch {
     // Keep the raw payload for the log and treat the fields as absent; a
     // malformed context must not take the whole invocation down.
@@ -47,6 +50,37 @@ export const readInvocationContext = (env: Environment): InvocationContext => {
 
 export const isPluginInvocation = (env: Environment) =>
   env.HERDR_PLUGIN_CONTEXT_JSON !== undefined
+
+export type WorktreeCreatedEvent = {
+  // Same reason as the invocation context: an unexpected shape is only ever
+  // noticed through the plugin log, so the payload survives decoding.
+  raw?: string
+  path?: string
+  branch?: string
+}
+
+// Herdr's worktree.created payload, delivered to the event hook in its own env
+// variable (the invocation context carries no branch or path). Shape confirmed
+// live on herdr 0.7.5 and matching `herdr api schema`:
+// { event, data: { type, workspace, worktree: { path, branch, ... } } }.
+//
+// Decoded with the same care as the invocation context, and for a sharper
+// reason: the hook is the one path that runs unattended, so an uncaught throw
+// here leaves nothing behind but a failed plugin log entry.
+export const readWorktreeCreatedEvent = (env: Environment): WorktreeCreatedEvent => {
+  const raw = env.HERDR_PLUGIN_EVENT_JSON
+  if (!raw) return {}
+  let worktree: Record<string, unknown> = {}
+  try {
+    const parsed: unknown = JSON.parse(raw)
+    const data = isObject(parsed) ? parsed.data : undefined
+    const candidate = isObject(data) ? data.worktree : undefined
+    if (isObject(candidate)) worktree = candidate
+  } catch {
+    // Keep the raw payload for the log and treat the fields as absent.
+  }
+  return { raw, path: readString(worktree, 'path'), branch: readString(worktree, 'branch') }
+}
 
 export type TargetPathInput = {
   // An explicit --repo / --path always wins.

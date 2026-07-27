@@ -1,5 +1,6 @@
 import { parseFlags, type CommandSpec } from './cli.ts'
 import { resolveRepoConfig } from './config.ts'
+import { readWorktreeCreatedEvent } from './context.ts'
 import { resolveDeps, type EngineDeps } from './deps.ts'
 import { reportDiagnostics } from './diagnostics.ts'
 import { findMainRepoRoot } from './git.ts'
@@ -24,29 +25,23 @@ export const bootstrap = async (argv: string[], deps: EngineDeps) => {
 }
 
 // Handler for the worktree.created event (Herdr's native worktree flow).
-// Event hooks receive the payload in HERDR_PLUGIN_EVENT_JSON; the invocation
-// context (HERDR_PLUGIN_CONTEXT_JSON) does NOT carry branch or path. Per
-// `herdr api schema`, worktree_created event data is
-// { type, workspace: WorkspaceInfo, worktree: WorktreeInfo } where
-// WorktreeInfo has `path` and `branch`. Not yet observed live; the raw
-// payload is logged (visible via `herdr plugin log list --plugin treehouse`)
-// so a real event can confirm the shape.
+// Decoding the payload belongs to context.ts, the module that already owns
+// reading Herdr's env conventions; everything after it is the same provisioning
+// module `up` uses, so a repo configured with only `setup` gets its
+// dependencies here too.
 //
-// Everything after decoding the payload is the same provisioning module `up`
-// uses, so a repo configured with only `setup` gets its dependencies here too.
+// The whole hook goes to stderr, which is where `herdr plugin log list
+// --plugin treehouse` can see it. The raw payload is logged on every run, so a
+// shape change shows up before the fields silently read as absent.
 export const bootstrapFromEvent = async (deps: EngineDeps) => {
   const { env, warn: log } = resolveDeps(deps)
-  const raw = env.HERDR_PLUGIN_EVENT_JSON
+  const { raw, path: worktreePath, branch } = readWorktreeCreatedEvent(env)
   if (!raw) {
     log('no HERDR_PLUGIN_EVENT_JSON in environment, nothing to do')
     return
   }
   log(`event payload: ${raw}`)
 
-  const payload = JSON.parse(raw)
-  const worktree = payload?.data?.worktree ?? payload?.worktree
-  const worktreePath: string | undefined = worktree?.path ?? worktree?.checkout_path
-  const branch: string | undefined = worktree?.branch
   if (!worktreePath || !branch) {
     log('could not find worktree path/branch in event payload, skipping bootstrap')
     return
