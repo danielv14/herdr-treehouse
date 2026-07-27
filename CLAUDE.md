@@ -34,6 +34,7 @@ The commands are thin; everything reusable sits behind a module with one job. Ke
 - `context.ts` — the only reader of `HERDR_PLUGIN_CONTEXT_JSON`, and the home of `TREEHOUSE_TARGET_PATH` (one env convention for "which repo or worktree"). `actions.ts` (`treehouse action up|down`) resolves it and opens the popup.
 - `deps.ts` — the environment is a dependency, not a global reach: `EngineDeps.env` defaults to `process.env` in `resolveDeps` and is threaded to every env fact the engine reads (invocation context, clicked url, target path, caller pane/tab, event payload, plugin config dir, `HERDR_ENV`). `src` reads the global in exactly two places, the entrypoint and that default.
 - `cli.ts` — each command declares its flags once with help text attached; parsing and `--help` both derive from the declaration, so help cannot drift.
+- `commands.ts` — the one registry: each entry is a command's declaration plus its handler, so dispatch, help and parsing read the same list and adding a command is one entry. `main.ts` looks up by name and runs; it has no per-command switch, takes argv and deps as parameters, and keeps its process wiring behind `import.meta.main` so it can be imported in tests.
 
 ## Development
 

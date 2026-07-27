@@ -5,6 +5,8 @@
 // Deliberately not a flag framework: no subcommand trees, no type coercion, no
 // negation pairs. Three commands' worth of parsing is all this has to be.
 
+import type { EngineDeps } from './deps.ts'
+
 export type FlagKind =
   // present or absent
   | 'boolean'
@@ -36,6 +38,14 @@ export type CommandSpec = {
   // Free-form lines printed under the flag list.
   notes?: string[]
 }
+
+// What the entrypoint runs once it has looked a command up by name. Type-only
+// dependency on the engine's deps, so nothing here is imported at runtime.
+export type CommandHandler = (argv: string[], deps: EngineDeps) => Promise<void>
+
+// A registry entry: the declaration help and parsing read, plus the handler
+// dispatch runs. One list answers all three, so they cannot disagree.
+export type Command = CommandSpec & { run: CommandHandler }
 
 export type ParsedFlags = {
   value: (key: string) => string | undefined

@@ -1,9 +1,29 @@
+import { parseFlags, type CommandSpec } from './cli.ts'
 import { resolveRepoConfig } from './config.ts'
 import { resolveDeps, type EngineDeps } from './deps.ts'
 import { reportDiagnostics } from './diagnostics.ts'
 import { findMainRepoRoot } from './git.ts'
 import { buildWorktreePlan } from './plan.ts'
 import { provisionWorktree } from './provision.ts'
+
+export const BOOTSTRAP_COMMAND: CommandSpec = {
+  name: 'bootstrap',
+  usage: ['treehouse bootstrap --from-event'],
+  summary: 'internal: used by the worktree.created plugin hook',
+  flags: [
+    { flag: '--from-event', kind: 'boolean', key: 'fromEvent', help: 'read the worktree from HERDR_PLUGIN_EVENT_JSON and provision it' },
+  ],
+}
+
+// The command as the registry dispatches it: the declaration above is what says
+// which flags exist, so the entrypoint never hand-checks argv for this one.
+export const bootstrap = async (argv: string[], deps: EngineDeps) => {
+  const flags = parseFlags(BOOTSTRAP_COMMAND, argv)
+  if (!flags.flag('fromEvent')) {
+    throw new Error('bootstrap only supports --from-event (used by the worktree.created hook)')
+  }
+  await bootstrapFromEvent(deps)
+}
 
 // Handler for the worktree.created event (Herdr's native worktree flow).
 // Event hooks receive the payload in HERDR_PLUGIN_EVENT_JSON; the invocation

@@ -125,9 +125,8 @@ describe('review fixes', () => {
   })
 
   test('per-command help renders that command only', () => {
-    const rendered = commandHelp('up')
+    const rendered = commandHelp(UP_COMMAND)
     expect(rendered).toContain('--from-link')
     expect(rendered).not.toContain('--path <worktree>')
-    expect(commandHelp('nope')).toBeUndefined()
   })
 })
