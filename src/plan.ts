@@ -1,13 +1,9 @@
 import { isAbsolute, resolve } from 'node:path'
 import { slugFromBranch, ticketFromBranch } from './branch.ts'
-import { expandHome, type RepoConfig } from './config.ts'
+import { DEFAULT_BASE, DEFAULT_WORKTREE_DIR, expandHome, type RepoConfig } from './config.ts'
 
 // Everything derived about one worktree, resolved in a single call: callers ask
 // once and read fields off the result. Pure: no filesystem, no git, no Herdr.
-
-export const DEFAULT_BASE = 'origin/master'
-
-export const DEFAULT_WORKTREE_DIR = '../{repo}-{id}'
 
 const PLACEHOLDERS = ['repo', 'branch', 'slug', 'ticket', 'id', 'worktree', 'root', 'base'] as const
 
@@ -87,7 +83,6 @@ export const buildWorktreePlan = ({
   const slug = slugFromBranch(branch)
   const ticket = ticketFromBranch(branch)
   const id = ticket || slug
-  // The only place the base default lives.
   const base = repoConfig.base ?? DEFAULT_BASE
 
   const withoutWorktree: Record<string, string> = {

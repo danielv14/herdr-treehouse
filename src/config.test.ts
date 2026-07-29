@@ -1,5 +1,11 @@
 import { describe, expect, test } from 'bun:test'
-import { diagnosticsForRepo, validateConfigFile, validateLocalConfigFile } from './config.ts'
+import {
+  DEFAULT_BASE,
+  diagnosticsForRepo,
+  renderProposedBlock,
+  validateConfigFile,
+  validateLocalConfigFile,
+} from './config.ts'
 import { reportDiagnostics } from './diagnostics.ts'
 
 const FILE = '/cfg/config.toml'
@@ -158,6 +164,54 @@ describe('the shipped example config', () => {
     expect(diagnostics).toEqual([])
     expect(config.repos['my-awesome-repo'].panes).toHaveLength(2)
     expect(config.repos['my-awesome-repo'].bootstrap?.[0]).toContain('worktree-up.sh')
+  })
+})
+
+describe('the proposed onboarding block', () => {
+  // The block onboard writes to the user's real config gets the same guarantee
+  // as the shipped example: it must satisfy the validators it will be read by.
+  const proposal = { name: 'my-repo', root: '/dev/my-repo', installCommand: 'npm ci', devCommand: 'npm run dev' }
+
+  test('round-trips through the central validator with zero diagnostics', () => {
+    const { config, diagnostics } = validate(renderProposedBlock(proposal, 'central'))
+    expect(diagnostics).toEqual([])
+    expect(config.repos['my-repo'].root).toBe('/dev/my-repo')
+    expect(config.repos['my-repo'].setup).toEqual(['npm ci'])
+    expect(config.repos['my-repo'].panes?.[0].command).toBe('npm run dev')
+  })
+
+  test('round-trips through the local validator with zero diagnostics', () => {
+    const { config, diagnostics } = validateLocalConfigFile(
+      Bun.TOML.parse(renderProposedBlock(proposal, 'local')),
+      '/repo/.treehouse.toml',
+    )
+    expect(diagnostics).toEqual([])
+    expect(config.setup).toEqual(['npm ci'])
+    expect(config.panes?.[0].autostart).toBe(false)
+  })
+
+  test('the commented examples uncomment into valid keys carrying the real defaults', () => {
+    // A scan that learned nothing renders every optional line commented; those
+    // lines must be one '#' away from config the validator accepts, with the
+    // defaults the engine actually applies.
+    const block = renderProposedBlock({ name: 'my-repo', root: '/dev/my-repo' }, 'central')
+    const uncommented = block
+      .split('\n')
+      .map((line) => line.replace(/^# (?=(worktree_dir|base|bootstrap|setup|command) )/, ''))
+      .join('\n')
+    const { config, diagnostics } = validate(uncommented)
+    expect(diagnostics).toEqual([])
+    expect(config.repos['my-repo'].worktree_dir).toBe('../my-repo-{id}')
+    expect(config.repos['my-repo'].base).toBe(DEFAULT_BASE)
+    expect(config.repos['my-repo'].setup).toEqual(['npm ci'])
+  })
+
+  test('a dotted repo name is quoted so the block still parses', () => {
+    const { config, diagnostics } = validate(
+      renderProposedBlock({ ...proposal, name: 'my.repo' }, 'central'),
+    )
+    expect(diagnostics).toEqual([])
+    expect(config.repos['my.repo'].root).toBe('/dev/my-repo')
   })
 })
 

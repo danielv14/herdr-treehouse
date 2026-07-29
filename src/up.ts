@@ -1,7 +1,7 @@
 import { createInterface } from 'node:readline/promises'
 import { branchFromUrl } from './branch.ts'
 import { parseFlags, type CommandSpec } from './cli.ts'
-import { resolveRepoConfig, type RepoConfig } from './config.ts'
+import { PANE_DEFAULTS, resolveRepoConfig, type RepoConfig } from './config.ts'
 import { invocationTargetPath, isPluginInvocation, readInvocationContext } from './context.ts'
 import { resolveDeps, type EngineDeps } from './deps.ts'
 import { findMainRepoRoot } from './git.ts'
@@ -86,11 +86,11 @@ const askInteractively = async (
 
 const paneSpecs = (repoConfig: RepoConfig, expand: (template: string, where?: string) => string): PaneSpec[] =>
   (repoConfig.panes ?? []).map((pane) => ({
-    split: pane.split ?? 'down',
-    ratio: pane.ratio ?? 0.5,
+    split: pane.split ?? PANE_DEFAULTS.split,
+    ratio: pane.ratio ?? PANE_DEFAULTS.ratio,
     label: pane.label,
     command: pane.command ? expand(pane.command, 'a pane command') : undefined,
-    autostart: pane.autostart ?? false,
+    autostart: pane.autostart ?? PANE_DEFAULTS.autostart,
   }))
 
 export const up = async (argv: string[], deps: EngineDeps) => {

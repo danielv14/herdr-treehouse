@@ -1,7 +1,7 @@
 import { appendFileSync, existsSync, mkdirSync, readdirSync } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
 import { parseFlags, type CommandSpec } from './cli.ts'
-import { LOCAL_CONFIG_FILE, configPath, findConfiguredEntry } from './config.ts'
+import { LOCAL_CONFIG_FILE, configPath, findConfiguredEntry, renderProposedBlock } from './config.ts'
 import { resolveDeps, type EngineDeps } from './deps.ts'
 import { findMainRepoRoot } from './git.ts'
 
@@ -58,34 +58,6 @@ const scanRepo = async (repoRoot: string): Promise<RepoScan> => {
   return scan
 }
 
-// Two shapes of the same fields. The central config namespaces them under
-// [repos.X] and needs `root` to find the repo; a repo-local .treehouse.toml is
-// already at its repo, so it drops both. Scalars stay above the pane table:
-// TOML would otherwise read them as pane keys.
-const buildBlock = (repoName: string, repoRoot: string, scan: RepoScan, local: boolean): string => {
-  const tomlKey = repoName.includes('.') ? JSON.stringify(repoName) : repoName
-  const head = local
-    ? [
-        `# treehouse config for ${repoName}. Same fields as a [repos.X] block in the`,
-        '# central plugin config, minus the wrapper and `root`. Keep scalar keys above',
-        '# [[panes]] or TOML reads them as pane keys.',
-      ]
-    : [`[repos.${tomlKey}]`, `root = "${repoRoot}"`]
-  return [
-    ...head,
-    `# worktree_dir = "../${repoName}-{id}"  # this is the default; set it only for a different layout`,
-    `# base = "origin/master"`,
-    `# bootstrap = ["path/to/bootstrap.sh", "--dir", "{worktree}", "{branch}", "{targets...}"]`,
-    scan.installCommand ? `setup = ["${scan.installCommand}"]` : `# setup = ["npm ci"]  # commands run in a freshly created worktree`,
-    '',
-    local ? '[[panes]]' : `[[repos.${tomlKey}.panes]]`,
-    'split = "down"',
-    'label = "dev"',
-    scan.devCommand ? `command = "${scan.devCommand}"` : '# command = "npm run dev"',
-    'autostart = false',
-  ].join('\n')
-}
-
 export const onboard = async (argv: string[], deps: EngineDeps) => {
   const { log, warn, pluginConfigDir } = resolveDeps(deps)
   const flags = parseFlags(ONBOARD_COMMAND, argv)
@@ -114,8 +86,13 @@ export const onboard = async (argv: string[], deps: EngineDeps) => {
     throw new Error(`${localPath} already exists (delete it first if you are moving this repo to ${centralPath})`)
   }
 
+  // Onboard's product is a value: what the scan learned about the repo. The
+  // config module renders it, next to the shape the block must satisfy.
   const scan = await scanRepo(repoRoot)
-  const block = buildBlock(repoName, repoRoot, scan, local)
+  const block = renderProposedBlock(
+    { name: repoName, root: repoRoot, installCommand: scan.installCommand, devCommand: scan.devCommand },
+    local ? 'local' : 'central',
+  )
   const target = local ? localPath : centralPath
 
   // In its default mode the proposed block IS the product: nothing is written
