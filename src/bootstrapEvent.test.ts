@@ -151,6 +151,22 @@ describe('a repo the hook has nothing to do for', () => {
   })
 })
 
+describe('a broken block for this repo', () => {
+  // The hook's tolerance ends at the payload seam: a failure while acting on a
+  // well-formed payload is loud (a non-zero exit in the plugin log), because
+  // silently skipping setup leaves a worktree that looks provisioned but is not.
+  test('fails the hook loudly instead of provisioning without the config', async () => {
+    writeFileSync(join(repo.root, '.treehouse.toml'), 'setup = "npm ci"\n')
+    createWorktreeLikeHerdrDoes()
+
+    await expectRejection(
+      runHook(payload(worktree, 'ABC-1/fix')),
+      /invalid config:.*expected a list of strings/s,
+    )
+    expect(existsSync(join(worktree, 'ran.txt'))).toBe(false)
+  })
+})
+
 describe('a path that is not there any more', () => {
   // A well-formed payload can still point at a directory that has been removed
   // between the event and the hook. git() used to report that as a TypeError
