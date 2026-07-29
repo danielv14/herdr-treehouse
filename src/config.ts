@@ -50,6 +50,16 @@ export const expandHome = (path: string) =>
 // dir: TOML in, typed config plus diagnostics out.
 export const configPath = (configDir: string) => join(configDir, 'config.toml')
 
+// The defaults applied when config leaves a field out, declared next to the
+// shape they belong to. plan.ts applies the first two, up.ts the pane ones, and
+// renderProposedBlock below advertises them, so onboard cannot drift from what
+// the engine actually does.
+export const DEFAULT_BASE = 'origin/master'
+
+export const DEFAULT_WORKTREE_DIR = '../{repo}-{id}'
+
+export const PANE_DEFAULTS = { split: 'down', ratio: 0.5, autostart: false } as const
+
 // Per-repo config checked into (or gitignored inside) the repo itself, for
 // repos whose config has no reason to live in the user's plugin config dir.
 export const LOCAL_CONFIG_FILE = '.treehouse.toml'
@@ -110,6 +120,53 @@ const TOP_LEVEL_SHAPE: Shape = {
 const LOCAL_SHAPE: Shape = Object.fromEntries(
   Object.entries(REPO_SHAPE).filter(([key]) => key !== 'root'),
 )
+
+// ---------------------------------------------------------------------------
+// Rendering a proposed block (the write side of the shape)
+// ---------------------------------------------------------------------------
+
+// What onboard learned about a repo; everything else the block shows comes from
+// the defaults above.
+export type RepoProposal = {
+  name: string
+  root: string
+  installCommand?: string
+  devCommand?: string
+}
+
+// The block onboard proposes, rendered next to the shape it must satisfy so the
+// key names and the advertised defaults cannot drift from what validation
+// accepts (config.test.ts round-trips it through the validators, commented
+// examples included). Two homes of the same fields: the central config
+// namespaces them under [repos.X] and needs `root` to find the repo; a
+// repo-local .treehouse.toml is already at its repo, so it drops both. Scalars
+// stay above the pane table: TOML would otherwise read them as pane keys.
+export const renderProposedBlock = (proposal: RepoProposal, home: 'central' | 'local'): string => {
+  const tomlKey = proposal.name.includes('.') ? JSON.stringify(proposal.name) : proposal.name
+  const head =
+    home === 'local'
+      ? [
+          `# treehouse config for ${proposal.name}. Same fields as a [repos.X] block in the`,
+          '# central plugin config, minus the wrapper and `root`. Keep scalar keys above',
+          '# [[panes]] or TOML reads them as pane keys.',
+        ]
+      : [`[repos.${tomlKey}]`, `root = "${proposal.root}"`]
+  return [
+    ...head,
+    `# worktree_dir = "${DEFAULT_WORKTREE_DIR.replace('{repo}', proposal.name)}"  # this is the default; set it only for a different layout`,
+    `# base = "${DEFAULT_BASE}"`,
+    `# bootstrap = ["path/to/bootstrap.sh", "--dir", "{worktree}", "{branch}", "{targets...}"]`,
+    proposal.installCommand
+      ? `setup = ["${proposal.installCommand}"]`
+      : `# setup = ["npm ci"]  # commands run in a freshly created worktree`,
+    '',
+    home === 'local' ? '[[panes]]' : `[[repos.${tomlKey}.panes]]`,
+    `split = "${PANE_DEFAULTS.split}"`,
+    'label = "dev"',
+    proposal.devCommand ? `command = "${proposal.devCommand}"` : '# command = "npm run dev"',
+    `autostart = ${PANE_DEFAULTS.autostart}`,
+  ].join('\n')
+}
 
 // ---------------------------------------------------------------------------
 // Validation
