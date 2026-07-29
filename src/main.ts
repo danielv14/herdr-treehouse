@@ -1,3 +1,4 @@
+import { isInteractiveInvocation } from './cli.ts'
 import { commandHelp, findCommand, help } from './commands.ts'
 import { resolveDeps, type EngineDeps } from './deps.ts'
 import { createHerdrInvoker } from './herdr.ts'
@@ -25,24 +26,19 @@ export const runCommand = async (argv: string[], deps: EngineDeps) => {
   await command.run(rest, deps)
 }
 
-// The interactive popup pane closes the moment the process exits, so hold it
-// open until the user has read the summary or error.
-const holdForInteractive = async (argv: string[]) => {
-  if (!argv.includes('--interactive')) return
-  const { createInterface } = await import('node:readline/promises')
-  const readline = createInterface({ input: process.stdin, output: process.stdout })
-  await readline.question('\n[Enter] to close')
-  readline.close()
-}
-
 if (import.meta.main) {
   const argv = process.argv.slice(2)
+  const deps: EngineDeps = { invoke: createHerdrInvoker(process.env) }
+  const { ask } = resolveDeps(deps)
+  // The interactive popup pane closes the moment the process exits, so hold it
+  // open until the user has read the summary or error.
+  const holdOpen = isInteractiveInvocation(findCommand(argv[0] ?? ''), argv.slice(1))
   try {
-    await runCommand(argv, { invoke: createHerdrInvoker(process.env) })
-    await holdForInteractive(argv)
+    await runCommand(argv, deps)
+    if (holdOpen) await ask('\n[Enter] to close')
   } catch (error) {
     console.error(`treehouse: ${error instanceof Error ? error.message : error}`)
-    await holdForInteractive(argv)
+    if (holdOpen) await ask('\n[Enter] to close')
     process.exit(1)
   }
 }

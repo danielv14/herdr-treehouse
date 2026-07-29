@@ -1,11 +1,10 @@
-import { createInterface } from 'node:readline/promises'
 import { branchFromUrl } from './branch.ts'
 import { parseFlags, type CommandSpec } from './cli.ts'
 import { PANE_DEFAULTS, resolveRepoConfig, type RepoConfig } from './config.ts'
 import { invocationTargetPath, isPluginInvocation, readInvocationContext } from './context.ts'
 import { resolveDeps, type EngineDeps } from './deps.ts'
 import { findMainRepoRoot } from './git.ts'
-import { buildWorktreePlan } from './plan.ts'
+import { bootstrapTakesTargets, buildWorktreePlan } from './plan.ts'
 import { provisionWorktree } from './provision.ts'
 import type { PaneSpec } from './tabs.ts'
 
@@ -64,23 +63,21 @@ const readOptions = (argv: string[]): UpOptions => {
 }
 
 // Runs after repo resolution so the popup can say which repo it targets and
-// only ask questions that apply to it. Only reading stdin stays direct.
+// only ask questions that apply to it.
 const askInteractively = async (
   repoConfig: RepoConfig,
   repoName: string,
-  log: (message: string) => void,
+  io: { log: (message: string) => void; ask: (question: string) => Promise<string> },
 ): Promise<{ branch: string; targets: string[] }> => {
-  const readline = createInterface({ input: process.stdin, output: process.stdout })
-  log(`New worktree tab in ${repoName}\n`)
-  const branch = (await readline.question('Branch name (e.g. ABC-1234/fix-thing): ')).trim()
+  io.log(`New worktree tab in ${repoName}\n`)
+  const branch = (await io.ask('Branch name (e.g. ABC-1234/fix-thing): ')).trim()
   const targets: string[] = []
-  if (repoConfig.bootstrap?.includes('{targets...}')) {
-    log('\nTargets: repo-relative dirs the bootstrap should install dependencies')
-    log('for (e.g. services/foo, packages/bar). Leave empty to skip.')
-    const answer = (await readline.question('Targets (comma-separated): ')).trim()
+  if (bootstrapTakesTargets(repoConfig)) {
+    io.log('\nTargets: repo-relative dirs the bootstrap should install dependencies')
+    io.log('for (e.g. services/foo, packages/bar). Leave empty to skip.')
+    const answer = (await io.ask('Targets (comma-separated): ')).trim()
     if (answer !== '') targets.push(...answer.split(',').map((target) => target.trim()).filter(Boolean))
   }
-  readline.close()
   return { branch, targets }
 }
 
@@ -94,7 +91,7 @@ const paneSpecs = (repoConfig: RepoConfig, expand: (template: string, where?: st
   }))
 
 export const up = async (argv: string[], deps: EngineDeps) => {
-  const { tabs, env, insideHerdr, log, warn, pluginConfigDir } = resolveDeps(deps)
+  const { tabs, env, insideHerdr, log, warn, ask, pluginConfigDir } = resolveDeps(deps)
   const options = readOptions(argv)
   // A clicked link and an interactive answer both mean "take me there", which
   // is why either one focuses the tab that a bare --branch leaves in the
@@ -121,7 +118,7 @@ export const up = async (argv: string[], deps: EngineDeps) => {
   const { name: repoName, config: repoConfig } = await resolveRepoConfig(mainRepoRoot, pluginConfigDir(), warn)
 
   if (options.interactive) {
-    const answers = await askInteractively(repoConfig, repoName, log)
+    const answers = await askInteractively(repoConfig, repoName, { log, ask })
     options.branch = answers.branch
     options.targets.push(...answers.targets)
     options.focus = true
