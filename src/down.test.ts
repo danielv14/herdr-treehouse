@@ -179,6 +179,24 @@ describe('down', () => {
     expect(fake.calls).toHaveLength(0)
   })
 
+  test('files written while the confirm prompt is open are still caught', async () => {
+    // The prompt can sit open while another pane writes; the dirty check must
+    // act on the tree the user said yes to, not the snapshot from before.
+    const fake = createFakeHerdr({})
+    await expectRejection(
+      down(['--path', worktree, '--interactive'], {
+        ...deps(fake),
+        ask: async () => {
+          writeFileSync(join(worktree, 'late.txt'), 'written mid-prompt')
+          return 'y'
+        },
+      }),
+      'worktree has uncommitted changes, refusing to remove',
+    )
+    expect(existsSync(worktree)).toBe(true)
+    expect(fake.calls).toHaveLength(0)
+  })
+
   test('--interactive with a yes answer removes the worktree', async () => {
     const fake = createFakeHerdr({
       'worktree list': { source: { source_workspace_id: 'wA' } },

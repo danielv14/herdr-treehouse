@@ -213,6 +213,17 @@ describe('the proposed onboarding block', () => {
     expect(diagnostics).toEqual([])
     expect(config.repos['my.repo'].root).toBe('/dev/my-repo')
   })
+
+  test('a name and root that are not TOML-safe are escaped, not interpolated raw', () => {
+    // A space is not a bare-key character, and a quote in the path would end
+    // the root string early; either used to render TOML the engine then
+    // refuses to load.
+    const { config, diagnostics } = validate(
+      renderProposedBlock({ ...proposal, name: 'my repo', root: '/dev/my "repo"' }, 'central'),
+    )
+    expect(diagnostics).toEqual([])
+    expect(config.repos['my repo'].root).toBe('/dev/my "repo"')
+  })
 })
 
 describe('repo-local .treehouse.toml', () => {

@@ -77,7 +77,7 @@ export const onboard = async (argv: string[], deps: EngineDeps) => {
   // resolution matches: a block keyed differently from the directory still
   // configures this repo, and appending a second one would leave two blocks
   // fighting over it.
-  const configuredEntry = await findConfiguredEntry(configDir, repoRoot, warn)
+  const configuredEntry = await findConfiguredEntry(repoRoot, configDir, warn)
   if (configuredEntry) {
     const asKey = configuredEntry[0] === repoName ? '' : ` as [repos.${configuredEntry[0]}]`
     throw new Error(`"${repoName}" is already configured${asKey} in ${centralPath} (remove that block first if you are moving it to ${LOCAL_CONFIG_FILE})`)

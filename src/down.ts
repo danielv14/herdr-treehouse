@@ -1,7 +1,7 @@
 import { resolve } from 'node:path'
 import { parseFlags, type CommandSpec } from './cli.ts'
 import { callerPaneId, callerTabId, invocationTargetPath } from './context.ts'
-import { resolveDeps, type EngineDeps } from './deps.ts'
+import { resolveDeps, type Ask, type EngineDeps } from './deps.ts'
 import { inspectCheckout, removeWorktree } from './git.ts'
 
 export const DOWN_COMMAND: CommandSpec = {
@@ -15,10 +15,7 @@ export const DOWN_COMMAND: CommandSpec = {
   ],
 }
 
-const confirmInteractively = async (
-  worktreeRoot: string,
-  ask: (question: string) => Promise<string>,
-): Promise<boolean> => {
+const confirmInteractively = async (worktreeRoot: string, ask: Ask): Promise<boolean> => {
   const answer = await ask(`Remove worktree ${worktreeRoot} and close its tab? [y/N] `)
   return answer.trim().toLowerCase() === 'y'
 }
@@ -42,9 +39,14 @@ export const down = async (argv: string[], deps: EngineDeps) => {
     return
   }
 
-  if (checkout.dirtyFiles.length > 0) {
+  // Re-inspect after a confirm: the prompt can sit open while another pane
+  // writes, and the check must act on the tree the user said yes to.
+  const dirtyFiles = flags.flag('interactive')
+    ? inspectCheckout(worktreeRoot).dirtyFiles
+    : checkout.dirtyFiles
+  if (dirtyFiles.length > 0) {
     throw new Error(
-      `worktree has uncommitted changes, refusing to remove:\n${checkout.dirtyFiles.join('\n')}\n` +
+      `worktree has uncommitted changes, refusing to remove:\n${dirtyFiles.join('\n')}\n` +
         'Commit, stash, or clean up first (treehouse never uses --force).',
     )
   }

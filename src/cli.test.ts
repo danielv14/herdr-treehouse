@@ -97,10 +97,21 @@ describe('isInteractiveInvocation', () => {
     expect(isInteractiveInvocation(DOWN_COMMAND, ['--path', 'x', '--interactive'])).toBe(true)
   })
 
-  test('false without the flag in argv, for an unknown command, and for a command without the flag', () => {
+  test('false without the flag in argv, and for a command that does not declare it', () => {
     expect(isInteractiveInvocation(UP_COMMAND, ['--branch', 'x'])).toBe(false)
-    expect(isInteractiveInvocation(undefined, ['--interactive'])).toBe(false)
     expect(isInteractiveInvocation(ONBOARD_COMMAND, ['--interactive'])).toBe(false)
+  })
+
+  test('an unknown command with --interactive still holds, so a stale-manifest popup stays readable', () => {
+    // A linked manifest naming a renamed command opens a popup whose only
+    // output is the unknown-command error; closing instantly would hide it.
+    expect(isInteractiveInvocation(undefined, ['--interactive'])).toBe(true)
+    expect(isInteractiveInvocation(undefined, ['--branch', 'x'])).toBe(false)
+  })
+
+  test('a value that happens to equal --interactive does not count as the flag', () => {
+    expect(isInteractiveInvocation(UP_COMMAND, ['--prompt', '--interactive'])).toBe(false)
+    expect(isInteractiveInvocation(UP_COMMAND, ['--prompt', '--interactive', '--interactive'])).toBe(true)
   })
 
   test('answers even for argv that would not parse, so the error path can hold the popup open', () => {

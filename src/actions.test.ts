@@ -64,6 +64,15 @@ describe('action', () => {
     )
   })
 
+  test('a prototype property name is refused like any other unknown action', async () => {
+    // `in` would have let 'toString' through the guard and opened a popup with
+    // --entrypoint undefined.
+    await expectRejection(
+      action(['toString'], { invoke: createFakeHerdr({}).invoke, env, warn: () => {} }),
+      'action expects up or down (got toString)',
+    )
+  })
+
   test('trailing arguments are refused rather than ignored', async () => {
     await expectRejection(
       action(['up', '--branch', 'x'], { invoke: createFakeHerdr({}).invoke, env, warn: () => {} }),
