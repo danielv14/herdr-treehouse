@@ -2,7 +2,6 @@ import { parseFlags, type CommandSpec } from './cli.ts'
 import { resolveRepoConfig } from './config.ts'
 import { readWorktreeCreatedEvent } from './context.ts'
 import { resolveDeps, type EngineDeps } from './deps.ts'
-import { reportDiagnostics } from './diagnostics.ts'
 import { findMainRepoRoot } from './git.ts'
 import { buildWorktreePlan } from './plan.ts'
 import { provisionWorktree } from './provision.ts'
@@ -45,9 +44,13 @@ export const bootstrapFromEvent = async (deps: EngineDeps) => {
     return
   }
 
+  // Past this point failures are loud on purpose. The payload seam above is
+  // tolerant because a malformed payload may not take the invocation down; a
+  // failure while acting on a well-formed one (a broken own-repo config, git
+  // refusing) exits non-zero so the plugin log shows a failed run instead of a
+  // silently unprovisioned worktree.
   const mainRepoRoot = findMainRepoRoot(worktreePath)
-  const { name: repoName, config: repoConfig, diagnostics } = await resolveRepoConfig(mainRepoRoot, pluginConfigDir())
-  reportDiagnostics(diagnostics, log)
+  const { name: repoName, config: repoConfig } = await resolveRepoConfig(mainRepoRoot, pluginConfigDir(), log)
   if (!repoConfig.bootstrap?.length && !repoConfig.setup?.length) {
     log(`no bootstrap or setup configured for ${repoName}, skipping`)
     return

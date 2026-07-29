@@ -104,4 +104,12 @@ describe('onboard', () => {
     expect(await Bun.file(configFile).text()).toContain('[repos.my-repo]')
     expect(warned.join('\n')).toContain("another repo's block, ignored here")
   })
+
+  test('a broken block for this repo stops onboarding', async () => {
+    writeFileSync(configFile, `[repos.my-repo]\nroot = "${repo.root}"\nsetup = "npm ci"\n`)
+    await expectRejection(
+      onboard(['--apply'], deps()),
+      /invalid config:.*expected a list of strings/s,
+    )
+  })
 })

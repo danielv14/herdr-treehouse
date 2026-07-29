@@ -4,7 +4,6 @@ import { parseFlags, type CommandSpec } from './cli.ts'
 import { resolveRepoConfig, type RepoConfig } from './config.ts'
 import { invocationTargetPath, isPluginInvocation, readInvocationContext } from './context.ts'
 import { resolveDeps, type EngineDeps } from './deps.ts'
-import { reportDiagnostics } from './diagnostics.ts'
 import { findMainRepoRoot } from './git.ts'
 import { buildWorktreePlan } from './plan.ts'
 import { provisionWorktree } from './provision.ts'
@@ -119,8 +118,7 @@ export const up = async (argv: string[], deps: EngineDeps) => {
     throw new Error('plugin invocation: could not derive the target repo from the plugin context (refusing to fall back to the plugin repo)')
   }
   const mainRepoRoot = findMainRepoRoot(target ?? process.cwd())
-  const { name: repoName, config: repoConfig, diagnostics } = await resolveRepoConfig(mainRepoRoot, pluginConfigDir())
-  reportDiagnostics(diagnostics, warn)
+  const { name: repoName, config: repoConfig } = await resolveRepoConfig(mainRepoRoot, pluginConfigDir(), warn)
 
   if (options.interactive) {
     const answers = await askInteractively(repoConfig, repoName, log)

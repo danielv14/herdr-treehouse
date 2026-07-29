@@ -1,6 +1,7 @@
 import { existsSync, realpathSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, join } from 'node:path'
+import { reportDiagnostics } from './diagnostics.ts'
 
 export type PaneConfig = {
   split?: 'down' | 'right'
@@ -114,10 +115,12 @@ const LOCAL_SHAPE: Shape = Object.fromEntries(
 // Validation
 // ---------------------------------------------------------------------------
 
-// Diagnostics are returned as data so tests can assert on them and the printing
-// stays at the call site (see reportDiagnostics in diagnostics.ts). Unknown keys
-// are warnings - never fatal, the config still works. A wrong value shape is an
-// error: guessing what was meant is how "false" started dev servers.
+// The validators return diagnostics as data so tests can assert on them; what a
+// diagnostic means for a run is diagnostics.ts's decision, applied inside the
+// resolvers below so no caller can obtain a usable config while an unreported
+// error sits in the data. Unknown keys are warnings - never fatal, the config
+// still works. A wrong value shape is an error: guessing what was meant is how
+// "false" started dev servers.
 export type Diagnostic = {
   severity: 'warning' | 'error'
   message: string
@@ -413,11 +416,14 @@ export const diagnosticsForRepo = (
 
 // Config for a repo, layered lowest to highest: [defaults] from the central
 // config.toml, then its [repos.X] entry, then a repo-local .treehouse.toml at
-// the main checkout root.
+// the main checkout root. Reports its own diagnostics: the returned config is
+// either usable or the run has already stopped, so "diagnostics existed but
+// nobody looked" is not expressible at a call site.
 export const resolveRepoConfig = async (
   mainRepoRoot: string,
   configDir: string,
-): Promise<{ name: string; config: RepoConfig; diagnostics: Diagnostic[] }> => {
+  warn: (message: string) => void,
+): Promise<{ name: string; config: RepoConfig }> => {
   const { config: loaded, diagnostics } = await loadConfig(configDir)
   const entry = findRepoEntry(loaded.repos, mainRepoRoot)
   const name = entry?.[0] ?? basename(mainRepoRoot)
@@ -429,5 +435,20 @@ export const resolveRepoConfig = async (
     diagnostics.push(...local.diagnostics)
     config = { ...config, ...local.config, root: mainRepoRoot }
   }
-  return { name, config, diagnostics: diagnosticsForRepo(diagnostics, entry?.[0]) }
+  reportDiagnostics(diagnosticsForRepo(diagnostics, entry?.[0]), warn)
+  return { name, config }
+}
+
+// Onboard's view of the central config: which entry (if any) already claims the
+// checkout, with the same demote-and-report policy as resolveRepoConfig, so a
+// broken block for another repo cannot block onboarding this one.
+export const findConfiguredEntry = async (
+  configDir: string,
+  mainRepoRoot: string,
+  warn: (message: string) => void,
+): Promise<[string, RepoConfig] | undefined> => {
+  const { config, diagnostics } = await loadConfig(configDir)
+  const entry = findRepoEntry(config.repos, mainRepoRoot)
+  reportDiagnostics(diagnosticsForRepo(diagnostics, entry?.[0]), warn)
+  return entry
 }

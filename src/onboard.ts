@@ -1,9 +1,8 @@
 import { appendFileSync, existsSync, mkdirSync, readdirSync } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
 import { parseFlags, type CommandSpec } from './cli.ts'
-import { LOCAL_CONFIG_FILE, configPath, diagnosticsForRepo, findRepoEntry, loadConfig } from './config.ts'
+import { LOCAL_CONFIG_FILE, configPath, findConfiguredEntry } from './config.ts'
 import { resolveDeps, type EngineDeps } from './deps.ts'
-import { reportDiagnostics } from './diagnostics.ts'
 import { findMainRepoRoot } from './git.ts'
 
 export const ONBOARD_COMMAND: CommandSpec = {
@@ -106,11 +105,7 @@ export const onboard = async (argv: string[], deps: EngineDeps) => {
   // resolution matches: a block keyed differently from the directory still
   // configures this repo, and appending a second one would leave two blocks
   // fighting over it.
-  const existing = await loadConfig(configDir)
-  const configuredEntry = findRepoEntry(existing.config.repos, repoRoot)
-  // Another repo's broken block is not this repo's problem; onboard only needs
-  // the block names out of the file.
-  reportDiagnostics(diagnosticsForRepo(existing.diagnostics, configuredEntry?.[0]), warn)
+  const configuredEntry = await findConfiguredEntry(configDir, repoRoot, warn)
   if (configuredEntry) {
     const asKey = configuredEntry[0] === repoName ? '' : ` as [repos.${configuredEntry[0]}]`
     throw new Error(`"${repoName}" is already configured${asKey} in ${centralPath} (remove that block first if you are moving it to ${LOCAL_CONFIG_FILE})`)
