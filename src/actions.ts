@@ -24,8 +24,10 @@ export const POPUP_ENTRYPOINTS = {
   down: { entrypoint: 'down-interactive', prefer: 'pane' },
 } as const
 
+// Object.hasOwn, not `in`: the prototype chain would let 'toString' through and
+// destructure into an --entrypoint undefined instead of this guard's error.
 const isActionName = (name: string | undefined): name is keyof typeof POPUP_ENTRYPOINTS =>
-  name !== undefined && name in POPUP_ENTRYPOINTS
+  name !== undefined && Object.hasOwn(POPUP_ENTRYPOINTS, name)
 
 export const action = async (argv: string[], deps: EngineDeps) => {
   const { tabs, env, warn } = resolveDeps(deps)

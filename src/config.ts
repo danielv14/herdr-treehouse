@@ -141,8 +141,13 @@ export type RepoProposal = {
 // namespaces them under [repos.X] and needs `root` to find the repo; a
 // repo-local .treehouse.toml is already at its repo, so it drops both. Scalars
 // stay above the pane table: TOML would otherwise read them as pane keys.
+// TOML bare keys are letters, digits, dashes and underscores; anything else
+// (dots, spaces) needs quoting. JSON string escapes are a subset of TOML basic
+// string escapes, so JSON.stringify renders a valid TOML string either way.
+const BARE_KEY = /^[A-Za-z0-9_-]+$/
+
 export const renderProposedBlock = (proposal: RepoProposal, home: 'central' | 'local'): string => {
-  const tomlKey = proposal.name.includes('.') ? JSON.stringify(proposal.name) : proposal.name
+  const tomlKey = BARE_KEY.test(proposal.name) ? proposal.name : JSON.stringify(proposal.name)
   const head =
     home === 'local'
       ? [
@@ -150,20 +155,20 @@ export const renderProposedBlock = (proposal: RepoProposal, home: 'central' | 'l
           '# central plugin config, minus the wrapper and `root`. Keep scalar keys above',
           '# [[panes]] or TOML reads them as pane keys.',
         ]
-      : [`[repos.${tomlKey}]`, `root = "${proposal.root}"`]
+      : [`[repos.${tomlKey}]`, `root = ${JSON.stringify(proposal.root)}`]
   return [
     ...head,
     `# worktree_dir = "${DEFAULT_WORKTREE_DIR.replace('{repo}', proposal.name)}"  # this is the default; set it only for a different layout`,
     `# base = "${DEFAULT_BASE}"`,
     `# bootstrap = ["path/to/bootstrap.sh", "--dir", "{worktree}", "{branch}", "{targets...}"]`,
     proposal.installCommand
-      ? `setup = ["${proposal.installCommand}"]`
+      ? `setup = [${JSON.stringify(proposal.installCommand)}]`
       : `# setup = ["npm ci"]  # commands run in a freshly created worktree`,
     '',
     home === 'local' ? '[[panes]]' : `[[repos.${tomlKey}.panes]]`,
     `split = "${PANE_DEFAULTS.split}"`,
     'label = "dev"',
-    proposal.devCommand ? `command = "${proposal.devCommand}"` : '# command = "npm run dev"',
+    proposal.devCommand ? `command = ${JSON.stringify(proposal.devCommand)}` : '# command = "npm run dev"',
     `autostart = ${PANE_DEFAULTS.autostart}`,
   ].join('\n')
 }
@@ -452,8 +457,11 @@ export const findRepoEntry = (
 
 // A broken block in some other repo's config must not stop work in this one: a
 // typo in [repos.b] would otherwise break every command for repo a, including
-// the worktree.created hook. Pass the resolved repo name, or undefined when no
-// single repo is in scope.
+// the worktree.created hook. Pass the resolved repo name: the matched entry's
+// key, falling back to the checkout's directory name, so a block that would
+// configure this repo but broke its own `root` (the match key) cannot demote
+// itself to "another repo's block" and slip through. Undefined means no single
+// repo is in scope.
 export const diagnosticsForRepo = (
   diagnostics: Diagnostic[],
   repoName: string | undefined,
@@ -492,7 +500,7 @@ export const resolveRepoConfig = async (
     diagnostics.push(...local.diagnostics)
     config = { ...config, ...local.config, root: mainRepoRoot }
   }
-  reportDiagnostics(diagnosticsForRepo(diagnostics, entry?.[0]), warn)
+  reportDiagnostics(diagnosticsForRepo(diagnostics, name), warn)
   return { name, config }
 }
 
@@ -500,12 +508,12 @@ export const resolveRepoConfig = async (
 // checkout, with the same demote-and-report policy as resolveRepoConfig, so a
 // broken block for another repo cannot block onboarding this one.
 export const findConfiguredEntry = async (
-  configDir: string,
   mainRepoRoot: string,
+  configDir: string,
   warn: (message: string) => void,
 ): Promise<[string, RepoConfig] | undefined> => {
   const { config, diagnostics } = await loadConfig(configDir)
   const entry = findRepoEntry(config.repos, mainRepoRoot)
-  reportDiagnostics(diagnosticsForRepo(diagnostics, entry?.[0]), warn)
+  reportDiagnostics(diagnosticsForRepo(diagnostics, entry?.[0] ?? basename(mainRepoRoot)), warn)
   return entry
 }

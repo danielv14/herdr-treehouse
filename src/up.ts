@@ -2,7 +2,7 @@ import { branchFromUrl } from './branch.ts'
 import { parseFlags, type CommandSpec } from './cli.ts'
 import { PANE_DEFAULTS, resolveRepoConfig, type RepoConfig } from './config.ts'
 import { invocationTargetPath, isPluginInvocation, readInvocationContext } from './context.ts'
-import { resolveDeps, type EngineDeps } from './deps.ts'
+import { resolveDeps, type Ask, type EngineDeps } from './deps.ts'
 import { findMainRepoRoot } from './git.ts'
 import { bootstrapTakesTargets, buildWorktreePlan } from './plan.ts'
 import { provisionWorktree } from './provision.ts'
@@ -67,7 +67,7 @@ const readOptions = (argv: string[]): UpOptions => {
 const askInteractively = async (
   repoConfig: RepoConfig,
   repoName: string,
-  io: { log: (message: string) => void; ask: (question: string) => Promise<string> },
+  io: { log: (message: string) => void; ask: Ask },
 ): Promise<{ branch: string; targets: string[] }> => {
   io.log(`New worktree tab in ${repoName}\n`)
   const branch = (await io.ask('Branch name (e.g. ABC-1234/fix-thing): ')).trim()

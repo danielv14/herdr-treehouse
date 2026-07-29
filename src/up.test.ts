@@ -272,7 +272,9 @@ describe('interactive popup', () => {
     expect(fake.commands()[1]).toContain('--focus')
   })
 
-  test('asks for targets when the bootstrap takes them, comma-splitting the answer', async () => {
+  // A bootstrap that creates the worktree and records the targets it was
+  // handed, so the tests can assert what actually reached it.
+  const writeTargetsBootstrap = () => {
     const script = join(repo.parent, 'bootstrap.sh')
     writeFileSync(
       script,
@@ -282,6 +284,10 @@ describe('interactive popup', () => {
       { mode: 0o755 },
     )
     writeLocalConfig(`bootstrap = ["${script}", "{root}", "{worktree}", "{branch}", "{targets...}"]\n`)
+  }
+
+  test('asks for targets when the bootstrap takes them, comma-splitting the answer', async () => {
+    writeTargetsBootstrap()
     const fake = createFakeHerdr(RESPONSES)
     const asked: string[] = []
     await up(
@@ -296,15 +302,7 @@ describe('interactive popup', () => {
   })
 
   test('an empty targets answer passes no targets to the bootstrap', async () => {
-    const script = join(repo.parent, 'bootstrap.sh')
-    writeFileSync(
-      script,
-      '#!/usr/bin/env bash\nset -e\nroot="$1"; worktree="$2"; branch="$3"; shift 3\n' +
-        'git -C "$root" worktree add "$worktree" -b "$branch" --no-track master --quiet\n' +
-        'echo "$@" > "$worktree/targets.txt"\n',
-      { mode: 0o755 },
-    )
-    writeLocalConfig(`bootstrap = ["${script}", "{root}", "{worktree}", "{branch}", "{targets...}"]\n`)
+    writeTargetsBootstrap()
     const fake = createFakeHerdr(RESPONSES)
     await up(['--repo', repo.root, '--interactive', '--no-agent'], interactiveDeps(fake, ['ABC-9/fix', '  '], []))
 
@@ -351,5 +349,18 @@ command = "npm run dev --prefix {wortkree}"
     await up(['--repo', repo.root, '--branch', 'ABC-1/fix', '--no-agent'], deps(fake))
     expect(logged.join('\n')).toContain("another repo's block, ignored here")
     expect(existsSync(join(repo.parent, 'my-repo-abc-1'))).toBe(true)
+  })
+
+  test('a block keyed like this repo cannot slip through by breaking its own root', async () => {
+    // `root` is the match key, so a block that broke it matches nothing and
+    // would demote its own errors to "another repo's block"; the directory-name
+    // fallback keeps them fatal here instead of running unconfigured.
+    writeFileSync(join(configDir, 'config.toml'), `[repos.my-repo]\nsetup = "npm ci"\n`)
+    const fake = createFakeHerdr(RESPONSES)
+    await expectRejection(
+      up(['--repo', repo.root, '--branch', 'ABC-1/fix', '--no-agent'], deps(fake)),
+      /invalid config:.*missing required key "root"/s,
+    )
+    expect(existsSync(join(repo.parent, 'my-repo-abc-1'))).toBe(false)
   })
 })

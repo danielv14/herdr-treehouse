@@ -9,20 +9,22 @@ import { createTabChoreography, pluginConfigDir, type TabChoreography } from './
 // The environment is one of those dependencies rather than a global reach: a
 // test constructs the world it wants instead of mutating process.env around
 // itself.
+export type Ask = (question: string) => Promise<string>
+
 export type EngineDeps = {
   invoke: HerdrInvoker
   env?: Environment
   sleep?: (ms: number) => Promise<void>
   log?: (message: string) => void
   warn?: (message: string) => void
-  ask?: (question: string) => Promise<string>
+  ask?: Ask
 }
 
 // Interactive input is a dependency like output: the popup's questions cross
 // the same resolved seam as its copy, so tests script answers and record what
 // was asked. One readline per question, closed right away, so nothing holds
 // stdin open between asks.
-const askViaStdin = async (question: string): Promise<string> => {
+const askViaStdin: Ask = async (question) => {
   const { createInterface } = await import('node:readline/promises')
   const readline = createInterface({ input: process.stdin, output: process.stdout })
   try {
@@ -39,7 +41,7 @@ export type ResolvedDeps = {
   insideHerdr: boolean
   log: (message: string) => void
   warn: (message: string) => void
-  ask: (question: string) => Promise<string>
+  ask: Ask
   // Lazy: resolving may ask Herdr, and most commands never need the config dir.
   pluginConfigDir: () => string
 }

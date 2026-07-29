@@ -1,10 +1,10 @@
 import type { Diagnostic } from './config.ts'
 
-// Call-site half of config validation: validation returns diagnostics as data,
-// this decides what they mean for a run. Unknown keys are printed and the run
-// continues; a wrong value shape stops it, because the alternative is guessing
-// (a quoted "false" that starts a dev server, a string setup that runs one
-// command per character).
+// The severity decision of config validation: the validators return diagnostics
+// as data, and the resolvers in config.ts hand them here before returning.
+// Unknown keys are printed and the run continues; a wrong value shape stops it,
+// because the alternative is guessing (a quoted "false" that starts a dev
+// server, a string setup that runs one command per character).
 export const reportDiagnostics = (
   diagnostics: Diagnostic[],
   warn: (message: string) => void,

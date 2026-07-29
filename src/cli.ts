@@ -97,11 +97,23 @@ export const parseFlags = (command: CommandSpec, argv: string[]): ParsedFlags =>
 // Whether this invocation runs in the interactive popup, derived from the
 // command's own flag declaration rather than a literal '--interactive' at the
 // call site. Tolerates malformed argv on purpose: the entrypoint needs the
-// answer on the error path too, where parseFlags would throw.
+// answer on the error path too, where parseFlags would throw. Value flags
+// consume their argument, so a value that happens to equal the flag never
+// counts as it.
 export const isInteractiveInvocation = (command: CommandSpec | undefined, argv: string[]): boolean => {
-  const spec = command?.flags.find((flag) => flag.key === 'interactive')
+  // An unknown command has no declarations to consult, and its popup is the one
+  // that most needs holding open: a stale linked manifest naming a renamed
+  // command would otherwise print the error and close before it can be read.
+  if (!command) return argv.includes('--interactive')
+  const spec = command.flags.find((flag) => flag.key === 'interactive')
   if (!spec) return false
-  return argv.some((arg) => arg === spec.flag || arg === spec.alias)
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index]
+    if (arg === spec.flag || arg === spec.alias) return true
+    const known = command.flags.find((flag) => flag.flag === arg || flag.alias === arg)
+    if (known && known.kind !== 'boolean') index += 1
+  }
+  return false
 }
 
 const flagLabel = (spec: FlagSpec): string => {
