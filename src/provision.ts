@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import type { RepoConfig } from './config.ts'
-import { branchExists, git } from './git.ts'
+import { addWorktree } from './git.ts'
 import type { WorktreePlan } from './plan.ts'
 
 // One implementation of "make this worktree exist and be usable", shared by
@@ -55,7 +55,7 @@ export const provisionWorktree = (
   } else if (existedBefore) {
     log(`worktree already exists: ${plan.worktree}`)
   } else {
-    createWorktree(plan, warn)
+    addWorktree(plan.root, { path: plan.worktree, branch: plan.branch, base: plan.base, warn })
   }
 
   if (!existsSync(plan.worktree)) {
@@ -76,26 +76,6 @@ export const provisionWorktree = (
   }
   runSetup(plan, repoConfig, log)
   return { created: true, setupRan: (repoConfig.setup?.length ?? 0) > 0 }
-}
-
-const createWorktree = (plan: WorktreePlan, warn: (message: string) => void) => {
-  if (branchExists(plan.root, plan.branch)) {
-    git(plan.root, ['worktree', 'add', plan.worktree, plan.branch])
-    return
-  }
-  // Refresh the base ref so new branches don't silently fork from a stale
-  // fetch. Offline is survivable; branching from the local ref then.
-  const baseMatch = plan.base.match(/^([^/]+)\/(.+)$/)
-  if (baseMatch) {
-    try {
-      git(plan.root, ['fetch', baseMatch[1], baseMatch[2]])
-    } catch (error) {
-      warn(
-        `warning: could not fetch ${plan.base}, branching from the local ref (${error instanceof Error ? error.message : error})`,
-      )
-    }
-  }
-  git(plan.root, ['worktree', 'add', plan.worktree, '-b', plan.branch, '--no-track', plan.base])
 }
 
 const runSetup = (

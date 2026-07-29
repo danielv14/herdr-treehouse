@@ -1,6 +1,11 @@
 import { spawnSync } from 'node:child_process'
 
-export const git = (cwd: string, args: string[]): string => {
+// The one place that knows git, the way tabs.ts is the one place that knows
+// Herdr: argv, ref shapes, and the flags that must NOT be there. Commands ask
+// questions (inspectCheckout) and name intents (addWorktree, removeWorktree);
+// no raw git argv appears outside this module.
+
+const git = (cwd: string, args: string[]): string => {
   const result = spawnSync('git', args, { cwd, encoding: 'utf8' })
   // A spawn that never reached git (a cwd that does not exist, which the
   // worktree.created hook can be handed) leaves status and both streams null,
@@ -12,8 +17,6 @@ export const git = (cwd: string, args: string[]): string => {
   return result.stdout.trim()
 }
 
-export const findRepoRoot = (cwd: string) => git(cwd, ['rev-parse', '--show-toplevel'])
-
 // The main checkout is always the first entry in `git worktree list`.
 export const findMainRepoRoot = (cwd: string): string => {
   const porcelain = git(cwd, ['worktree', 'list', '--porcelain'])
@@ -23,16 +26,68 @@ export const findMainRepoRoot = (cwd: string): string => {
   return mainRoot
 }
 
-export const isLinkedWorktree = (cwd: string) => findRepoRoot(cwd) !== findMainRepoRoot(cwd)
+export type Checkout = {
+  // Toplevel of the checkout `path` is inside: the worktree root when linked,
+  // the main root otherwise.
+  root: string
+  mainRoot: string
+  isLinked: boolean
+  // `status --porcelain` lines; empty means clean.
+  dirtyFiles: string[]
+}
 
-export const branchExists = (repoRoot: string, branch: string): boolean => {
+// Everything a teardown needs to know about a checkout, in one call.
+export const inspectCheckout = (path: string): Checkout => {
+  const root = git(path, ['rev-parse', '--show-toplevel'])
+  const mainRoot = findMainRepoRoot(path)
+  const status = git(root, ['status', '--porcelain'])
+  return {
+    root,
+    mainRoot,
+    isLinked: root !== mainRoot,
+    dirtyFiles: status === '' ? [] : status.split('\n'),
+  }
+}
+
+const branchExists = (repoRoot: string, branch: string): boolean => {
   const result = spawnSync('git', ['show-ref', '--verify', '--quiet', `refs/heads/${branch}`], {
     cwd: repoRoot,
   })
   return result.status === 0
 }
 
-export const dirtyFiles = (worktreePath: string): string[] => {
-  const status = git(worktreePath, ['status', '--porcelain'])
-  return status === '' ? [] : status.split('\n')
+export type AddWorktreeRequest = {
+  path: string
+  branch: string
+  base: string
+  warn: (message: string) => void
+}
+
+// Create the worktree for `branch`. An existing branch is reused as-is; a new
+// one branches from `base`, fetching the remote side of a remote-tracking base
+// first so it does not fork from a stale fetch. Offline is survivable: warn and
+// branch from the local ref. --no-track, so a bare `git push` in the worktree
+// can never target the base branch.
+export const addWorktree = (root: string, request: AddWorktreeRequest) => {
+  if (branchExists(root, request.branch)) {
+    git(root, ['worktree', 'add', request.path, request.branch])
+    return
+  }
+  const remote = request.base.match(/^([^/]+)\/(.+)$/)
+  if (remote) {
+    try {
+      git(root, ['fetch', remote[1], remote[2]])
+    } catch (error) {
+      request.warn(
+        `warning: could not fetch ${request.base}, branching from the local ref (${error instanceof Error ? error.message : error})`,
+      )
+    }
+  }
+  git(root, ['worktree', 'add', request.path, '-b', request.branch, '--no-track', request.base])
+}
+
+// Never --force: refusing on dirt is the safety property `down` promises, and
+// git.test.ts pins that a dirty worktree survives this call.
+export const removeWorktree = (root: string, worktreePath: string) => {
+  git(root, ['worktree', 'remove', worktreePath])
 }

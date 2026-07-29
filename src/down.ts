@@ -2,7 +2,7 @@ import { resolve } from 'node:path'
 import { parseFlags, type CommandSpec } from './cli.ts'
 import { callerPaneId, callerTabId, invocationTargetPath } from './context.ts'
 import { resolveDeps, type EngineDeps } from './deps.ts'
-import { dirtyFiles, findMainRepoRoot, findRepoRoot, git, isLinkedWorktree } from './git.ts'
+import { inspectCheckout, removeWorktree } from './git.ts'
 
 export const DOWN_COMMAND: CommandSpec = {
   name: 'down',
@@ -30,21 +30,21 @@ export const down = async (argv: string[], deps: EngineDeps) => {
     invocationTargetPath({ explicit: flags.value('path'), prefer: 'pane', env }) ?? process.cwd(),
   )
 
-  if (!isLinkedWorktree(worktreePath)) {
+  const checkout = inspectCheckout(worktreePath)
+  if (!checkout.isLinked) {
     throw new Error(`${worktreePath} is not a linked worktree (refusing to touch a main checkout)`)
   }
-  const worktreeRoot = findRepoRoot(worktreePath)
-  const mainRepoRoot = findMainRepoRoot(worktreePath)
+  const worktreeRoot = checkout.root
+  const mainRepoRoot = checkout.mainRoot
 
   if (flags.flag('interactive') && !(await confirmInteractively(worktreeRoot))) {
     log('Aborted.')
     return
   }
 
-  const dirty = dirtyFiles(worktreeRoot)
-  if (dirty.length > 0) {
+  if (checkout.dirtyFiles.length > 0) {
     throw new Error(
-      `worktree has uncommitted changes, refusing to remove:\n${dirty.join('\n')}\n` +
+      `worktree has uncommitted changes, refusing to remove:\n${checkout.dirtyFiles.join('\n')}\n` +
         'Commit, stash, or clean up first (treehouse never uses --force).',
     )
   }
@@ -79,7 +79,7 @@ export const down = async (argv: string[], deps: EngineDeps) => {
   // spawning anything from a deleted cwd fails with ENOENT. Move out first.
   process.chdir(mainRepoRoot)
 
-  git(mainRepoRoot, ['worktree', 'remove', worktreeRoot])
+  removeWorktree(mainRepoRoot, worktreeRoot)
   log(`removed worktree: ${worktreeRoot}`)
   log('branch left in place (cleaned up via PR merge as usual)')
 
