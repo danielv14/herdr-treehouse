@@ -95,7 +95,7 @@ const paneSpecs = (repoConfig: RepoConfig, expand: (template: string, where?: st
   }))
 
 export const up = async (argv: string[], deps: EngineDeps) => {
-  const { tabs, env, insideHerdr, log, warn } = resolveDeps(deps)
+  const { tabs, env, insideHerdr, log, warn, pluginConfigDir } = resolveDeps(deps)
   const options = readOptions(argv)
   // A clicked link and an interactive answer both mean "take me there", which
   // is why either one focuses the tab that a bare --branch leaves in the
@@ -119,7 +119,7 @@ export const up = async (argv: string[], deps: EngineDeps) => {
     throw new Error('plugin invocation: could not derive the target repo from the plugin context (refusing to fall back to the plugin repo)')
   }
   const mainRepoRoot = findMainRepoRoot(target ?? process.cwd())
-  const { name: repoName, config: repoConfig, diagnostics } = await resolveRepoConfig(mainRepoRoot, deps.invoke, env)
+  const { name: repoName, config: repoConfig, diagnostics } = await resolveRepoConfig(mainRepoRoot, pluginConfigDir())
   reportDiagnostics(diagnostics, warn)
 
   if (options.interactive) {

@@ -32,7 +32,7 @@ export const bootstrap = async (argv: string[], deps: EngineDeps) => {
 // treehouse` can see it, and the raw payload is logged on every run so a shape
 // change shows up before the fields silently read as absent.
 export const bootstrapFromEvent = async (deps: EngineDeps) => {
-  const { env, warn: log } = resolveDeps(deps)
+  const { env, warn: log, pluginConfigDir } = resolveDeps(deps)
   const { raw, path: worktreePath, branch } = readWorktreeCreatedEvent(env)
   if (!raw) {
     log('no HERDR_PLUGIN_EVENT_JSON in environment, nothing to do')
@@ -46,7 +46,7 @@ export const bootstrapFromEvent = async (deps: EngineDeps) => {
   }
 
   const mainRepoRoot = findMainRepoRoot(worktreePath)
-  const { name: repoName, config: repoConfig, diagnostics } = await resolveRepoConfig(mainRepoRoot, deps.invoke, env)
+  const { name: repoName, config: repoConfig, diagnostics } = await resolveRepoConfig(mainRepoRoot, pluginConfigDir())
   reportDiagnostics(diagnostics, log)
   if (!repoConfig.bootstrap?.length && !repoConfig.setup?.length) {
     log(`no bootstrap or setup configured for ${repoName}, skipping`)

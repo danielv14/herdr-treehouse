@@ -88,14 +88,15 @@ const buildBlock = (repoName: string, repoRoot: string, scan: RepoScan, local: b
 }
 
 export const onboard = async (argv: string[], deps: EngineDeps) => {
-  const { env, log, warn } = resolveDeps(deps)
+  const { log, warn, pluginConfigDir } = resolveDeps(deps)
   const flags = parseFlags(ONBOARD_COMMAND, argv)
   const apply = flags.flag('apply')
   const local = flags.flag('local')
   const repoRoot = findMainRepoRoot(process.cwd())
   const repoName = basename(repoRoot)
   const localPath = join(repoRoot, LOCAL_CONFIG_FILE)
-  const centralPath = configPath(deps.invoke, env)
+  const configDir = pluginConfigDir()
+  const centralPath = configPath(configDir)
 
   // Either location already configuring this repo means there is nothing to
   // onboard. Naming the file matters here: moving a repo between the two is a
@@ -105,7 +106,7 @@ export const onboard = async (argv: string[], deps: EngineDeps) => {
   // resolution matches: a block keyed differently from the directory still
   // configures this repo, and appending a second one would leave two blocks
   // fighting over it.
-  const existing = await loadConfig(deps.invoke, env)
+  const existing = await loadConfig(configDir)
   const configuredEntry = findRepoEntry(existing.config.repos, repoRoot)
   // Another repo's broken block is not this repo's problem; onboard only needs
   // the block names out of the file.

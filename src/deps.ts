@@ -1,6 +1,6 @@
 import type { Environment } from './context.ts'
 import { insideHerdr, type HerdrInvoker } from './herdr.ts'
-import { createTabChoreography, type TabChoreography } from './tabs.ts'
+import { createTabChoreography, pluginConfigDir, type TabChoreography } from './tabs.ts'
 
 // What the commands need from the outside world. Only `invoke` is required; the
 // rest have production defaults and exist so tests can drive the engine with no
@@ -24,6 +24,8 @@ export type ResolvedDeps = {
   insideHerdr: boolean
   log: (message: string) => void
   warn: (message: string) => void
+  // Lazy: resolving may ask Herdr, and most commands never need the config dir.
+  pluginConfigDir: () => string
 }
 
 export const resolveDeps = (deps: EngineDeps): ResolvedDeps => {
@@ -35,5 +37,6 @@ export const resolveDeps = (deps: EngineDeps): ResolvedDeps => {
     insideHerdr: insideHerdr(env),
     log: deps.log ?? console.log,
     warn: deps.warn ?? console.error,
+    pluginConfigDir: () => pluginConfigDir(deps.invoke, env),
   }
 }

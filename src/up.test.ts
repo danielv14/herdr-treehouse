@@ -183,6 +183,19 @@ command = "npm run dev"
     )
   })
 
+  test('a plain shell invocation resolves the config dir by asking Herdr', async () => {
+    // No HERDR_PLUGIN_CONFIG_DIR: only plugin-invoked processes get that handed
+    // to them, so this is the branch every `treehouse up` from a shell runs.
+    writeLocalConfig('base = "master"\n')
+    const fake = createFakeHerdr({ ...RESPONSES, 'plugin config-dir': configDir })
+    await up(['--repo', repo.root, '--branch', 'ABC-1/fix', '--no-agent'], {
+      ...deps(fake),
+      env: { HERDR_ENV: '1' },
+    })
+    expect(fake.commands()).toContain('plugin config-dir treehouse')
+    expect(existsSync(join(repo.parent, 'my-repo-abc-1'))).toBe(true)
+  })
+
   test('outside a Herdr session it refuses', async () => {
     await expectRejection(
       up(['--repo', repo.root, '--branch', 'ABC-1/fix'], {
