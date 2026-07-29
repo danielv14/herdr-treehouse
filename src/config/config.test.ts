@@ -159,7 +159,7 @@ setup = ["npm ci"]
 
 describe('the shipped example config', () => {
   test('validates without a single diagnostic', async () => {
-    const path = new URL('../config.example.toml', import.meta.url).pathname
+    const path = new URL('../../config.example.toml', import.meta.url).pathname
     const { config, diagnostics } = validateConfigFile(Bun.TOML.parse(await Bun.file(path).text()), path)
     expect(diagnostics).toEqual([])
     expect(config.repos['my-awesome-repo'].panes).toHaveLength(2)

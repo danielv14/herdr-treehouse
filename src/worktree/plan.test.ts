@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import { homedir } from 'node:os'
-import { DEFAULT_BASE, type RepoConfig } from './config.ts'
+import { DEFAULT_BASE, type RepoConfig } from '../config/config.ts'
 import { buildWorktreePlan } from './plan.ts'
 
 const MAIN = '/tmp/checkouts/my-repo'

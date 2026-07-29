@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import type { Environment } from './context.ts'
-import type { EngineDeps } from './deps.ts'
-import { createFakeHerdr, type FakeHerdr, type FakeResponses } from './testing/fakeHerdr.ts'
-import { expectRejection } from './testing/expectRejection.ts'
-import { createTempRepo, type TempRepo } from './testing/tempRepo.ts'
+import type { Environment } from '../herdr/context.ts'
+import type { EngineDeps } from '../deps.ts'
+import { createFakeHerdr, type FakeHerdr, type FakeResponses } from '../testing/fakeHerdr.ts'
+import { expectRejection } from '../testing/expectRejection.ts'
+import { createTempRepo, type TempRepo } from '../testing/tempRepo.ts'
 import { up } from './up.ts'
 
 // Drives `up` end to end with no Herdr session and no HERDR_ENV of its own: the

@@ -1,6 +1,6 @@
 import { isAbsolute, resolve } from 'node:path'
 import { slugFromBranch, ticketFromBranch } from './branch.ts'
-import { DEFAULT_BASE, DEFAULT_WORKTREE_DIR, expandHome, type RepoConfig } from './config.ts'
+import { DEFAULT_BASE, DEFAULT_WORKTREE_DIR, expandHome, type RepoConfig } from '../config/config.ts'
 
 // Everything derived about one worktree, resolved in a single call: callers ask
 // once and read fields off the result. Pure: no filesystem, no git, no Herdr.

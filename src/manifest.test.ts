@@ -1,9 +1,9 @@
 import { describe, expect, test } from 'bun:test'
 import { join } from 'node:path'
-import { POPUP_ENTRYPOINTS } from './actions.ts'
+import { POPUP_ENTRYPOINTS } from './commands/action.ts'
 import { parseFlags } from './cli.ts'
-import { findCommand } from './commands.ts'
-import { PLUGIN_ID } from './tabs.ts'
+import { findCommand } from './commands/registry.ts'
+import { PLUGIN_ID } from './herdr/tabs.ts'
 
 // The manifest and the engine hold the same knowledge on both sides: Herdr
 // routes by the manifest while the engine answers by its own declarations. This

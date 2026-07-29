@@ -1,7 +1,7 @@
 import { isInteractiveInvocation } from './cli.ts'
-import { commandHelp, findCommand, help } from './commands.ts'
+import { commandHelp, findCommand, help } from './commands/registry.ts'
 import { resolveDeps, type EngineDeps } from './deps.ts'
-import { createHerdrInvoker } from './herdr.ts'
+import { createHerdrInvoker } from './herdr/invoker.ts'
 
 // Takes argv and deps rather than reading the globals, so it can be imported
 // and driven in tests; the process wiring below only runs as the entrypoint.

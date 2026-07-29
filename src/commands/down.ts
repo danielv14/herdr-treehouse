@@ -1,8 +1,8 @@
 import { resolve } from 'node:path'
-import { parseFlags, type CommandSpec } from './cli.ts'
-import { callerPaneId, callerTabId, invocationTargetPath } from './context.ts'
-import { resolveDeps, type Ask, type EngineDeps } from './deps.ts'
-import { inspectCheckout, removeWorktree } from './git.ts'
+import { parseFlags, type CommandSpec } from '../cli.ts'
+import { callerPaneId, callerTabId, invocationTargetPath } from '../herdr/context.ts'
+import { resolveDeps, type Ask, type EngineDeps } from '../deps.ts'
+import { inspectCheckout, removeWorktree } from '../worktree/git.ts'
 
 export const DOWN_COMMAND: CommandSpec = {
   name: 'down',

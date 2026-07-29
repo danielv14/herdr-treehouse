@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
-import { action } from './actions.ts'
-import type { Environment } from './context.ts'
-import { expectRejection } from './testing/expectRejection.ts'
-import { createFakeHerdr } from './testing/fakeHerdr.ts'
+import { action } from './action.ts'
+import type { Environment } from '../herdr/context.ts'
+import { expectRejection } from '../testing/expectRejection.ts'
+import { createFakeHerdr } from '../testing/fakeHerdr.ts'
 
 let warned: string[]
 let env: Environment

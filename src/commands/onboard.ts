@@ -1,9 +1,9 @@
 import { appendFileSync, existsSync, mkdirSync, readdirSync } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
-import { parseFlags, type CommandSpec } from './cli.ts'
-import { LOCAL_CONFIG_FILE, configPath, findConfiguredEntry, renderProposedBlock } from './config.ts'
-import { resolveDeps, type EngineDeps } from './deps.ts'
-import { findMainRepoRoot } from './git.ts'
+import { parseFlags, type CommandSpec } from '../cli.ts'
+import { LOCAL_CONFIG_FILE, configPath, findConfiguredEntry, renderProposedBlock } from '../config/config.ts'
+import { resolveDeps, type EngineDeps } from '../deps.ts'
+import { findMainRepoRoot } from '../worktree/git.ts'
 
 export const ONBOARD_COMMAND: CommandSpec = {
   name: 'onboard',

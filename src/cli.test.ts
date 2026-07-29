@@ -1,9 +1,9 @@
 import { describe, expect, test } from 'bun:test'
 import { isInteractiveInvocation, parseFlags } from './cli.ts'
-import { COMMANDS, commandHelp, help } from './commands.ts'
-import { DOWN_COMMAND } from './down.ts'
-import { ONBOARD_COMMAND } from './onboard.ts'
-import { UP_COMMAND } from './up.ts'
+import { COMMANDS, commandHelp, help } from './commands/registry.ts'
+import { DOWN_COMMAND } from './commands/down.ts'
+import { ONBOARD_COMMAND } from './commands/onboard.ts'
+import { UP_COMMAND } from './commands/up.ts'
 
 describe('up flags', () => {
   test('value flags, aliases and booleans', () => {

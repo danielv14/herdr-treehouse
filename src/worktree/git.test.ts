@@ -3,7 +3,7 @@ import { spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { addWorktree, inspectCheckout, removeWorktree } from './git.ts'
-import { createTempRepo, type TempRepo } from './testing/tempRepo.ts'
+import { createTempRepo, type TempRepo } from '../testing/tempRepo.ts'
 
 // These behaviours used to be reachable only through the commands; now the git
 // module answers for them at its own interface, against real repos.
