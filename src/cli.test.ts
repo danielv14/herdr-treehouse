@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { parseFlags } from './cli.ts'
+import { isInteractiveInvocation, parseFlags } from './cli.ts'
 import { COMMANDS, commandHelp, help } from './commands.ts'
 import { DOWN_COMMAND } from './down.ts'
 import { ONBOARD_COMMAND } from './onboard.ts'
@@ -86,6 +86,26 @@ describe('onboard flags', () => {
 
   test('unknown flags name the command', () => {
     expect(() => parseFlags(ONBOARD_COMMAND, ['-a'])).toThrow('unknown option for onboard: -a')
+  })
+})
+
+describe('isInteractiveInvocation', () => {
+  // What holds the popup pane open, derived from the declarations instead of a
+  // literal '--interactive' at the entrypoint.
+  test('true when the command declares the flag and argv carries it', () => {
+    expect(isInteractiveInvocation(UP_COMMAND, ['--interactive'])).toBe(true)
+    expect(isInteractiveInvocation(DOWN_COMMAND, ['--path', 'x', '--interactive'])).toBe(true)
+  })
+
+  test('false without the flag in argv, for an unknown command, and for a command without the flag', () => {
+    expect(isInteractiveInvocation(UP_COMMAND, ['--branch', 'x'])).toBe(false)
+    expect(isInteractiveInvocation(undefined, ['--interactive'])).toBe(false)
+    expect(isInteractiveInvocation(ONBOARD_COMMAND, ['--interactive'])).toBe(false)
+  })
+
+  test('answers even for argv that would not parse, so the error path can hold the popup open', () => {
+    expect(() => parseFlags(UP_COMMAND, ['--nope', '--interactive'])).toThrow()
+    expect(isInteractiveInvocation(UP_COMMAND, ['--nope', '--interactive'])).toBe(true)
   })
 })
 

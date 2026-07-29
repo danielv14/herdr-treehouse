@@ -247,6 +247,72 @@ describe('invocation context', () => {
   })
 })
 
+describe('interactive popup', () => {
+  // Scripted answers in, recorded questions out: the same leverage the fake
+  // Herdr gives the tab choreography.
+  const interactiveDeps = (fake: FakeHerdr, answers: string[], asked: string[]): EngineDeps => ({
+    ...deps(fake),
+    ask: async (question) => {
+      asked.push(question)
+      return answers.shift() ?? ''
+    },
+  })
+
+  test('asks for a branch, focuses the tab, and sends the copy through the log seam', async () => {
+    writeLocalConfig('base = "master"\n')
+    const fake = createFakeHerdr(RESPONSES)
+    const asked: string[] = []
+    await up(['--repo', repo.root, '--interactive', '--no-agent'], interactiveDeps(fake, [' ABC-9/fix-popup '], asked))
+
+    // No bootstrap takes targets here, so the branch question is the only one.
+    expect(asked).toEqual(['Branch name (e.g. ABC-1234/fix-thing): '])
+    expect(logged).toContain('New worktree tab in my-repo\n')
+    expect(existsSync(join(repo.parent, 'my-repo-abc-9'))).toBe(true)
+    // An interactive answer means "take me there", like a clicked link.
+    expect(fake.commands()[1]).toContain('--focus')
+  })
+
+  test('asks for targets when the bootstrap takes them, comma-splitting the answer', async () => {
+    const script = join(repo.parent, 'bootstrap.sh')
+    writeFileSync(
+      script,
+      '#!/usr/bin/env bash\nset -e\nroot="$1"; worktree="$2"; branch="$3"; shift 3\n' +
+        'git -C "$root" worktree add "$worktree" -b "$branch" --no-track master --quiet\n' +
+        'echo "$@" > "$worktree/targets.txt"\n',
+      { mode: 0o755 },
+    )
+    writeLocalConfig(`bootstrap = ["${script}", "{root}", "{worktree}", "{branch}", "{targets...}"]\n`)
+    const fake = createFakeHerdr(RESPONSES)
+    const asked: string[] = []
+    await up(
+      ['--repo', repo.root, '--interactive', '--no-agent'],
+      interactiveDeps(fake, ['ABC-9/fix', ' services/a, packages/b '], asked),
+    )
+
+    expect(asked[1]).toBe('Targets (comma-separated): ')
+    expect(logged.join('\n')).toContain('Targets: repo-relative dirs the bootstrap should install dependencies')
+    const targets = await Bun.file(join(repo.parent, 'my-repo-abc-9', 'targets.txt')).text()
+    expect(targets.trim()).toBe('services/a packages/b')
+  })
+
+  test('an empty targets answer passes no targets to the bootstrap', async () => {
+    const script = join(repo.parent, 'bootstrap.sh')
+    writeFileSync(
+      script,
+      '#!/usr/bin/env bash\nset -e\nroot="$1"; worktree="$2"; branch="$3"; shift 3\n' +
+        'git -C "$root" worktree add "$worktree" -b "$branch" --no-track master --quiet\n' +
+        'echo "$@" > "$worktree/targets.txt"\n',
+      { mode: 0o755 },
+    )
+    writeLocalConfig(`bootstrap = ["${script}", "{root}", "{worktree}", "{branch}", "{targets...}"]\n`)
+    const fake = createFakeHerdr(RESPONSES)
+    await up(['--repo', repo.root, '--interactive', '--no-agent'], interactiveDeps(fake, ['ABC-9/fix', '  '], []))
+
+    const targets = await Bun.file(join(repo.parent, 'my-repo-abc-9', 'targets.txt')).text()
+    expect(targets.trim()).toBe('')
+  })
+})
+
 describe('review fixes', () => {
   test('--prompt with --no-agent is refused rather than silently dropped', async () => {
     writeLocalConfig('base = "master"\n')

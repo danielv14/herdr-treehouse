@@ -163,6 +163,33 @@ describe('down', () => {
     expect(existsSync(worktree)).toBe(false)
   })
 
+  test('--interactive with a no answer aborts and keeps the worktree', async () => {
+    const asked: string[] = []
+    const fake = createFakeHerdr({})
+    await down(['--path', worktree, '--interactive'], {
+      ...deps(fake),
+      ask: async (question) => {
+        asked.push(question)
+        return 'n'
+      },
+    })
+    expect(asked).toEqual([`Remove worktree ${worktree} and close its tab? [y/N] `])
+    expect(logged).toContain('Aborted.')
+    expect(existsSync(worktree)).toBe(true)
+    expect(fake.calls).toHaveLength(0)
+  })
+
+  test('--interactive with a yes answer removes the worktree', async () => {
+    const fake = createFakeHerdr({
+      'worktree list': { source: { source_workspace_id: 'wA' } },
+      'pane list': paneList([{ pane_id: 'p1', tab_id: 't1', cwd: worktree }]),
+      'pane process-info': { process_info: { foreground_processes: [{ name: 'zsh' }] } },
+      'tab close': {},
+    })
+    await down(['--path', worktree, '--interactive'], { ...deps(fake), ask: async () => ' Y ' })
+    expect(existsSync(worktree)).toBe(false)
+  })
+
   test('the target path comes from the popup env convention when no --path is given', async () => {
     const fake = createFakeHerdr({ 'worktree list': {} })
     await down([], deps(fake, { TREEHOUSE_TARGET_PATH: worktree }))

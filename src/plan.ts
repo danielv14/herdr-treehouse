@@ -9,6 +9,12 @@ const PLACEHOLDERS = ['repo', 'branch', 'slug', 'ticket', 'id', 'worktree', 'roo
 
 const TARGETS_PLACEHOLDER = '{targets...}'
 
+// Whether a repo's bootstrap consumes targets, i.e. whether asking for any
+// makes sense. The placeholder itself stays private: this is the question
+// callers actually have.
+export const bootstrapTakesTargets = (repoConfig: RepoConfig): boolean =>
+  repoConfig.bootstrap?.includes(TARGETS_PLACEHOLDER) ?? false
+
 export type WorktreePlan = {
   repo: string
   branch: string

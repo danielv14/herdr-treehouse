@@ -15,6 +15,21 @@ export type EngineDeps = {
   sleep?: (ms: number) => Promise<void>
   log?: (message: string) => void
   warn?: (message: string) => void
+  ask?: (question: string) => Promise<string>
+}
+
+// Interactive input is a dependency like output: the popup's questions cross
+// the same resolved seam as its copy, so tests script answers and record what
+// was asked. One readline per question, closed right away, so nothing holds
+// stdin open between asks.
+const askViaStdin = async (question: string): Promise<string> => {
+  const { createInterface } = await import('node:readline/promises')
+  const readline = createInterface({ input: process.stdin, output: process.stdout })
+  try {
+    return await readline.question(question)
+  } finally {
+    readline.close()
+  }
 }
 
 export type ResolvedDeps = {
@@ -24,6 +39,7 @@ export type ResolvedDeps = {
   insideHerdr: boolean
   log: (message: string) => void
   warn: (message: string) => void
+  ask: (question: string) => Promise<string>
   // Lazy: resolving may ask Herdr, and most commands never need the config dir.
   pluginConfigDir: () => string
 }
@@ -37,6 +53,7 @@ export const resolveDeps = (deps: EngineDeps): ResolvedDeps => {
     insideHerdr: insideHerdr(env),
     log: deps.log ?? console.log,
     warn: deps.warn ?? console.error,
+    ask: deps.ask ?? askViaStdin,
     pluginConfigDir: () => pluginConfigDir(deps.invoke, env),
   }
 }

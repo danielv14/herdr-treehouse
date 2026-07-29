@@ -15,16 +15,16 @@ export const DOWN_COMMAND: CommandSpec = {
   ],
 }
 
-const confirmInteractively = async (worktreeRoot: string): Promise<boolean> => {
-  const { createInterface } = await import('node:readline/promises')
-  const readline = createInterface({ input: process.stdin, output: process.stdout })
-  const answer = await readline.question(`Remove worktree ${worktreeRoot} and close its tab? [y/N] `)
-  readline.close()
+const confirmInteractively = async (
+  worktreeRoot: string,
+  ask: (question: string) => Promise<string>,
+): Promise<boolean> => {
+  const answer = await ask(`Remove worktree ${worktreeRoot} and close its tab? [y/N] `)
   return answer.trim().toLowerCase() === 'y'
 }
 
 export const down = async (argv: string[], deps: EngineDeps) => {
-  const { tabs, env, insideHerdr, log } = resolveDeps(deps)
+  const { tabs, env, insideHerdr, log, ask } = resolveDeps(deps)
   const flags = parseFlags(DOWN_COMMAND, argv)
   const worktreePath = resolve(
     invocationTargetPath({ explicit: flags.value('path'), prefer: 'pane', env }) ?? process.cwd(),
@@ -37,7 +37,7 @@ export const down = async (argv: string[], deps: EngineDeps) => {
   const worktreeRoot = checkout.root
   const mainRepoRoot = checkout.mainRoot
 
-  if (flags.flag('interactive') && !(await confirmInteractively(worktreeRoot))) {
+  if (flags.flag('interactive') && !(await confirmInteractively(worktreeRoot, ask))) {
     log('Aborted.')
     return
   }
