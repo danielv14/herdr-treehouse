@@ -1,9 +1,26 @@
+import { expandHome } from './config.ts'
+import type { Environment } from './context.ts'
 import type { HerdrInvoker } from './herdr.ts'
 
 // The one place that knows Herdr: subcommand names, response shapes and the
 // version-specific quirks. Responses are decoded into typed values here, so
 // `up` and `down` read fields instead of digging through `any`, and Herdr drift
 // lands in one implementation.
+
+// How the engine names itself to Herdr. Must equal the manifest's `id`;
+// manifest.test.ts pins the two together.
+export const PLUGIN_ID = 'treehouse'
+
+// Where the user's plugin config lives. Plugin-invoked processes get it handed
+// in HERDR_PLUGIN_CONFIG_DIR; a plain shell invocation asks Herdr itself.
+export const pluginConfigDir = (invoke: HerdrInvoker, env: Environment): string => {
+  if (env.HERDR_PLUGIN_CONFIG_DIR) return env.HERDR_PLUGIN_CONFIG_DIR
+  const reported = invoke(['plugin', 'config-dir', PLUGIN_ID])
+  if (typeof reported === 'string' && reported !== '') return expandHome(reported)
+  throw new Error(
+    `could not resolve config dir (HERDR_PLUGIN_CONFIG_DIR unset and \`herdr plugin config-dir ${PLUGIN_ID}\` gave nothing)`,
+  )
+}
 
 export type PaneSpec = {
   split: 'down' | 'right'
@@ -331,7 +348,7 @@ export const createTabChoreography = (
   const openPluginPane = (request: PluginPaneRequest) => {
     const args = [
       'plugin', 'pane', 'open',
-      '--plugin', 'treehouse',
+      '--plugin', PLUGIN_ID,
       '--entrypoint', request.entrypoint,
       '--placement', 'popup',
       '--focus',

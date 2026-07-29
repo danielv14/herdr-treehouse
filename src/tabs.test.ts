@@ -1,7 +1,9 @@
 import { describe, expect, test } from 'bun:test'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
 import { expectRejection } from './testing/expectRejection.ts'
 import { createFakeHerdr, type FakeResponse, type FakeResponses } from './testing/fakeHerdr.ts'
-import { createTabChoreography } from './tabs.ts'
+import { createTabChoreography, pluginConfigDir } from './tabs.ts'
 
 const TAB_CREATED = { tab: { tab_id: 'wA:t7' }, root_pane: { pane_id: 'wA:p9' } }
 
@@ -457,5 +459,26 @@ describe('prompt delivery', () => {
     )
     await opening
     expect(fake.callsMatching('agent prompt')).toHaveLength(1)
+  })
+})
+
+describe('pluginConfigDir', () => {
+  test('a plugin-invoked process reads the dir Herdr handed it, no Herdr call', () => {
+    const fake = createFakeHerdr({})
+    expect(pluginConfigDir(fake.invoke, { HERDR_PLUGIN_CONFIG_DIR: '/cfg/treehouse' })).toBe('/cfg/treehouse')
+    expect(fake.calls).toHaveLength(0)
+  })
+
+  test('a plain shell invocation asks Herdr, expanding ~ in the answer', () => {
+    // The branch every plain `treehouse up` runs in production; the env var only
+    // exists for plugin-invoked processes (and tests).
+    const fake = createFakeHerdr({ 'plugin config-dir': '~/cfg/plugins/treehouse' })
+    expect(pluginConfigDir(fake.invoke, {})).toBe(join(homedir(), 'cfg/plugins/treehouse'))
+    expect(fake.commands()).toEqual(['plugin config-dir treehouse'])
+  })
+
+  test('an empty answer is an error, not an empty config dir', () => {
+    const fake = createFakeHerdr({ 'plugin config-dir': '' })
+    expect(() => pluginConfigDir(fake.invoke, {})).toThrow('could not resolve config dir')
   })
 })

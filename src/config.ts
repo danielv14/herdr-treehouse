@@ -1,8 +1,6 @@
 import { existsSync, realpathSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, join } from 'node:path'
-import type { Environment } from './context.ts'
-import type { HerdrInvoker } from './herdr.ts'
 
 export type PaneConfig = {
   split?: 'down' | 'right'
@@ -46,15 +44,10 @@ export type TreehouseConfig = {
 export const expandHome = (path: string) =>
   path.startsWith('~') ? join(homedir(), path.slice(1)) : path
 
-export const configDir = (invoke: HerdrInvoker, env: Environment): string => {
-  if (env.HERDR_PLUGIN_CONFIG_DIR) return env.HERDR_PLUGIN_CONFIG_DIR
-  const reported = invoke(['plugin', 'config-dir', 'treehouse'])
-  if (typeof reported === 'string' && reported !== '') return expandHome(reported)
-  throw new Error('could not resolve config dir (HERDR_PLUGIN_CONFIG_DIR unset and `herdr plugin config-dir treehouse` gave nothing)')
-}
-
-export const configPath = (invoke: HerdrInvoker, env: Environment) =>
-  join(configDir(invoke, env), 'config.toml')
+// Resolving WHERE the config dir is takes asking Herdr, which is the Herdr
+// module's job (pluginConfigDir in tabs.ts). Everything here takes the resolved
+// dir: TOML in, typed config plus diagnostics out.
+export const configPath = (configDir: string) => join(configDir, 'config.toml')
 
 // Per-repo config checked into (or gitignored inside) the repo itself, for
 // repos whose config has no reason to live in the user's plugin config dir.
@@ -369,10 +362,9 @@ const parseToml = async (path: string): Promise<unknown> => {
 }
 
 export const loadConfig = async (
-  invoke: HerdrInvoker,
-  env: Environment,
+  configDir: string,
 ): Promise<{ config: TreehouseConfig; diagnostics: Diagnostic[] }> => {
-  const path = configPath(invoke, env)
+  const path = configPath(configDir)
   if (!existsSync(path)) return { config: { defaults: {}, repos: {} }, diagnostics: [] }
   return validateConfigFile(await parseToml(path), path)
 }
@@ -424,10 +416,9 @@ export const diagnosticsForRepo = (
 // the main checkout root.
 export const resolveRepoConfig = async (
   mainRepoRoot: string,
-  invoke: HerdrInvoker,
-  env: Environment,
+  configDir: string,
 ): Promise<{ name: string; config: RepoConfig; diagnostics: Diagnostic[] }> => {
-  const { config: loaded, diagnostics } = await loadConfig(invoke, env)
+  const { config: loaded, diagnostics } = await loadConfig(configDir)
   const entry = findRepoEntry(loaded.repos, mainRepoRoot)
   const name = entry?.[0] ?? basename(mainRepoRoot)
   let config: RepoConfig = { ...loaded.defaults, ...(entry?.[1] ?? {}), root: mainRepoRoot }
