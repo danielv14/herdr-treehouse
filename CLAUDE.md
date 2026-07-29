@@ -24,19 +24,51 @@ Three layers, strictly separated:
 
 ## Module seams
 
-The commands are thin; everything reusable sits behind a module with one job. Keep it that way when adding features.
+The commands are thin; everything reusable sits behind a module with one job. Keep it that way when adding features. The folders are those jobs grouped by what they know about, and they layer in one direction — `config/` knows nothing else, `worktree/` and `herdr/` know only `config/`, `deps.ts` wires them, `commands/` uses all of it, `main.ts` dispatches:
+
+```
+src/main.ts        entrypoint: argv in, one command out (process wiring behind import.meta.main)
+src/cli.ts         flag declaration, parsing, help rendering
+src/deps.ts        the dependency seam (invoker, env, log/warn, ask)
+src/commands/      one file per treehouse subcommand + registry.ts, the one registry
+src/worktree/      the git/worktree domain: branch naming, plan, provision, git
+src/herdr/         everything that knows Herdr: invoker, tab choreography, env payloads
+src/config/        config shape, validation, resolution, defaults; diagnostics severity
+src/testing/       fake Herdr, temp repos, expectRejection
+src/manifest.test.ts   the manifest <-> code contract, which belongs to no single layer
+```
+
+Tests stay next to what they test (`up.ts` / `up.test.ts`); the two that pin code against `herdr-plugin.toml` (`manifest.test.ts`, `worktree/branch.test.ts`) read it from the repo root.
+
+### `src/worktree/` — the git domain
 
 - `branch.ts` — the naming convention in one place: branch to ticket, branch to slug, and clicked URL to branch. Pure functions returning values; `up` merges the derived branch and the focus decision itself. The URL patterns are declared twice by necessity (Herdr gates on the manifest's `[[link_handlers]]` before the engine runs), so `branch.test.ts` reads `herdr-plugin.toml` and pins one sample URL per handler to both declarations. Keep them anchored and host-scoped like the manifest.
 - `plan.ts` — everything derived about one worktree (path, base ref, slug/ticket/id, placeholder expansion) from a single `buildWorktreePlan()` call. Pure: no fs, no git, no Herdr. An unknown `{placeholder}` is an error, not a pass-through. `bootstrapTakesTargets()` answers whether asking for targets makes sense; the `{targets...}` placeholder itself is private.
 - `provision.ts` — "make this worktree exist and be usable", shared by `up` and the `worktree.created` hook. `worktreeState: 'just-created'` is how the hook says Herdr already made the checkout but it is still fresh, so `setup` must run.
 - `git.ts` — the only module that knows git, the way `tabs.ts` is the only one that knows Herdr: argv, ref shapes, and the flags that must NOT be there. Commands ask questions (`inspectCheckout`: root, main root, linked, dirty in one call) and name intents (`addWorktree` with the branch-exists and base-refresh policy inside, `removeWorktree` without `--force`, pinned by `git.test.ts` against real repos).
+
+### `src/herdr/` — the Herdr seam
+
 - `tabs.ts` — the only module that knows Herdr: subcommand names, response decoding, and the quirks (split chain, autostart vs pre-fill, wait-idle + paste + explicit Enter, always an explicit `--pane`, the double busy snapshot). Also the home of plugin identity: `PLUGIN_ID` (pinned to the manifest by `manifest.test.ts`) and `pluginConfigDir()`. `up`/`down` must contain no herdr subcommand strings.
-- `herdr.ts` + `testing/fakeHerdr.ts` — the invoker is a dependency (`EngineDeps.invoke`), with a spawning adapter for production and a recording fake for tests. Responses stay `unknown` so decoding happens once, in `tabs.ts`.
+- `invoker.ts` + `testing/fakeHerdr.ts` — the invoker is a dependency (`EngineDeps.invoke`), with a spawning adapter for production and a recording fake for tests. Responses stay `unknown` so decoding happens once, in `tabs.ts`.
+- `context.ts` — the only reader of the payloads Herdr hands the engine through the environment: `HERDR_PLUGIN_CONTEXT_JSON` (invocation context) and `HERDR_PLUGIN_EVENT_JSON` (`worktree.created`). Both decode tolerantly, keeping the raw payload for the plugin log and treating the fields as absent, because neither a malformed context nor a malformed event may take the invocation down. Also the home of `TREEHOUSE_TARGET_PATH` (one env convention for "which repo or worktree"). `commands/action.ts` (`treehouse action up|down`) resolves it and opens the popup.
+
+### `src/config/` — the config shape
+
 - `config.ts` — one shape declaration (keys *and* value shapes, per level) validated in one pass; takes a resolved config dir, never a Herdr invoker. The resolvers (`resolveRepoConfig`, `findConfiguredEntry`) report their own diagnostics through `diagnostics.ts` before returning, so a call site cannot obtain a usable config while an unreported error sits in the data (unknown keys warn, wrong value shapes stop the run). Also the one home of the defaults (`DEFAULT_BASE`, `DEFAULT_WORKTREE_DIR`, `PANE_DEFAULTS`) and of `renderProposedBlock`, the write side of the shape: onboard hands it a value and the round-trip through the validators is pinned in `config.test.ts`.
-- `context.ts` — the only reader of the payloads Herdr hands the engine through the environment: `HERDR_PLUGIN_CONTEXT_JSON` (invocation context) and `HERDR_PLUGIN_EVENT_JSON` (`worktree.created`). Both decode tolerantly, keeping the raw payload for the plugin log and treating the fields as absent, because neither a malformed context nor a malformed event may take the invocation down. Also the home of `TREEHOUSE_TARGET_PATH` (one env convention for "which repo or worktree"). `actions.ts` (`treehouse action up|down`) resolves it and opens the popup.
+
+### `src/` — the shell
+
 - `deps.ts` — the environment is a dependency, not a global reach: `EngineDeps.env` defaults to `process.env` in `resolveDeps` and is threaded to every env fact the engine reads (invocation context, clicked url, target path, caller pane/tab, event payload, plugin config dir, `HERDR_ENV`). `src` reads the global in exactly two places, the entrypoint and that default. Output works the same way: everything a command prints goes through the resolved `log`/`warn`, so no module keeps a console default of its own. Input too: `ask` is the seam for every interactive question (up's popup, down's confirm, the entrypoint's hold-open), with a readline adapter as the production default, so tests script answers and record what was asked and no command touches stdin directly.
 - `cli.ts` — each command declares its flags once with help text attached; parsing and `--help` both derive from the declaration, so help cannot drift.
-- `commands.ts` — the one registry: each entry is a command's declaration plus its handler, so dispatch, help and parsing read the same list and adding a command is one entry. `main.ts` looks up by name and runs; it has no per-command switch, takes argv and deps as parameters, and keeps its process wiring behind `import.meta.main` so it can be imported in tests.
+
+### `src/commands/` — the verbs
+
+One file per `treehouse` subcommand, each named after the command it implements (`up`, `down`, `onboard`, `action`, `bootstrap`), and nothing else in the folder except:
+
+- `registry.ts` — the one registry: each entry is a command's declaration plus its handler, so dispatch, help and parsing read the same list and adding a command is one entry, in one place. `main.ts` looks up by name and runs; it has no per-command switch, takes argv and deps as parameters, and keeps its process wiring behind `import.meta.main` so it can be imported in tests.
+
+A command file is allowed to be thin and boring: it parses its flags, asks the modules below for facts and intents, and prints. Logic that outlives one command belongs in `worktree/`, `herdr/` or `config/`, not here.
 
 ## Development
 
@@ -48,13 +80,13 @@ herdr plugin link .      # re-run after editing herdr-plugin.toml
 herdr plugin log list --plugin treehouse   # event/action stderr logs
 ```
 
-Herdr CLI responses are JSON; `src/herdr.ts` wraps invocation and returns the parsed `result`. Never construct pane/tab IDs; always read them from responses.
+Herdr CLI responses are JSON; `src/herdr/invoker.ts` wraps invocation and returns the parsed `result`. Never construct pane/tab IDs; always read them from responses.
 
 Tests run with no Herdr session and no `HERDR_ENV`: pass `{ invoke }` from `createFakeHerdr()` plus the `env` the test wants (`{ HERDR_ENV: '1', ... }`), and the whole command runs against scripted responses while recording the Herdr calls it made. No test saves or restores `process.env`. Tests that need real git mechanics use `createTempRepo()` (throwaway repo, worktrees as siblings inside it). Live verification is still required for anything that touches Herdr's own behaviour; the fake proves the sequence, not that Herdr accepts it.
 
 ## Status / open ends
 
-- `worktree.created` hook: **observed live** (herdr 0.7.5). Payload is `{event, data: {type, workspace, worktree}}` with `data.worktree.path` and `data.worktree.branch`, matching `herdr api schema`. It provisions through the same module as `up`, so a repo with only `setup` is covered too. Decoded in `context.ts` and covered end to end by `bootstrapEvent.test.ts`; the raw payload is still logged on every run, so a shape change shows up before the fields quietly read as absent.
+- `worktree.created` hook: **observed live** (herdr 0.7.5). Payload is `{event, data: {type, workspace, worktree}}` with `data.worktree.path` and `data.worktree.branch`, matching `herdr api schema`. It provisions through the same module as `up`, so a repo with only `setup` is covered too. Decoded in `context.ts` and covered end to end by `commands/bootstrap.test.ts`; the raw payload is still logged on every run, so a shape change shows up before the fields quietly read as absent.
 - The action entrypoints (`treehouse action up|down`) log the raw `HERDR_PLUGIN_CONTEXT_JSON` to stderr, so `herdr plugin log list --plugin treehouse` is where to look when a popup targets the wrong repo. Confirmed live field names: `workspace_cwd`, `focused_pane_cwd`, `focused_pane_id`, `clicked_url`, `invocation_source`.
 - **Prompt submission (herdr 0.7.5), three live-verified quirks, all handled in `tabs.ts`:** `herdr wait agent-status` no longer exists; it is `agent wait <pane> --until idle` plus `agent prompt <pane> <text>`, and `agent prompt` owns submission, so the old `pane run` + explicit `send-keys enter` workaround for bracketed paste is gone. `pane run <pane> <agent>` still starts the agent, but Herdr registers it only once detection sees it, so `agent wait` answers `agent_not_found` for the first second or two. And an agent can report `idle` while its TUI is still starting, which silently swallows the prompt: submit with `--wait --until working` so Herdr confirms delivery, and resubmit when it fails. Do NOT branch on the error code there - a swallowed prompt comes back as `agent_prompt_stalled` or `timeout` depending on how Herdr's 5000ms change-detection window races the `--timeout` (keep `--timeout` well above 5000ms). Ask the agent instead: `agent get <pane>` reports a `state_change_seq` that advances whenever the agent moves, so an unchanged sequence means nothing was picked up and resubmitting is safe.
 - `down` treats a registered agent in `idle`/`done` as not busy (tearing it down is the point); `working`/`blocked` agents and non-agent processes still refuse.

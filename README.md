@@ -9,8 +9,13 @@ The mental model: **a workspace is a repo, a tab is a worktree**. Work happens i
 ```
 herdr-plugin.toml   manifest: actions, popup pane, link handlers, worktree.created hook
 bin/treehouse       stable engine entrypoint (bash shim -> bun)
-src/                the engine: up | down | onboard | action
 config.example.toml per-repo config reference
+src/                the engine
+  main.ts           dispatch, cli.ts flags/help, deps.ts the dependency seam
+  commands/         up | down | onboard | action | bootstrap, plus the registry
+  worktree/         branch naming, worktree plan, provisioning, git
+  herdr/            the Herdr seam: invoker, tab/pane choreography, env payloads
+  config/           config shape, validation, defaults
 ```
 
 The engine is deliberately a plain CLI. The plugin manifest is just one of its call sites; Claude skills, lazygit custom commands, and keybindings call the same `bin/treehouse`. That includes the manifest's own actions: `treehouse action up|down` reads Herdr's invocation context and opens the right popup pane, so no manifest entry needs a script of its own.

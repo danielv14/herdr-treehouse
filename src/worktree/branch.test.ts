@@ -20,7 +20,7 @@ type LinkHandler = { id?: unknown; pattern?: unknown; action?: unknown }
 
 const manifestLinkHandlers = async (): Promise<LinkHandler[]> => {
   const manifest = Bun.TOML.parse(
-    await Bun.file(join(import.meta.dir, '..', 'herdr-plugin.toml')).text(),
+    await Bun.file(join(import.meta.dir, '..', '..', 'herdr-plugin.toml')).text(),
   ) as { link_handlers?: LinkHandler[] }
   return manifest.link_handlers ?? []
 }

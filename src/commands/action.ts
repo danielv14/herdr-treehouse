@@ -1,6 +1,6 @@
-import { invocationTargetPath, readInvocationContext, TARGET_PATH_ENV } from './context.ts'
-import { resolveDeps, type EngineDeps } from './deps.ts'
-import type { CommandSpec } from './cli.ts'
+import { invocationTargetPath, readInvocationContext, TARGET_PATH_ENV } from '../herdr/context.ts'
+import { resolveDeps, type EngineDeps } from '../deps.ts'
+import type { CommandSpec } from '../cli.ts'
 
 export const ACTION_COMMAND: CommandSpec = {
   name: 'action',

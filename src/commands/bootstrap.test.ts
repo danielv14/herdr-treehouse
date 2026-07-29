@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { bootstrapFromEvent } from './bootstrapEvent.ts'
-import type { Environment } from './context.ts'
-import type { EngineDeps } from './deps.ts'
-import { expectRejection } from './testing/expectRejection.ts'
-import { createFakeHerdr } from './testing/fakeHerdr.ts'
-import { createTempRepo, type TempRepo } from './testing/tempRepo.ts'
+import { bootstrapFromEvent } from './bootstrap.ts'
+import type { Environment } from '../herdr/context.ts'
+import type { EngineDeps } from '../deps.ts'
+import { expectRejection } from '../testing/expectRejection.ts'
+import { createFakeHerdr } from '../testing/fakeHerdr.ts'
+import { createTempRepo, type TempRepo } from '../testing/tempRepo.ts'
 
 // The hook is the only path in the engine that runs unattended, driven by a
 // payload another program owns, so every way that payload can disappoint it is

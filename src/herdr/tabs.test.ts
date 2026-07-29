@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'bun:test'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { expectRejection } from './testing/expectRejection.ts'
-import { createFakeHerdr, type FakeResponse, type FakeResponses } from './testing/fakeHerdr.ts'
+import { expectRejection } from '../testing/expectRejection.ts'
+import { createFakeHerdr, type FakeResponse, type FakeResponses } from '../testing/fakeHerdr.ts'
 import { createTabChoreography, pluginConfigDir } from './tabs.ts'
 
 const TAB_CREATED = { tab: { tab_id: 'wA:t7' }, root_pane: { pane_id: 'wA:p9' } }

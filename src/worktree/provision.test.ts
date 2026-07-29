@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { chmodSync, existsSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import type { RepoConfig } from './config.ts'
+import type { RepoConfig } from '../config/config.ts'
 import { buildWorktreePlan } from './plan.ts'
 import { provisionWorktree, type ProvisionOptions } from './provision.ts'
-import { createTempRepo, type TempRepo } from './testing/tempRepo.ts'
+import { createTempRepo, type TempRepo } from '../testing/tempRepo.ts'
 
 let repo: TempRepo
 let logged: string[]

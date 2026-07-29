@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
-import type { RepoConfig } from './config.ts'
+import type { RepoConfig } from '../config/config.ts'
 import { addWorktree } from './git.ts'
 import type { WorktreePlan } from './plan.ts'
 

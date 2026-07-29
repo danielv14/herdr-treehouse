@@ -2,9 +2,9 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { onboard } from './onboard.ts'
-import { expectRejection } from './testing/expectRejection.ts'
-import { createFakeHerdr } from './testing/fakeHerdr.ts'
-import { createTempRepo, type TempRepo } from './testing/tempRepo.ts'
+import { expectRejection } from '../testing/expectRejection.ts'
+import { createFakeHerdr } from '../testing/fakeHerdr.ts'
+import { createTempRepo, type TempRepo } from '../testing/tempRepo.ts'
 
 let repo: TempRepo
 let configDir: string

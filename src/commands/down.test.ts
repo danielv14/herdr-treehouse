@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { existsSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import type { Environment } from './context.ts'
-import type { EngineDeps } from './deps.ts'
+import type { Environment } from '../herdr/context.ts'
+import type { EngineDeps } from '../deps.ts'
 import { down } from './down.ts'
-import { expectRejection } from './testing/expectRejection.ts'
-import { createFakeHerdr, type FakeHerdr } from './testing/fakeHerdr.ts'
-import { createTempRepo, type TempRepo } from './testing/tempRepo.ts'
+import { expectRejection } from '../testing/expectRejection.ts'
+import { createFakeHerdr, type FakeHerdr } from '../testing/fakeHerdr.ts'
+import { createTempRepo, type TempRepo } from '../testing/tempRepo.ts'
 
 let repo: TempRepo
 let worktree: string

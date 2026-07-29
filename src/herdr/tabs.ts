@@ -1,6 +1,6 @@
-import { expandHome } from './config.ts'
+import { expandHome } from '../config/config.ts'
 import type { Environment } from './context.ts'
-import type { HerdrInvoker } from './herdr.ts'
+import type { HerdrInvoker } from './invoker.ts'
 
 // The one place that knows Herdr: subcommand names, response shapes and the
 // version-specific quirks. Responses are decoded into typed values here, so

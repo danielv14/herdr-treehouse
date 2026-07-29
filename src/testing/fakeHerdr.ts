@@ -1,4 +1,4 @@
-import type { HerdrInvoker } from '../herdr.ts'
+import type { HerdrInvoker } from '../herdr/invoker.ts'
 
 // Recording fake for the Herdr seam: answers scripted responses per subcommand
 // and records every call in order, so the whole engine can be driven with no

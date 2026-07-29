@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
-import { COMMANDS } from './commands.ts'
+import { COMMANDS } from './commands/registry.ts'
 import type { EngineDeps } from './deps.ts'
 import { runCommand } from './main.ts'
 import { expectRejection } from './testing/expectRejection.ts'

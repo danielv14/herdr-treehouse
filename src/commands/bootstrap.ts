@@ -1,10 +1,10 @@
-import { parseFlags, type CommandSpec } from './cli.ts'
-import { resolveRepoConfig } from './config.ts'
-import { readWorktreeCreatedEvent } from './context.ts'
-import { resolveDeps, type EngineDeps } from './deps.ts'
-import { findMainRepoRoot } from './git.ts'
-import { buildWorktreePlan } from './plan.ts'
-import { provisionWorktree } from './provision.ts'
+import { parseFlags, type CommandSpec } from '../cli.ts'
+import { resolveRepoConfig } from '../config/config.ts'
+import { readWorktreeCreatedEvent } from '../herdr/context.ts'
+import { resolveDeps, type EngineDeps } from '../deps.ts'
+import { findMainRepoRoot } from '../worktree/git.ts'
+import { buildWorktreePlan } from '../worktree/plan.ts'
+import { provisionWorktree } from '../worktree/provision.ts'
 
 export const BOOTSTRAP_COMMAND: CommandSpec = {
   name: 'bootstrap',

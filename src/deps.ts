@@ -1,6 +1,6 @@
-import type { Environment } from './context.ts'
-import { insideHerdr, type HerdrInvoker } from './herdr.ts'
-import { createTabChoreography, pluginConfigDir, type TabChoreography } from './tabs.ts'
+import type { Environment } from './herdr/context.ts'
+import { insideHerdr, type HerdrInvoker } from './herdr/invoker.ts'
+import { createTabChoreography, pluginConfigDir, type TabChoreography } from './herdr/tabs.ts'
 
 // What the commands need from the outside world. Only `invoke` is required; the
 // rest have production defaults and exist so tests can drive the engine with no
