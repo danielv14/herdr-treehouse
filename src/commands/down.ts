@@ -2,8 +2,7 @@ import { resolve } from 'node:path'
 import { parseFlags, type CommandSpec } from '../cli.ts'
 import { callerPaneId, callerTabId, invocationTargetPath } from '../herdr/context.ts'
 import { resolveDeps, type Ask, type EngineDeps } from '../deps.ts'
-import { refreshWorktreeCount } from './report.ts'
-import { inspectCheckout, removeWorktree } from '../worktree/git.ts'
+import { countLinkedWorktrees, inspectCheckout, removeWorktree } from '../worktree/git.ts'
 
 export const DOWN_COMMAND: CommandSpec = {
   name: 'down',
@@ -87,9 +86,16 @@ export const down = async (argv: string[], deps: EngineDeps) => {
   log(`removed worktree: ${worktreeRoot}`)
   log('branch left in place (cleaned up via PR merge as usual)')
 
-  // Report before closing tabs: closing the caller's own tab ends this
-  // process, and the count already changed.
-  if (workspaceId) refreshWorktreeCount({ tabs, warn }, mainRepoRoot, workspaceId)
+  // Report the sidebar token before closing tabs: closing the caller's own tab
+  // ends this process, and the count already changed. Best-effort: a failed
+  // report never fails the teardown.
+  if (workspaceId) {
+    try {
+      tabs.reportWorktreeCount(workspaceId, countLinkedWorktrees(mainRepoRoot))
+    } catch (error) {
+      warn(`warning: could not report the worktree count: ${error instanceof Error ? error.message : error}`)
+    }
+  }
 
   const ownTabId = callerTabId(env)
   if (ownTabId && tabIds.includes(ownTabId)) {

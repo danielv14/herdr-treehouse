@@ -3,10 +3,9 @@ import { parseFlags, type CommandSpec } from '../cli.ts'
 import { PANE_DEFAULTS, resolveRepoConfig, type RepoConfig } from '../config/config.ts'
 import { invocationTargetPath, isPluginInvocation, readInvocationContext } from '../herdr/context.ts'
 import { resolveDeps, type Ask, type EngineDeps } from '../deps.ts'
-import { findMainRepoRoot } from '../worktree/git.ts'
+import { countLinkedWorktrees, findMainRepoRoot } from '../worktree/git.ts'
 import { bootstrapTakesTargets, buildWorktreePlan } from '../worktree/plan.ts'
 import { provisionWorktree } from '../worktree/provision.ts'
-import { refreshWorktreeCount } from './report.ts'
 import type { PaneSpec } from '../herdr/tabs.ts'
 
 export const UP_COMMAND: CommandSpec = {
@@ -151,6 +150,17 @@ export const up = async (argv: string[], deps: EngineDeps) => {
   const agent = options.agent ?? repoConfig.agent ?? 'claude'
   const label = options.label ?? plan.id
   const workspaceId = tabs.resolveWorkspace(mainRepoRoot)
+
+  // Report the sidebar token before the tab choreography: the count changed at
+  // provisioning, and the agent handshake ahead can take a minute or throw,
+  // neither of which may leave the token stale (Herdr's worktree events do not
+  // see our git-side changes). Best-effort: a failed report never fails up.
+  try {
+    tabs.reportWorktreeCount(workspaceId, countLinkedWorktrees(mainRepoRoot))
+  } catch (error) {
+    warn(`warning: could not report the worktree count: ${error instanceof Error ? error.message : error}`)
+  }
+
   const opened = await tabs.openWorktreeTab({
     workspaceId,
     cwd: plan.worktree,
@@ -160,10 +170,6 @@ export const up = async (argv: string[], deps: EngineDeps) => {
     agent: options.noAgent ? undefined : agent,
     prompt: options.prompt,
   })
-
-  // The engine just changed the worktree count, so it reports the sidebar
-  // token itself; Herdr's own worktree events only see its native flow.
-  refreshWorktreeCount({ tabs, warn }, mainRepoRoot, workspaceId)
 
   log(`worktree:  ${plan.worktree}`)
   log(`branch:    ${plan.branch}`)

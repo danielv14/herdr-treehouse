@@ -75,11 +75,14 @@ describe('ls', () => {
     expect(row).toContain('../my-repo-abc-1')
   })
 
-  test('outside Herdr the tab column is omitted and Herdr is never called', async () => {
+  test('outside Herdr the tab column is omitted and no workspace or pane is asked for', async () => {
+    // The config dir comes from the env here; without it, resolving it is one
+    // herdr invocation even outside a session.
     addWorktree('my-repo-abc-1', 'ABC-1/fix')
     const fake = createFakeHerdr({})
     await ls([], deps(fake, { HERDR_ENV: undefined }))
-    expect(fake.calls).toHaveLength(0)
+    expect(fake.callsMatching('worktree list')).toHaveLength(0)
+    expect(fake.callsMatching('pane list')).toHaveLength(0)
     expect(logged.join('\n')).toContain('ABC-1/fix')
     expect(logged[0]).not.toContain('TAB')
   })
@@ -115,7 +118,7 @@ describe('ls', () => {
     await ls([], deps(fake))
     const row = logged.find((line) => line.includes('experiment'))
     expect(row).toContain('../elsewhere *')
-    expect(logged.join('\n')).toContain('* outside')
+    expect(logged.join('\n')).toContain("* path does not match the repo's worktree_dir convention")
   })
 
   test('--repo filters to one configured repo and an unknown name is refused', async () => {

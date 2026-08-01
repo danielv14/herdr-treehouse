@@ -84,6 +84,10 @@ export type MetadataReport = {
   tokens: Record<string, string>
 }
 
+// The one token this plugin reports in v1: the repo's linked-worktree count,
+// consumed from the user's own sidebar config as $worktrees (see README).
+export const WORKTREES_TOKEN = 'worktrees'
+
 export type TabChoreography = {
   // Workspace of a repo, or undefined when the repo has none open.
   findWorkspace: (mainRepoRoot: string) => string | undefined
@@ -104,6 +108,8 @@ export type TabChoreography = {
   closeTabs: (tabIds: string[], options?: CloseTabsOptions) => void
   openPluginPane: (request: PluginPaneRequest) => void
   reportWorkspaceMetadata: (report: MetadataReport) => void
+  // The worktree-count token, spelled once: callers hand over a number.
+  reportWorktreeCount: (workspaceId: string, count: number) => void
 }
 
 export type CloseTabsOptions = {
@@ -382,6 +388,9 @@ export const createTabChoreography = (
     invoke(args)
   }
 
+  const reportWorktreeCount = (workspaceId: string, count: number) =>
+    reportWorkspaceMetadata({ workspaceId, tokens: { [WORKTREES_TOKEN]: String(count) } })
+
   const openPluginPane = (request: PluginPaneRequest) => {
     const args = [
       'plugin', 'pane', 'open',
@@ -405,5 +414,6 @@ export const createTabChoreography = (
     closeTabs,
     openPluginPane,
     reportWorkspaceMetadata,
+    reportWorktreeCount,
   }
 }

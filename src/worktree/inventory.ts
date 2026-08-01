@@ -60,20 +60,6 @@ const samePath = (a: string, b: string): boolean => {
   return canonical(a) === canonical(b)
 }
 
-const conventionPath = (
-  name: string,
-  config: RepoConfig,
-  mainRepoRoot: string,
-  branch: string,
-): string | undefined => {
-  try {
-    return buildWorktreePlan({ repoName: name, branch, mainRepoRoot, repoConfig: config }).worktree
-  } catch {
-    // A broken worktree_dir template cannot vouch for any path.
-    return undefined
-  }
-}
-
 export const collectRepoInventory = (
   name: string,
   config: RepoConfig,
@@ -89,12 +75,38 @@ export const collectRepoInventory = (
   const root = listings.find((listing) => listing.isMain)?.path ?? config.root
   const base = config.base ?? DEFAULT_BASE
 
+  // A broken worktree_dir template throws for every branch alike; one warning
+  // says why the whole repo reads as unmanaged.
+  let templateWarned = false
+  const conventionPath = (branch: string): string | undefined => {
+    try {
+      return buildWorktreePlan({ repoName: name, branch, mainRepoRoot: root, repoConfig: config }).worktree
+    } catch (error) {
+      if (!templateWarned) {
+        templateWarned = true
+        warn(`warning: ${name}: cannot derive the worktree_dir convention: ${error instanceof Error ? error.message : error}`)
+      }
+      return undefined
+    }
+  }
+
   const worktrees = listings
     .filter((listing) => !listing.isMain)
     .map((listing): InventoryWorktree => {
       const { path, branch } = listing
       const missing = !existsSync(path)
-      const convention = branch ? conventionPath(name, config, root, branch) : undefined
+      // A directory that exists but no longer answers as a checkout (.git file
+      // gone, unreadable, dubious ownership) degrades to a fact-less row; one
+      // broken worktree must not blank the whole listing.
+      let facts
+      if (!missing) {
+        try {
+          facts = worktreeFacts(path, base)
+        } catch (error) {
+          warn(`warning: could not read ${path}: ${error instanceof Error ? error.message : error}`)
+        }
+      }
+      const convention = branch ? conventionPath(branch) : undefined
       const ticket = branch ? ticketFromBranch(branch) : ''
       return {
         repo: name,
@@ -105,7 +117,7 @@ export const collectRepoInventory = (
         managed: convention !== undefined && samePath(convention, path),
         missing,
         base,
-        ...(missing ? {} : worktreeFacts(path, base)),
+        ...(facts ?? {}),
       }
     })
 
@@ -121,7 +133,9 @@ export type PaneFacts = {
 
 // Pure merge of Herdr pane facts (fetched per workspace by the caller) into a
 // repo's records: a pane whose cwd sits in a worktree ties that worktree to its
-// tab, and the first agent-bearing pane names the agent.
+// tab, and the first agent-bearing pane names the agent. A worktree spanning
+// several tabs shows the agent's tab (that is the one to go to), falling back
+// to the first pane's.
 export const attachTabFacts = (inventory: RepoInventory, panes: PaneFacts[]): RepoInventory => ({
   ...inventory,
   worktrees: inventory.worktrees.map((worktree) => {
@@ -131,7 +145,11 @@ export const attachTabFacts = (inventory: RepoInventory, panes: PaneFacts[]): Re
     const agentPane = mine.find((pane) => pane.agent)
     return {
       ...worktree,
-      tab: { tabId: mine[0].tabId, agent: agentPane?.agent, agentStatus: agentPane?.agentStatus },
+      tab: {
+        tabId: (agentPane ?? mine[0]).tabId,
+        agent: agentPane?.agent,
+        agentStatus: agentPane?.agentStatus,
+      },
     }
   }),
 })

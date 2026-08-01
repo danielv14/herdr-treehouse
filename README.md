@@ -52,17 +52,18 @@ treehouse onboard --apply           # append it to the plugin config
 
 ### Worktree overview
 
-`treehouse ls` prints one row per worktree across every repo in the central config: branch, dirty state, ahead/behind against the repo's base, last commit age, and (inside Herdr) which tab and agent it has. It is read-only and offline: ahead/behind is against the base as last fetched, and nothing is ever fetched or mutated. Repos configured only by a repo-local `.treehouse.toml` do not appear (there is deliberately no registry of them). A worktree created by hand outside the repo's `worktree_dir` convention still shows up, marked with `*`.
+`treehouse ls` prints one row per worktree across every repo in the central config: branch, dirty state, ahead/behind against the repo's base, last commit age, and (inside Herdr) which tab and agent it has. It is read-only and offline: ahead/behind is against the base as last fetched, and nothing is ever fetched or mutated. Repos configured only by a repo-local `.treehouse.toml` do not appear (there is deliberately no registry of them). A worktree whose path does not match the repo's `worktree_dir` convention still shows up, marked with `*` (the check is a path comparison against the current branch name, so a branch renamed after creation trips it too).
 
 ### Sidebar token
 
-The engine reports one workspace metadata token to Herdr: `worktrees`, the repo's linked-worktree count. It refreshes when `treehouse up`/`down` change the count, when Herdr's own worktree flow fires `worktree.created`/`worktree.removed`, and on server startup (Herdr does not persist reported tokens across restarts). Styling stays in your own Herdr config; the engine only reports the value:
+The engine reports one workspace metadata token to Herdr: `worktrees`, the repo's linked-worktree count. It refreshes when `treehouse up`/`down` change the count, when Herdr's own worktree flow fires `worktree.created`/`worktree.removed`, and on server startup (Herdr does not persist reported tokens across restarts). Styling stays in your own Herdr config; the engine only reports the value. `rows` is a list of rows, each row a list of items, and setting it replaces the defaults, so keep the built-in items you still want (inline styles take strict `#RGB`/`#RRGGBB` foregrounds):
 
 ```toml
 # ~/.config/herdr/config.toml
 [ui.sidebar.spaces]
 rows = [
-  { token = "$worktrees", fg = "cyan", dim = true },
+  ["state_icon", "workspace"],
+  ["branch", { token = "$worktrees", fg = "#89b4fa", dim = true }],
 ]
 ```
 

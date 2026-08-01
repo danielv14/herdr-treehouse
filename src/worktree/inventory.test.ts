@@ -77,6 +77,31 @@ describe('collectRepoInventory', () => {
     expect(record.lastCommitAt).toBeUndefined()
   })
 
+  test('a directory that stopped being a checkout degrades to a fact-less row with a warning', () => {
+    const worktree = join(repo.parent, 'my-repo-abc-3')
+    repo.git('worktree', 'add', worktree, '-b', 'ABC-3/fix', '--no-track', 'master')
+    // The dir still exists but no longer answers as a checkout.
+    rmSync(join(worktree, '.git'), { force: true })
+
+    const inventory = collectRepoInventory('my-repo', config(), warn)
+    expect(inventory?.worktrees).toHaveLength(1)
+    const record = inventory!.worktrees[0]
+    expect(record.missing).toBe(false)
+    expect(record.dirtyFiles).toBeUndefined()
+    expect(warned).toHaveLength(1)
+    expect(warned[0]).toContain(`could not read ${worktree}`)
+  })
+
+  test('a broken worktree_dir template warns once and reads as unmanaged', () => {
+    repo.git('worktree', 'add', join(repo.parent, 'my-repo-abc-4'), '-b', 'ABC-4/fix', '--no-track', 'master')
+    repo.git('worktree', 'add', join(repo.parent, 'my-repo-abc-5'), '-b', 'ABC-5/fix', '--no-track', 'master')
+
+    const inventory = collectRepoInventory('my-repo', config({ worktree_dir: '../{wortkree}' }), warn)
+    expect(inventory?.worktrees.map((record) => record.managed)).toEqual([false, false])
+    expect(warned).toHaveLength(1)
+    expect(warned[0]).toContain('cannot derive the worktree_dir convention')
+  })
+
   test('a repo with no linked worktrees is an empty list, not an error', () => {
     expect(collectRepoInventory('my-repo', config(), warn)?.worktrees).toEqual([])
   })
