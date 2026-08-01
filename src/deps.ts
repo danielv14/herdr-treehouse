@@ -15,6 +15,8 @@ export type EngineDeps = {
   invoke: HerdrInvoker
   env?: Environment
   sleep?: (ms: number) => Promise<void>
+  // Wall clock, for the metadata report seq; tests pin it like sleep.
+  now?: () => number
   log?: (message: string) => void
   warn?: (message: string) => void
   ask?: Ask
@@ -50,7 +52,7 @@ export const resolveDeps = (deps: EngineDeps): ResolvedDeps => {
   const env = deps.env ?? process.env
   return {
     invoke: deps.invoke,
-    tabs: createTabChoreography(deps.invoke, { sleep: deps.sleep }),
+    tabs: createTabChoreography(deps.invoke, { sleep: deps.sleep, now: deps.now }),
     env,
     insideHerdr: insideHerdr(env),
     log: deps.log ?? console.log,

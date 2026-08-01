@@ -69,12 +69,30 @@ export type PluginPaneRequest = {
   env?: Record<string, string>
 }
 
+export type PaneSnapshot = {
+  paneId: string
+  tabId: string
+  cwd?: string
+  agent?: string
+  agentStatus?: string
+}
+
+export type MetadataReport = {
+  workspaceId: string
+  // Display-only token values for the user's sidebar rows; Herdr caps values at
+  // 80 chars and this plugin at most reports a handful.
+  tokens: Record<string, string>
+}
+
 export type TabChoreography = {
   // Workspace of a repo, or undefined when the repo has none open.
   findWorkspace: (mainRepoRoot: string) => string | undefined
   // Same lookup, creating the workspace when the repo has none.
   resolveWorkspace: (mainRepoRoot: string) => string
   openWorktreeTab: (request: OpenTabRequest) => Promise<OpenedTab>
+  // Every pane in the workspace, decoded once; a read-only snapshot with none
+  // of inspectWorktreeTab's busy-check waiting.
+  listPanes: (workspaceId: string) => PaneSnapshot[]
   // Which tabs the worktree occupies, and which of its panes are genuinely busy.
   inspectWorktreeTab: (
     workspaceId: string,
@@ -85,6 +103,7 @@ export type TabChoreography = {
   // worktree tab dies with it, so everything else has to be done first.
   closeTabs: (tabIds: string[], options?: CloseTabsOptions) => void
   openPluginPane: (request: PluginPaneRequest) => void
+  reportWorkspaceMetadata: (report: MetadataReport) => void
 }
 
 export type CloseTabsOptions = {
@@ -306,22 +325,24 @@ export const createTabChoreography = (
     return busyProcesses(paneId)
   }
 
+  const listPanes = (workspaceId: string): PaneSnapshot[] =>
+    readList(invoke(['pane', 'list', '--workspace', workspaceId]), 'panes').map((pane) => ({
+      paneId: readString(pane, 'pane_id') ?? '',
+      tabId: readString(pane, 'tab_id') ?? '',
+      cwd: readString(pane, 'cwd'),
+      agent: readString(pane, 'agent'),
+      agentStatus: readString(pane, 'agent_status'),
+    }))
+
   const inspectWorktreeTab = async (
     workspaceId: string,
     worktreePath: string,
     inspectOptions: { ignorePaneId?: string } = {},
   ): Promise<TabInspection> => {
-    const listed = invoke(['pane', 'list', '--workspace', workspaceId])
     const prefix = worktreePath.endsWith('/') ? worktreePath : `${worktreePath}/`
-    const panes = readList(listed, 'panes')
-      .map((pane) => ({
-        paneId: readString(pane, 'pane_id') ?? '',
-        tabId: readString(pane, 'tab_id') ?? '',
-        cwd: readString(pane, 'cwd'),
-        agent: readString(pane, 'agent'),
-        agentStatus: readString(pane, 'agent_status'),
-      }))
-      .filter((pane) => pane.cwd === worktreePath || pane.cwd?.startsWith(prefix))
+    const panes = listPanes(workspaceId).filter(
+      (pane) => pane.cwd === worktreePath || pane.cwd?.startsWith(prefix),
+    )
 
     const busyPanes: BusyPane[] = []
     for (const pane of panes) {
@@ -345,6 +366,22 @@ export const createTabChoreography = (
     }
   }
 
+  // Tokens are not persisted across a Herdr server restart, which is why the
+  // manifest's [[startup]] hook re-reports; the TTL (the maximum Herdr allows)
+  // is the backstop that ages values out if this plugin stops reporting.
+  const METADATA_TTL_MS = 86_400_000
+
+  const reportWorkspaceMetadata = (report: MetadataReport) => {
+    const args = ['workspace', 'report-metadata', report.workspaceId, '--source', PLUGIN_ID]
+    for (const [name, value] of Object.entries(report.tokens)) {
+      args.push('--token', `${name}=${value}`)
+    }
+    // Wall-clock as seq: each report is its own short-lived process, so a
+    // counter would reset; milliseconds are monotonic enough across them.
+    args.push('--seq', String(now()), '--ttl-ms', String(METADATA_TTL_MS))
+    invoke(args)
+  }
+
   const openPluginPane = (request: PluginPaneRequest) => {
     const args = [
       'plugin', 'pane', 'open',
@@ -363,8 +400,10 @@ export const createTabChoreography = (
     findWorkspace,
     resolveWorkspace,
     openWorktreeTab,
+    listPanes,
     inspectWorktreeTab,
     closeTabs,
     openPluginPane,
+    reportWorkspaceMetadata,
   }
 }
