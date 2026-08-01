@@ -17,6 +17,7 @@ type Manifest = {
   actions?: ManifestEntry[]
   panes?: ManifestEntry[]
   events?: ManifestEntry[]
+  startup?: ManifestEntry[]
   link_handlers?: ManifestEntry[]
 }
 
@@ -43,7 +44,12 @@ describe('the manifest and the engine agree', () => {
 
   test('every command entry routes through the registry and its flag parser', async () => {
     const manifest = await readManifest()
-    const entries = [...(manifest.actions ?? []), ...(manifest.panes ?? []), ...(manifest.events ?? [])]
+    const entries = [
+      ...(manifest.actions ?? []),
+      ...(manifest.panes ?? []),
+      ...(manifest.events ?? []),
+      ...(manifest.startup ?? []),
+    ]
     expect(entries.length).toBeGreaterThan(0)
     for (const entry of entries) {
       const [name, ...rest] = engineArgv(entry)
