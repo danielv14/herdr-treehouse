@@ -68,7 +68,7 @@ describe('report', () => {
     })
     await report([], deps(fake))
     expect(logged.some((line) => line.includes('skipping broken'))).toBe(true)
-    expect(logged).toContain('my-repo: worktrees=0 (workspace wA)')
+    expect(logged).toContain('my-repo: no worktrees, worktrees token cleared (workspace wA)')
   })
 
   test('outside a Herdr session it refuses', async () => {

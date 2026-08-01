@@ -56,7 +56,7 @@ treehouse onboard --apply           # append it to the plugin config
 
 ### Sidebar token
 
-The engine reports one workspace metadata token to Herdr: `worktrees`, the repo's linked-worktree count. It refreshes when `treehouse up`/`down` change the count, when Herdr's own worktree flow fires `worktree.created`/`worktree.removed`, and on server startup (Herdr does not persist reported tokens across restarts). Styling stays in your own Herdr config; the engine only reports the value. `rows` is a list of rows, each row a list of items, and setting it replaces the defaults, so keep the built-in items you still want (inline styles take strict `#RGB`/`#RRGGBB` foregrounds):
+The engine reports one workspace metadata token to Herdr: `worktrees`, the repo's linked-worktree count. A count of zero clears the token, so repos without worktrees show nothing rather than a `0`. It refreshes when `treehouse up`/`down` change the count, when Herdr's own worktree flow fires `worktree.created`/`worktree.removed`, and on server startup (Herdr does not persist reported tokens across restarts). Styling stays in your own Herdr config; the engine only reports the value. `rows` is a list of rows, each row a list of items, and setting it replaces the defaults, so keep the built-in items you still want (inline styles take strict `#RGB`/`#RRGGBB` foregrounds):
 
 ```toml
 # ~/.config/herdr/config.toml

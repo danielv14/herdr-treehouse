@@ -66,7 +66,8 @@ describe('down', () => {
     // The sidebar token refresh happens before tabs close: closing the caller's
     // own tab can end the process.
     const commands = fake.commands()
-    const report = 'workspace report-metadata wA --source treehouse --token worktrees=0 --seq 1234 --ttl-ms 86400000'
+    // The last worktree just went away, so the token is cleared, not set to 0.
+    const report = 'workspace report-metadata wA --source treehouse --clear-token worktrees --seq 1234'
     expect(commands).toContain(report)
     expect(commands.indexOf(report)).toBeLessThan(commands.indexOf('tab close t1'))
   })
