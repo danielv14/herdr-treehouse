@@ -88,7 +88,7 @@ autostart = false
     expect(fake.commands()).toEqual([
       `worktree list --cwd ${repo.root}`,
       'workspace report-metadata wA --source treehouse --token worktrees=1 --seq 1234 --ttl-ms 86400000',
-      `tab create --workspace wA --cwd ${worktree} --label abc-1 --no-focus`,
+      `tab create --workspace wA --cwd ${worktree} --label 🌳 abc-1 --no-focus`,
       `pane split wA:p5 --direction right --ratio 0.5 --cwd ${worktree} --no-focus`,
       'pane rename wA:p6 shell',
       `pane split wA:p6 --direction down --ratio 0.3 --cwd ${worktree} --no-focus`,
@@ -100,7 +100,7 @@ autostart = false
       'agent prompt wA:p5 solve ABC-1 --wait --until working --timeout 10000',
     ])
     expect(logged).toContain(`worktree:  ${worktree}`)
-    expect(logged).toContain('tab:       wA:t3 (abc-1) in workspace wA')
+    expect(logged).toContain('tab:       wA:t3 (🌳 abc-1) in workspace wA')
     expect(logged).toContain(`pane:      wA:p7 (dev): "npm run dev --prefix ${worktree}" prefilled (press Enter to start)`)
     expect(logged).toContain('agent:     claude --resume in wA:p5')
   })

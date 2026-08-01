@@ -20,7 +20,7 @@ export const UP_COMMAND: CommandSpec = {
     { flag: '--branch', alias: '-b', kind: 'value', key: 'branch', placeholder: '<name>', help: 'branch name, e.g. ABC-1234/fix-thing' },
     { flag: '--target', alias: '-t', kind: 'list', key: 'targets', placeholder: '<dir>', help: 'repo-relative dir passed to the bootstrap script (repeatable)' },
     { flag: '--targets', kind: 'list', key: 'targets', split: ',', placeholder: '<a,b>', help: 'comma-separated form of --target' },
-    { flag: '--label', kind: 'value', key: 'label', placeholder: '<text>', help: 'tab label (default: ticket id or branch slug)' },
+    { flag: '--label', kind: 'value', key: 'label', placeholder: '<text>', help: 'tab label (default: ticket id or branch slug, prefixed with a tree)' },
     { flag: '--prompt', kind: 'value', key: 'prompt', placeholder: '<text>', help: 'task to hand the agent once it is idle' },
     { flag: '--agent', kind: 'value', key: 'agent', placeholder: '<cmd>', help: 'agent command (default: repo config, [defaults], then claude)' },
     { flag: '--no-agent', kind: 'boolean', key: 'noAgent', help: 'skip starting an agent in the main pane' },
@@ -148,7 +148,10 @@ export const up = async (argv: string[], deps: EngineDeps) => {
   // `claude` is the last resort so the user's own Claude Code settings decide
   // things like permission mode when nothing here is configured.
   const agent = options.agent ?? repoConfig.agent ?? 'claude'
-  const label = options.label ?? plan.id
+  // The tree marks worktree tabs apart from ordinary ones everywhere a tab
+  // label shows (tab list, the sidebar's agent rows). An explicit --label is
+  // the caller's to spell, prefix included.
+  const label = options.label ?? `🌳 ${plan.id}`
   const workspaceId = tabs.resolveWorkspace(mainRepoRoot)
 
   // Report the sidebar token before the tab choreography: the count changed at
