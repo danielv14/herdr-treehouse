@@ -259,6 +259,35 @@ describe('openWorktreeTab', () => {
   })
 })
 
+describe('listPanes', () => {
+  test('decodes every pane in the workspace, tolerating absent fields', () => {
+    const { fake, tabs } = choreography({
+      'pane list': {
+        panes: [
+          { pane_id: 'wA:p1', tab_id: 'wA:t1', cwd: '/dev/repo-abc-1', agent: 'claude', agent_status: 'idle' },
+          { pane_id: 'wA:p2', tab_id: 'wA:t1' },
+        ],
+      },
+    })
+    expect(tabs.listPanes('wA')).toEqual([
+      { paneId: 'wA:p1', tabId: 'wA:t1', cwd: '/dev/repo-abc-1', agent: 'claude', agentStatus: 'idle' },
+      { paneId: 'wA:p2', tabId: 'wA:t1', cwd: undefined, agent: undefined, agentStatus: undefined },
+    ])
+    expect(fake.commands()).toEqual(['pane list --workspace wA'])
+  })
+})
+
+describe('reportWorkspaceMetadata', () => {
+  test('reports every token with the plugin as source, a seq and a ttl', () => {
+    const fake = createFakeHerdr({ 'workspace report-metadata': {} })
+    const tabs = createTabChoreography(fake.invoke, { now: () => 1234 })
+    tabs.reportWorkspaceMetadata({ workspaceId: 'wA', tokens: { worktrees: '3' } })
+    expect(fake.commands()).toEqual([
+      'workspace report-metadata wA --source treehouse --token worktrees=3 --seq 1234 --ttl-ms 86400000',
+    ])
+  })
+})
+
 describe('inspectWorktreeTab', () => {
   const panes = {
     panes: [
