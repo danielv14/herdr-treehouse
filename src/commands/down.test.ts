@@ -22,6 +22,7 @@ const deps = (fake: FakeHerdr, env: Environment = {}): EngineDeps => ({
   sleep: async (ms) => {
     sleeps.push(ms)
   },
+  now: () => 1234,
   log: (message) => logged.push(message),
   warn: (message) => logged.push(message),
 })
@@ -53,6 +54,7 @@ describe('down', () => {
       'pane list': paneList([{ pane_id: 'p1', tab_id: 't1', cwd: worktree }]),
       'pane process-info': { process_info: { foreground_processes: [{ name: 'zsh' }] } },
       'tab close': {},
+      'workspace report-metadata': {},
     })
     await down(['--path', worktree], deps(fake))
 
@@ -61,6 +63,12 @@ describe('down', () => {
     expect(fake.commands()).toContain('tab close t1')
     expect(logged).toContain(`removed worktree: ${worktree}`)
     expect(logged).toContain('branch left in place (cleaned up via PR merge as usual)')
+    // The sidebar token refresh happens before tabs close: closing the caller's
+    // own tab can end the process.
+    const commands = fake.commands()
+    const report = 'workspace report-metadata wA --source treehouse --token worktrees=0 --seq 1234 --ttl-ms 86400000'
+    expect(commands.indexOf(report)).toBeGreaterThan(-1)
+    expect(commands.indexOf(report)).toBeLessThan(commands.indexOf('tab close t1'))
   })
 
   test('refuses when a pane reports a confirmed busy process, and keeps the worktree', async () => {
@@ -87,6 +95,7 @@ describe('down', () => {
       'pane list': paneList([{ pane_id: 'p1', tab_id: 't1', cwd: worktree }]),
       'pane process-info': [busyProcess('starship prompt'), { process_info: { foreground_processes: [] } }],
       'tab close': {},
+      'workspace report-metadata': {},
     })
     await down(['--path', worktree], deps(fake))
     expect(existsSync(worktree)).toBe(false)
@@ -99,6 +108,7 @@ describe('down', () => {
         { pane_id: 'p1', tab_id: 't1', cwd: worktree, agent: 'claude', agent_status: 'idle' },
       ]),
       'tab close': {},
+      'workspace report-metadata': {},
     })
     await down(['--path', worktree], deps(fake))
     expect(existsSync(worktree)).toBe(false)
@@ -113,6 +123,7 @@ describe('down', () => {
       ]),
       'pane process-info': { process_info: { foreground_processes: [{ name: 'zsh' }] } },
       'tab close': {},
+      'workspace report-metadata': {},
     })
     await down(['--path', worktree], deps(fake, { HERDR_TAB_ID: 't1', HERDR_PANE_ID: 'p1' }))
     expect(fake.callsMatching('tab close').map((call) => call[2])).toEqual(['t2', 't1'])
@@ -124,6 +135,7 @@ describe('down', () => {
       'worktree list': { source: { source_workspace_id: 'wA' } },
       'pane list': paneList([{ pane_id: 'p1', tab_id: 't1', cwd: worktree }]),
       'tab close': {},
+      'workspace report-metadata': {},
     })
     await down(['--path', worktree], deps(fake, { HERDR_PANE_ID: 'p1' }))
     expect(fake.callsMatching('pane process-info')).toHaveLength(0)
@@ -203,6 +215,7 @@ describe('down', () => {
       'pane list': paneList([{ pane_id: 'p1', tab_id: 't1', cwd: worktree }]),
       'pane process-info': { process_info: { foreground_processes: [{ name: 'zsh' }] } },
       'tab close': {},
+      'workspace report-metadata': {},
     })
     await down(['--path', worktree, '--interactive'], { ...deps(fake), ask: async () => ' Y ' })
     expect(existsSync(worktree)).toBe(false)

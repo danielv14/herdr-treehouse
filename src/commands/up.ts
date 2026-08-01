@@ -6,6 +6,7 @@ import { resolveDeps, type Ask, type EngineDeps } from '../deps.ts'
 import { findMainRepoRoot } from '../worktree/git.ts'
 import { bootstrapTakesTargets, buildWorktreePlan } from '../worktree/plan.ts'
 import { provisionWorktree } from '../worktree/provision.ts'
+import { refreshWorktreeCount } from './report.ts'
 import type { PaneSpec } from '../herdr/tabs.ts'
 
 export const UP_COMMAND: CommandSpec = {
@@ -159,6 +160,10 @@ export const up = async (argv: string[], deps: EngineDeps) => {
     agent: options.noAgent ? undefined : agent,
     prompt: options.prompt,
   })
+
+  // The engine just changed the worktree count, so it reports the sidebar
+  // token itself; Herdr's own worktree events only see its native flow.
+  refreshWorktreeCount({ tabs, warn }, mainRepoRoot, workspaceId)
 
   log(`worktree:  ${plan.worktree}`)
   log(`branch:    ${plan.branch}`)

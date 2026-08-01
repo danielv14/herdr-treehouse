@@ -26,6 +26,7 @@ const RESPONSES: FakeResponses = {
   'agent wait': {},
   'agent get': { agent: { state_change_seq: 1 } },
   'agent prompt': {},
+  'workspace report-metadata': {},
 }
 
 // Inside Herdr, pointed at this test's config dir. Anything else a test needs
@@ -40,6 +41,7 @@ const deps = (fake: FakeHerdr, overrides: Environment = {}): EngineDeps => ({
   invoke: fake.invoke,
   env: env(overrides),
   sleep: async () => {},
+  now: () => 1234,
   log: (message) => logged.push(message),
   warn: (message) => logged.push(message),
 })
@@ -95,6 +97,7 @@ autostart = false
       'agent wait wA:p5 --until idle --timeout 60000',
       'agent get wA:p5',
       'agent prompt wA:p5 solve ABC-1 --wait --until working --timeout 10000',
+      'workspace report-metadata wA --source treehouse --token worktrees=1 --seq 1234 --ttl-ms 86400000',
     ])
     expect(logged).toContain(`worktree:  ${worktree}`)
     expect(logged).toContain('tab:       wA:t3 (abc-1) in workspace wA')
