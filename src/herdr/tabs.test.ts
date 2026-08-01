@@ -286,6 +286,15 @@ describe('reportWorkspaceMetadata', () => {
       'workspace report-metadata wA --source treehouse --token worktrees=3 --seq 1234 --ttl-ms 86400000',
     ])
   })
+
+  test('the worktree-count token is spelled in one place', () => {
+    const fake = createFakeHerdr({ 'workspace report-metadata': {} })
+    const tabs = createTabChoreography(fake.invoke, { now: () => 1234 })
+    tabs.reportWorktreeCount('wA', 2)
+    expect(fake.commands()).toEqual([
+      'workspace report-metadata wA --source treehouse --token worktrees=2 --seq 1234 --ttl-ms 86400000',
+    ])
+  })
 })
 
 describe('inspectWorktreeTab', () => {

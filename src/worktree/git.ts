@@ -78,6 +78,11 @@ export const listWorktrees = (root: string): WorktreeListing[] =>
     })
     .filter((listing) => listing.path !== '')
 
+// How many linked worktrees the repo has; the value behind the sidebar's
+// worktree-count token.
+export const countLinkedWorktrees = (root: string): number =>
+  listWorktrees(root).filter((listing) => !listing.isMain).length
+
 export type WorktreeFacts = {
   // Number of `status --porcelain` lines; 0 means clean.
   dirtyFiles: number
@@ -98,7 +103,8 @@ export const worktreeFacts = (worktreePath: string, base: string): WorktreeFacts
     dirtyFiles: status === '' ? 0 : status.split('\n').length,
   }
   try {
-    facts.lastCommitAt = Number(git(worktreePath, ['log', '-1', '--format=%ct']))
+    const seconds = Number(git(worktreePath, ['log', '-1', '--format=%ct']))
+    if (Number.isFinite(seconds)) facts.lastCommitAt = seconds
   } catch {
     // An unborn HEAD has no commit to date.
   }

@@ -1,6 +1,6 @@
 import { existsSync, realpathSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { basename, join } from 'node:path'
+import { basename, isAbsolute, join } from 'node:path'
 import { reportDiagnostics } from './diagnostics.ts'
 
 export type PaneConfig = {
@@ -479,11 +479,8 @@ export const diagnosticsForRepo = (
     }
   })
 
-// Config for a repo, layered lowest to highest: [defaults] from the central
-// config.toml, then its [repos.X] entry, then a repo-local .treehouse.toml at
-// the main checkout root. Reports its own diagnostics: the returned config is
-// either usable or the run has already stopped, so "diagnostics existed but
-// nobody looked" is not expressible at a call site.
+// The repo-local half of the layering: .treehouse.toml at the main checkout
+// root, validated but not yet reported (the resolvers below own that).
 const loadLocalConfig = async (
   mainRepoRoot: string,
 ): Promise<{ config: Partial<RepoConfig>; diagnostics: Diagnostic[] }> => {
@@ -492,6 +489,11 @@ const loadLocalConfig = async (
   return validateLocalConfigFile(await parseToml(localPath), localPath)
 }
 
+// Config for a repo, layered lowest to highest: [defaults] from the central
+// config.toml, then its [repos.X] entry, then a repo-local .treehouse.toml at
+// the main checkout root. Reports its own diagnostics: the returned config is
+// either usable or the run has already stopped, so "diagnostics existed but
+// nobody looked" is not expressible at a call site.
 export const resolveRepoConfig = async (
   mainRepoRoot: string,
   configDir: string,
@@ -523,9 +525,18 @@ export const resolveAllRepoConfigs = async (
   warn: (message: string) => void,
 ): Promise<Array<{ name: string; config: RepoConfig }>> => {
   const { config: loaded, diagnostics } = await loadConfig(configDir)
-  // Errors outside any repo block (a malformed [defaults], an unreadable top
-  // level) break every entry equally, so they still stop the run.
-  reportDiagnostics(diagnostics.filter((diagnostic) => !diagnostic.key?.startsWith('repos.')), warn)
+  // Repo-scoped errors demote to warnings (the repo is skipped below, not the
+  // run); warnings print as-is so a typo'd key stays visible here too. Errors
+  // outside any repo block (a malformed [defaults], an unreadable top level)
+  // break every entry equally, so they still stop the run.
+  reportDiagnostics(
+    diagnostics.map((diagnostic) =>
+      diagnostic.severity === 'error' && diagnostic.key?.startsWith('repos.')
+        ? { ...diagnostic, severity: 'warning' as const, message: `${diagnostic.message} (repo skipped here)` }
+        : diagnostic,
+    ),
+    warn,
+  )
 
   const brokenRepo = (name: string) =>
     diagnostics.some(
@@ -536,11 +547,15 @@ export const resolveAllRepoConfigs = async (
 
   const resolved: Array<{ name: string; config: RepoConfig }> = []
   for (const [name, entry] of Object.entries(loaded.repos)) {
-    if (brokenRepo(name)) {
-      warn(`warning: skipping ${name}: its config block has errors (see treehouse up in that repo for details)`)
+    if (brokenRepo(name)) continue
+    const root = expandHome(entry.root)
+    // An empty or relative root would resolve against the caller's cwd (the
+    // plugin root when a hook runs), listing or even reporting a token for the
+    // wrong repo; sameDir guards single-repo resolution the same way.
+    if (root === '' || !isAbsolute(root)) {
+      warn(`warning: skipping ${name}: root must be an absolute path, got ${JSON.stringify(entry.root)}`)
       continue
     }
-    const root = expandHome(entry.root)
     const local = await loadLocalConfig(root)
     if (local.diagnostics.some((diagnostic) => diagnostic.severity === 'error')) {
       warn(`warning: skipping ${name}: its ${LOCAL_CONFIG_FILE} has errors (see treehouse up in that repo for details)`)

@@ -331,7 +331,7 @@ base = "origin/master"
     expect(warned).toEqual([])
   })
 
-  test('a repo with a broken block is skipped with a warning, the rest resolve', async () => {
+  test('a repo with a broken block is skipped with a demoted warning, the rest resolve', async () => {
     const a = repoDir('a')
     writeCentral(`
 [repos.a]
@@ -344,7 +344,39 @@ setup = "npm ci"
     const resolved = await resolveAllRepoConfigs(configDir, warn)
     expect(resolved.map((entry) => entry.name)).toEqual(['a'])
     expect(warned).toHaveLength(1)
-    expect(warned[0]).toContain('skipping broken')
+    expect(warned[0]).toContain('repos.broken.setup')
+    expect(warned[0]).toContain('(repo skipped here)')
+  })
+
+  test('an unknown key in a repo block still warns in the listing', async () => {
+    const a = repoDir('a')
+    writeCentral(`
+[repos.a]
+root = ${JSON.stringify(a)}
+setpu = ["npm ci"]
+`)
+    const resolved = await resolveAllRepoConfigs(configDir, warn)
+    expect(resolved.map((entry) => entry.name)).toEqual(['a'])
+    expect(warned.some((message) => message.includes('unknown key "setpu"'))).toBe(true)
+  })
+
+  test('an empty or relative root is skipped with a warning, never resolved against cwd', async () => {
+    const a = repoDir('a')
+    writeCentral(`
+[repos.empty]
+root = ""
+
+[repos.relative]
+root = "../somewhere"
+
+[repos.a]
+root = ${JSON.stringify(a)}
+`)
+    const resolved = await resolveAllRepoConfigs(configDir, warn)
+    expect(resolved.map((entry) => entry.name)).toEqual(['a'])
+    expect(warned).toHaveLength(2)
+    expect(warned[0]).toContain('skipping empty: root must be an absolute path')
+    expect(warned[1]).toContain('skipping relative: root must be an absolute path')
   })
 
   test('a repo with a broken local file is skipped with a warning', async () => {

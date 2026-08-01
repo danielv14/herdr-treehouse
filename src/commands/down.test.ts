@@ -67,7 +67,7 @@ describe('down', () => {
     // own tab can end the process.
     const commands = fake.commands()
     const report = 'workspace report-metadata wA --source treehouse --token worktrees=0 --seq 1234 --ttl-ms 86400000'
-    expect(commands.indexOf(report)).toBeGreaterThan(-1)
+    expect(commands).toContain(report)
     expect(commands.indexOf(report)).toBeLessThan(commands.indexOf('tab close t1'))
   })
 

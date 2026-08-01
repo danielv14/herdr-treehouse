@@ -87,6 +87,7 @@ autostart = false
 
     expect(fake.commands()).toEqual([
       `worktree list --cwd ${repo.root}`,
+      'workspace report-metadata wA --source treehouse --token worktrees=1 --seq 1234 --ttl-ms 86400000',
       `tab create --workspace wA --cwd ${worktree} --label abc-1 --no-focus`,
       `pane split wA:p5 --direction right --ratio 0.5 --cwd ${worktree} --no-focus`,
       'pane rename wA:p6 shell',
@@ -97,7 +98,6 @@ autostart = false
       'agent wait wA:p5 --until idle --timeout 60000',
       'agent get wA:p5',
       'agent prompt wA:p5 solve ABC-1 --wait --until working --timeout 10000',
-      'workspace report-metadata wA --source treehouse --token worktrees=1 --seq 1234 --ttl-ms 86400000',
     ])
     expect(logged).toContain(`worktree:  ${worktree}`)
     expect(logged).toContain('tab:       wA:t3 (abc-1) in workspace wA')
@@ -122,7 +122,7 @@ command = "npm run dev"
     writeLocalConfig('base = "master"\n')
     const fake = createFakeHerdr(RESPONSES)
     await up(['--repo', repo.root, '--branch', 'ABC-1/fix', '--label', 'my tab', '--focus', '--no-agent'], deps(fake))
-    expect(fake.commands()[1]).toContain('--label my tab --focus')
+    expect(fake.commands().find((command) => command.startsWith('tab create'))).toContain('--label my tab --focus')
   })
 
   test('a repo with no workspace open gets one created', async () => {
@@ -134,7 +134,7 @@ command = "npm run dev"
     })
     await up(['--repo', repo.root, '--branch', 'ABC-1/fix', '--no-agent'], deps(fake))
     expect(fake.commands()[1]).toBe(`workspace create --cwd ${repo.root} --no-focus`)
-    expect(fake.commands()[2]).toContain('tab create --workspace wNew')
+    expect(fake.commands().find((command) => command.startsWith('tab create'))).toContain('--workspace wNew')
   })
 
   test('re-running on an existing worktree skips setup and still opens a tab', async () => {
@@ -239,7 +239,7 @@ describe('invocation context', () => {
     expect(existsSync(join(repo.parent, 'my-repo-abc-42'))).toBe(true)
     expect(repo.git('branch', '--list', 'ABC-42/wip')).toContain('ABC-42/wip')
     // A click carries no judgment, so the tab is focused but no prompt is sent.
-    expect(fake.commands()[1]).toContain('--focus')
+    expect(fake.commands().find((command) => command.startsWith('tab create'))).toContain('--focus')
   })
 
   test('a link with no derivable ticket refuses', async () => {
@@ -272,7 +272,7 @@ describe('interactive popup', () => {
     expect(logged).toContain('New worktree tab in my-repo\n')
     expect(existsSync(join(repo.parent, 'my-repo-abc-9'))).toBe(true)
     // An interactive answer means "take me there", like a clicked link.
-    expect(fake.commands()[1]).toContain('--focus')
+    expect(fake.commands().find((command) => command.startsWith('tab create'))).toContain('--focus')
   })
 
   // A bootstrap that creates the worktree and records the targets it was

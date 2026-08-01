@@ -167,6 +167,9 @@ export const ls = async (argv: string[], deps: EngineDeps) => {
   for (const line of renderTable(rows, header)) log(line)
   if (worktrees.some(({ worktree }) => !worktree.managed)) {
     log('')
-    log('* outside the repo’s worktree_dir convention (not created by treehouse)')
+    // Says what the check measures: a path comparison against the convention
+    // for the CURRENT branch. It cannot know who created the worktree, and a
+    // branch renamed after creation trips it too.
+    log("* path does not match the repo's worktree_dir convention")
   }
 }
