@@ -484,6 +484,14 @@ export const diagnosticsForRepo = (
 // the main checkout root. Reports its own diagnostics: the returned config is
 // either usable or the run has already stopped, so "diagnostics existed but
 // nobody looked" is not expressible at a call site.
+const loadLocalConfig = async (
+  mainRepoRoot: string,
+): Promise<{ config: Partial<RepoConfig>; diagnostics: Diagnostic[] }> => {
+  const localPath = join(mainRepoRoot, LOCAL_CONFIG_FILE)
+  if (!existsSync(localPath)) return { config: {}, diagnostics: [] }
+  return validateLocalConfigFile(await parseToml(localPath), localPath)
+}
+
 export const resolveRepoConfig = async (
   mainRepoRoot: string,
   configDir: string,
@@ -492,16 +500,56 @@ export const resolveRepoConfig = async (
   const { config: loaded, diagnostics } = await loadConfig(configDir)
   const entry = findRepoEntry(loaded.repos, mainRepoRoot)
   const name = entry?.[0] ?? basename(mainRepoRoot)
-  let config: RepoConfig = { ...loaded.defaults, ...(entry?.[1] ?? {}), root: mainRepoRoot }
-
-  const localPath = join(mainRepoRoot, LOCAL_CONFIG_FILE)
-  if (existsSync(localPath)) {
-    const local = validateLocalConfigFile(await parseToml(localPath), localPath)
-    diagnostics.push(...local.diagnostics)
-    config = { ...config, ...local.config, root: mainRepoRoot }
+  const local = await loadLocalConfig(mainRepoRoot)
+  diagnostics.push(...local.diagnostics)
+  const config: RepoConfig = {
+    ...loaded.defaults,
+    ...(entry?.[1] ?? {}),
+    ...local.config,
+    root: mainRepoRoot,
   }
   reportDiagnostics(diagnosticsForRepo(diagnostics, name), warn)
   return { name, config }
+}
+
+// Every centrally configured repo with the same layering as resolveRepoConfig,
+// for commands that span repos (ls, report) rather than act on one. Repos known
+// only by a repo-local .treehouse.toml are invisible here by design: there is
+// deliberately no registry of them. A repo whose own block or local file is
+// broken is skipped with a warning instead of stopping the listing - one bad
+// block must not blind the overview to every other repo.
+export const resolveAllRepoConfigs = async (
+  configDir: string,
+  warn: (message: string) => void,
+): Promise<Array<{ name: string; config: RepoConfig }>> => {
+  const { config: loaded, diagnostics } = await loadConfig(configDir)
+  // Errors outside any repo block (a malformed [defaults], an unreadable top
+  // level) break every entry equally, so they still stop the run.
+  reportDiagnostics(diagnostics.filter((diagnostic) => !diagnostic.key?.startsWith('repos.')), warn)
+
+  const brokenRepo = (name: string) =>
+    diagnostics.some(
+      (diagnostic) =>
+        diagnostic.severity === 'error' &&
+        (diagnostic.key === `repos.${name}` || diagnostic.key?.startsWith(`repos.${name}.`)),
+    )
+
+  const resolved: Array<{ name: string; config: RepoConfig }> = []
+  for (const [name, entry] of Object.entries(loaded.repos)) {
+    if (brokenRepo(name)) {
+      warn(`warning: skipping ${name}: its config block has errors (see treehouse up in that repo for details)`)
+      continue
+    }
+    const root = expandHome(entry.root)
+    const local = await loadLocalConfig(root)
+    if (local.diagnostics.some((diagnostic) => diagnostic.severity === 'error')) {
+      warn(`warning: skipping ${name}: its ${LOCAL_CONFIG_FILE} has errors (see treehouse up in that repo for details)`)
+      continue
+    }
+    for (const diagnostic of local.diagnostics) warn(`warning: ${diagnostic.message}`)
+    resolved.push({ name, config: { ...loaded.defaults, ...entry, ...local.config, root } })
+  }
+  return resolved
 }
 
 // Onboard's view of the central config: which entry (if any) already claims the

@@ -1,12 +1,17 @@
-import { describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import {
   DEFAULT_BASE,
   diagnosticsForRepo,
   renderProposedBlock,
+  resolveAllRepoConfigs,
   validateConfigFile,
   validateLocalConfigFile,
 } from './config.ts'
 import { reportDiagnostics } from './diagnostics.ts'
+import { expectRejection } from '../testing/expectRejection.ts'
 
 const FILE = '/cfg/config.toml'
 
@@ -272,6 +277,94 @@ label = "test"
       '/repo/.treehouse.toml',
     )
     expect(diagnostics[0].message).toContain('[[panes]]')
+  })
+})
+
+describe('resolveAllRepoConfigs', () => {
+  let parent: string
+  let configDir: string
+  let warned: string[]
+
+  const warn = (message: string) => warned.push(message)
+
+  const repoDir = (name: string) => {
+    const dir = join(parent, name)
+    mkdirSync(dir, { recursive: true })
+    return dir
+  }
+
+  const writeCentral = (toml: string) => writeFileSync(join(configDir, 'config.toml'), toml)
+
+  beforeEach(() => {
+    parent = mkdtempSync(join(tmpdir(), 'treehouse-config-test-'))
+    configDir = join(parent, 'config')
+    mkdirSync(configDir)
+    warned = []
+  })
+
+  afterEach(() => {
+    rmSync(parent, { recursive: true, force: true })
+  })
+
+  test('every central entry comes back with defaults and local file layered', async () => {
+    const a = repoDir('a')
+    const b = repoDir('b')
+    writeFileSync(join(b, '.treehouse.toml'), 'base = "origin/main"\n')
+    writeCentral(`
+[defaults]
+agent = "claude"
+
+[repos.a]
+root = ${JSON.stringify(a)}
+agent = "codex"
+
+[repos.b]
+root = ${JSON.stringify(b)}
+base = "origin/master"
+`)
+    const resolved = await resolveAllRepoConfigs(configDir, warn)
+    expect(resolved.map((entry) => entry.name)).toEqual(['a', 'b'])
+    expect(resolved[0].config.agent).toBe('codex')
+    expect(resolved[1].config.agent).toBe('claude')
+    // The local file wins over the central block, as in resolveRepoConfig.
+    expect(resolved[1].config.base).toBe('origin/main')
+    expect(warned).toEqual([])
+  })
+
+  test('a repo with a broken block is skipped with a warning, the rest resolve', async () => {
+    const a = repoDir('a')
+    writeCentral(`
+[repos.a]
+root = ${JSON.stringify(a)}
+
+[repos.broken]
+root = "/tmp/broken"
+setup = "npm ci"
+`)
+    const resolved = await resolveAllRepoConfigs(configDir, warn)
+    expect(resolved.map((entry) => entry.name)).toEqual(['a'])
+    expect(warned).toHaveLength(1)
+    expect(warned[0]).toContain('skipping broken')
+  })
+
+  test('a repo with a broken local file is skipped with a warning', async () => {
+    const a = repoDir('a')
+    writeFileSync(join(a, '.treehouse.toml'), 'setup = "npm ci"\n')
+    writeCentral(`[repos.a]\nroot = ${JSON.stringify(a)}\n`)
+    const resolved = await resolveAllRepoConfigs(configDir, warn)
+    expect(resolved).toEqual([])
+    expect(warned).toHaveLength(1)
+    expect(warned[0]).toContain('skipping a')
+  })
+
+  test('no config file at all is an empty listing, not an error', async () => {
+    expect(await resolveAllRepoConfigs(configDir, warn)).toEqual([])
+    expect(warned).toEqual([])
+  })
+
+  test('an error outside the repo blocks still stops the run', async () => {
+    writeCentral('[defaults]\nagent = 3\n')
+    await expectRejection(resolveAllRepoConfigs(configDir, warn), 'invalid config')
   })
 })
 
