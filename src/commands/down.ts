@@ -2,6 +2,7 @@ import { resolve } from 'node:path'
 import { parseFlags, type CommandSpec } from '../cli.ts'
 import { callerPaneId, callerTabId, invocationTargetPath } from '../herdr/context.ts'
 import { resolveDeps, type Ask, type EngineDeps } from '../deps.ts'
+import { refreshWorktreeCount } from './report.ts'
 import { inspectCheckout, removeWorktree } from '../worktree/git.ts'
 
 export const DOWN_COMMAND: CommandSpec = {
@@ -21,7 +22,7 @@ const confirmInteractively = async (worktreeRoot: string, ask: Ask): Promise<boo
 }
 
 export const down = async (argv: string[], deps: EngineDeps) => {
-  const { tabs, env, insideHerdr, log, ask } = resolveDeps(deps)
+  const { tabs, env, insideHerdr, log, warn, ask } = resolveDeps(deps)
   const flags = parseFlags(DOWN_COMMAND, argv)
   const worktreePath = resolve(
     invocationTargetPath({ explicit: flags.value('path'), prefer: 'pane', env }) ?? process.cwd(),
@@ -56,8 +57,9 @@ export const down = async (argv: string[], deps: EngineDeps) => {
   // design. Inspection failures abort rather than degrade: proceeding without
   // the busy check could delete a worktree under a running dev server.
   let tabIds: string[] = []
+  let workspaceId: string | undefined
   if (insideHerdr) {
-    const workspaceId = tabs.findWorkspace(mainRepoRoot)
+    workspaceId = tabs.findWorkspace(mainRepoRoot)
     if (!workspaceId) {
       log('repo has no open workspace in Herdr; removing the worktree only')
     } else {
@@ -84,6 +86,10 @@ export const down = async (argv: string[], deps: EngineDeps) => {
   removeWorktree(mainRepoRoot, worktreeRoot)
   log(`removed worktree: ${worktreeRoot}`)
   log('branch left in place (cleaned up via PR merge as usual)')
+
+  // Report before closing tabs: closing the caller's own tab ends this
+  // process, and the count already changed.
+  if (workspaceId) refreshWorktreeCount({ tabs, warn }, mainRepoRoot, workspaceId)
 
   const ownTabId = callerTabId(env)
   if (ownTabId && tabIds.includes(ownTabId)) {
