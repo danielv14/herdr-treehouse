@@ -63,3 +63,18 @@ action = "up-from-link"
 [[events]]
 on = "worktree.created"
 command = ["bash", "bin/treehouse", "bootstrap", "--from-event"]
+
+# Keep the sidebar's $worktrees token fresh when Herdr's own worktree flow
+# changes the count. treehouse up/down report the token themselves.
+[[events]]
+on = "worktree.created"
+command = ["bash", "bin/treehouse", "report"]
+
+[[events]]
+on = "worktree.removed"
+command = ["bash", "bin/treehouse", "report"]
+
+# Herdr does not persist reported metadata across a server restart; re-report
+# once the session is restored.
+[[startup]]
+command = ["bash", "bin/treehouse", "report"]
