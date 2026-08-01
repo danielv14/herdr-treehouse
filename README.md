@@ -12,8 +12,8 @@ bin/treehouse       stable engine entrypoint (bash shim -> bun)
 config.example.toml per-repo config reference
 src/                the engine
   main.ts           dispatch, cli.ts flags/help, deps.ts the dependency seam
-  commands/         up | down | onboard | action | bootstrap, plus the registry
-  worktree/         branch naming, worktree plan, provisioning, git
+  commands/         up | down | ls | onboard | action | bootstrap | report, plus the registry
+  worktree/         branch naming, worktree plan, provisioning, inventory, git
   herdr/            the Herdr seam: invoker, tab/pane choreography, env payloads
   config/           config shape, validation, defaults
 ```
@@ -42,11 +42,29 @@ treehouse up --branch ABC-1234/fix-thing --prompt "Solve ABC-1234 as described i
 treehouse up --interactive          # used by the popup action (keybinding)
 treehouse down                      # from inside a worktree; refuses if dirty or panes are busy
 treehouse down --path ../my-awesome-repo-abc-1234
+treehouse ls                        # every worktree across configured repos
+treehouse ls --json                 # stable shape for scripting/skills
 treehouse onboard                   # propose config for the current repo
 treehouse onboard --apply           # append it to the plugin config
 ```
 
 `down` removes the worktree and closes its tab, but never kills running processes and never uses `git worktree remove --force`; it tells you what is in the way instead.
+
+### Worktree overview
+
+`treehouse ls` prints one row per worktree across every repo in the central config: branch, dirty state, ahead/behind against the repo's base, last commit age, and (inside Herdr) which tab and agent it has. It is read-only and offline: ahead/behind is against the base as last fetched, and nothing is ever fetched or mutated. Repos configured only by a repo-local `.treehouse.toml` do not appear (there is deliberately no registry of them). A worktree created by hand outside the repo's `worktree_dir` convention still shows up, marked with `*`.
+
+### Sidebar token
+
+The engine reports one workspace metadata token to Herdr: `worktrees`, the repo's linked-worktree count. It refreshes when `treehouse up`/`down` change the count, when Herdr's own worktree flow fires `worktree.created`/`worktree.removed`, and on server startup (Herdr does not persist reported tokens across restarts). Styling stays in your own Herdr config; the engine only reports the value:
+
+```toml
+# ~/.config/herdr/config.toml
+[ui.sidebar.spaces]
+rows = [
+  { token = "$worktrees", fg = "cyan", dim = true },
+]
+```
 
 ### Where a repo's config lives
 
