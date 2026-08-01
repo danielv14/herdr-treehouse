@@ -28,7 +28,11 @@ export const report = async (argv: string[], deps: EngineDeps) => {
       if (!workspaceId) continue
       const count = countLinkedWorktrees(config.root)
       tabs.reportWorktreeCount(workspaceId, count)
-      log(`${name}: ${WORKTREES_TOKEN}=${count} (workspace ${workspaceId})`)
+      log(
+        count === 0
+          ? `${name}: no worktrees, ${WORKTREES_TOKEN} token cleared (workspace ${workspaceId})`
+          : `${name}: ${WORKTREES_TOKEN}=${count} (workspace ${workspaceId})`,
+      )
     } catch (error) {
       warn(`warning: skipping ${name}: ${error instanceof Error ? error.message : error}`)
     }

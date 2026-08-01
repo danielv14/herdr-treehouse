@@ -82,6 +82,9 @@ export type MetadataReport = {
   // Display-only token values for the user's sidebar rows; Herdr caps values at
   // 80 chars and this plugin at most reports a handful.
   tokens: Record<string, string>
+  // Token names to remove: a cleared token disappears from the sidebar row,
+  // where a "0" value would render as noise.
+  clearTokens?: string[]
 }
 
 // The one token this plugin reports in v1: the repo's linked-worktree count,
@@ -382,14 +385,25 @@ export const createTabChoreography = (
     for (const [name, value] of Object.entries(report.tokens)) {
       args.push('--token', `${name}=${value}`)
     }
+    for (const name of report.clearTokens ?? []) {
+      args.push('--clear-token', name)
+    }
     // Wall-clock as seq: each report is its own short-lived process, so a
-    // counter would reset; milliseconds are monotonic enough across them.
-    args.push('--seq', String(now()), '--ttl-ms', String(METADATA_TTL_MS))
+    // counter would reset; milliseconds are monotonic enough across them. The
+    // TTL applies to set tokens only, so a pure clear does not send one.
+    args.push('--seq', String(now()))
+    if (Object.keys(report.tokens).length > 0) args.push('--ttl-ms', String(METADATA_TTL_MS))
     invoke(args)
   }
 
+  // Zero clears rather than reports: an empty repo should show nothing in the
+  // sidebar, not a "0".
   const reportWorktreeCount = (workspaceId: string, count: number) =>
-    reportWorkspaceMetadata({ workspaceId, tokens: { [WORKTREES_TOKEN]: String(count) } })
+    reportWorkspaceMetadata(
+      count === 0
+        ? { workspaceId, tokens: {}, clearTokens: [WORKTREES_TOKEN] }
+        : { workspaceId, tokens: { [WORKTREES_TOKEN]: String(count) } },
+    )
 
   const openPluginPane = (request: PluginPaneRequest) => {
     const args = [
