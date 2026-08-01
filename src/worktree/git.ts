@@ -49,6 +49,71 @@ export const inspectCheckout = (path: string): Checkout => {
   }
 }
 
+export type WorktreeListing = {
+  path: string
+  // Short branch name; undefined when the checkout is detached or bare.
+  branch?: string
+  // The main checkout: first entry in `git worktree list`.
+  isMain: boolean
+}
+
+// Every worktree of the repo, from `git worktree list --porcelain -z`: the
+// machine-readable contract, NUL-terminated so paths with spaces or newlines
+// survive. Each record is attribute lines ending in NUL, records separated by
+// an extra NUL.
+export const listWorktrees = (root: string): WorktreeListing[] =>
+  git(root, ['worktree', 'list', '--porcelain', '-z'])
+    .split('\0\0')
+    .filter((record) => record !== '')
+    .map((record, index) => {
+      const lines = record.split('\0').filter((line) => line !== '')
+      const attribute = (name: string) =>
+        lines.find((line) => line === name || line.startsWith(`${name} `))?.slice(name.length + 1)
+      const branchRef = attribute('branch')
+      return {
+        path: attribute('worktree') ?? '',
+        branch: branchRef?.replace(/^refs\/heads\//, ''),
+        isMain: index === 0,
+      }
+    })
+    .filter((listing) => listing.path !== '')
+
+export type WorktreeFacts = {
+  // Number of `status --porcelain` lines; 0 means clean.
+  dirtyFiles: number
+  // Unix seconds of the checked-out HEAD's commit; undefined on an unborn HEAD.
+  lastCommitAt?: number
+  // Commits on the worktree's HEAD that the base does not have, and vice versa.
+  // Both undefined when the base ref cannot be resolved (never fetched, gone).
+  ahead?: number
+  behind?: number
+}
+
+// The listing facts about one worktree, in one call. Read-only and offline on
+// purpose: no fetch, so ahead/behind is against the base as last fetched, and
+// asking never mutates anything.
+export const worktreeFacts = (worktreePath: string, base: string): WorktreeFacts => {
+  const status = git(worktreePath, ['status', '--porcelain'])
+  const facts: WorktreeFacts = {
+    dirtyFiles: status === '' ? 0 : status.split('\n').length,
+  }
+  try {
+    facts.lastCommitAt = Number(git(worktreePath, ['log', '-1', '--format=%ct']))
+  } catch {
+    // An unborn HEAD has no commit to date.
+  }
+  try {
+    const counts = git(worktreePath, ['rev-list', '--left-right', '--count', `${base}...HEAD`])
+    const [behind, ahead] = counts.split(/\s+/).map(Number)
+    facts.behind = behind
+    facts.ahead = ahead
+  } catch {
+    // The base ref does not resolve here (never fetched, or deleted); an
+    // unknown distance must read as unknown, not as 0/0.
+  }
+  return facts
+}
+
 const branchExists = (repoRoot: string, branch: string): boolean => {
   const result = spawnSync('git', ['show-ref', '--verify', '--quiet', `refs/heads/${branch}`], {
     cwd: repoRoot,
