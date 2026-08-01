@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { addWorktree, inspectCheckout, removeWorktree } from './git.ts'
+import { addWorktree, inspectCheckout, listWorktrees, removeWorktree, worktreeFacts } from './git.ts'
 import { createTempRepo, type TempRepo } from '../testing/tempRepo.ts'
 
 // These behaviours used to be reachable only through the commands; now the git
@@ -117,6 +117,75 @@ describe('addWorktree', () => {
     addWorktree(clone, { path: worktree, branch: 'ABC-5/fix', base: 'origin/master', warn })
     expect(run(worktree, ['rev-parse', 'HEAD'])).toBe(upstreamHead)
     expect(warned).toEqual([])
+  })
+})
+
+describe('listWorktrees', () => {
+  test('the main checkout is first and marked, linked worktrees carry their branch', () => {
+    const worktree = addLinkedWorktree()
+    expect(listWorktrees(repo.root)).toEqual([
+      { path: repo.root, branch: 'master', isMain: true },
+      { path: worktree, branch: 'ABC-1/fix', isMain: false },
+    ])
+  })
+
+  test('asking from a linked worktree lists the same set', () => {
+    const worktree = addLinkedWorktree()
+    expect(listWorktrees(worktree)).toEqual(listWorktrees(repo.root))
+  })
+
+  test('a path with spaces survives the parse', () => {
+    const worktree = join(repo.parent, 'my repo abc 9')
+    repo.git('worktree', 'add', worktree, '-b', 'ABC-9/fix', '--no-track', 'master')
+    expect(listWorktrees(repo.root).map((listing) => listing.path)).toContain(worktree)
+  })
+
+  test('a detached worktree has no branch', () => {
+    const worktree = join(repo.parent, 'my-repo-detached')
+    repo.git('worktree', 'add', '--detach', worktree, 'master')
+    const detached = listWorktrees(repo.root).find((listing) => listing.path === worktree)
+    expect(detached).toEqual({ path: worktree, branch: undefined, isMain: false })
+  })
+})
+
+describe('worktreeFacts', () => {
+  test('a fresh worktree is clean, dated, and even with its base', () => {
+    const worktree = addLinkedWorktree()
+    const facts = worktreeFacts(worktree, 'master')
+    expect(facts.dirtyFiles).toBe(0)
+    expect(facts.lastCommitAt).toBeGreaterThan(0)
+    expect(facts.ahead).toBe(0)
+    expect(facts.behind).toBe(0)
+  })
+
+  test('dirty files are counted, commits move ahead, base commits count as behind', () => {
+    const worktree = addLinkedWorktree()
+    const run = (args: string[]) => {
+      const result = spawnSync('git', args, { cwd: worktree, encoding: 'utf8' })
+      if (result.status !== 0) throw new Error(result.stderr)
+    }
+    writeFileSync(join(worktree, 'done.txt'), 'done')
+    run(['add', 'done.txt'])
+    run(['commit', '-m', 'ahead'])
+    writeFileSync(join(worktree, 'a.txt'), 'wip')
+    writeFileSync(join(worktree, 'b.txt'), 'wip')
+    // The base moves on independently.
+    writeFileSync(join(repo.root, 'base.txt'), 'base')
+    repo.git('add', '.')
+    repo.git('commit', '-m', 'base moved')
+
+    const facts = worktreeFacts(worktree, 'master')
+    expect(facts.dirtyFiles).toBe(2)
+    expect(facts.ahead).toBe(1)
+    expect(facts.behind).toBe(1)
+  })
+
+  test('an unresolvable base reads as unknown, not as 0/0', () => {
+    const worktree = addLinkedWorktree()
+    const facts = worktreeFacts(worktree, 'origin/never-fetched')
+    expect(facts.ahead).toBeUndefined()
+    expect(facts.behind).toBeUndefined()
+    expect(facts.dirtyFiles).toBe(0)
   })
 })
 
