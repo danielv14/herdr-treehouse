@@ -3,5 +3,14 @@
 # Claude skills, lazygit custom commands, Herdr plugin actions, keybindings.
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Follow symlinks to the real file before deriving the repo path. The README
+# tells you to put this on your PATH, and the obvious way to do that is a symlink
+# into ~/.local/bin, which used to resolve to ~/.local/src/main.ts and fail.
+SOURCE="${BASH_SOURCE[0]}"
+while [ -L "$SOURCE" ]; do
+  LINK_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ "$SOURCE" == /* ]] || SOURCE="$LINK_DIR/$SOURCE"
+done
+SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
 exec bun run "$SCRIPT_DIR/../src/main.ts" "$@"
