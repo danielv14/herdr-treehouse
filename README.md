@@ -109,7 +109,7 @@ The command that starts the agent in the main pane resolves in this order, first
 4. `agent` in the `[defaults]` block in `config.toml`, which applies to every repo
 5. bare `claude`
 
-Left unset, a bare `claude` inherits your own Claude Code settings, so permission mode stays one decision in `~/.claude/settings.json`. Set `[defaults]` instead when you want flags in every worktree tab, including ones with no settings.json equivalent such as `--allow-dangerously-skip-permissions`. A per-repo `agent` is for repos that genuinely deserve different treatment, not for restating something global.
+Left unset, a bare `claude` inherits your own Claude Code settings, so permission mode stays one decision in `~/.claude/settings.json`. Set `[defaults]` instead when you want flags in every worktree tab, including ones with no settings.json equivalent such as `--dangerously-skip-permissions`. A per-repo `agent` is for repos that genuinely deserve different treatment, not for restating something global.
 
 The command is placeholder-expanded, whether it comes from `--agent` or from config, so `{worktree}`, `{branch}` and the rest are available in it.
 

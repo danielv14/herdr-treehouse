@@ -54,7 +54,7 @@
 # a bare `claude`, which is usually what you want: the agent then picks up your
 # own Claude Code settings, including permission mode. Set it here only for
 # flags you want in every repo.
-# agent = "claude --allow-dangerously-skip-permissions"
+# agent = "claude --dangerously-skip-permissions"
 #
 # Standing instructions for every repo's worktree agents, and the agent line
 # that delivers them. Uncomment the two TOGETHER: `context` with no
@@ -66,7 +66,7 @@
 # way for one repo to opt out of a [defaults].context except by rewriting the
 # agent line too; keep the default text true everywhere or set both per repo.
 # context = "You are in a git worktree: {worktree}, branch {branch}."
-# agent = 'claude --allow-dangerously-skip-permissions --append-system-prompt "$(cat {context_file})"'
+# agent = 'claude --dangerously-skip-permissions --append-system-prompt "$(cat {context_file})"'
 
 [repos.my-awesome-repo]
 root = "~/dev/my-awesome-repo"
