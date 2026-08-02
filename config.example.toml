@@ -24,11 +24,16 @@
 #
 # Worktree setup, two tiers:
 #   setup     = ["corepack enable", "npm ci"]  # simple shell commands run inside a
-#                                              # FRESHLY created worktree (skipped if
-#                                              # it already existed); enough for most
-#                                              # repos: install deps, cp {root}/.env .env
+#                                              # FRESHLY created worktree; enough for
+#                                              # most repos: install deps,
+#                                              # cp {root}/.env .env
 #   bootstrap = ["path/to/script.sh", ...]     # replaces worktree creation entirely;
 #                                              # for repos needing real logic (monorepos)
+#
+# Reopening a worktree that already exists skips setup: `treehouse up` on it just
+# opens the tab. `treehouse up --setup` runs the setup commands there anyway, for
+# a worktree that exists but was never provisioned (created by hand, by another
+# tool, or before the repo had a treehouse config).
 #
 # A repo can override any of this with a .treehouse.toml in its root
 # (same fields, no [repos.*] wrapper).

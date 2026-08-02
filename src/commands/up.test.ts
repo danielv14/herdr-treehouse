@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Environment } from '../herdr/context.ts'
 import type { EngineDeps } from '../deps.ts'
@@ -143,8 +143,63 @@ command = "npm run dev"
     logged = []
     const fake = createFakeHerdr(RESPONSES)
     await up(['--repo', repo.root, '--branch', 'ABC-1/fix', '--no-agent'], deps(fake))
-    expect(logged).toContain('worktree already existed; setup commands skipped (run them manually if deps are missing)')
+    expect(logged).toContain('worktree already existed; setup commands skipped (re-run with --setup to run them here)')
     expect(fake.callsMatching('tab create')).toHaveLength(1)
+  })
+
+  test('a worktree at a path the convention would never derive is reused, not recreated', async () => {
+    // The real case: a worktree made by another tool, named after a ticket that
+    // is not in the branch name. Deriving the path from worktree_dir sent
+    // provisioning off to create a second worktree for a branch git already had
+    // checked out, and git refused with "already used by worktree at ...".
+    writeLocalConfig('base = "master"\nsetup = ["echo ran > ran.txt"]\n')
+    const elsewhere = join(repo.parent, 'npm-packages-vkt-11206')
+    repo.git('worktree', 'add', elsewhere, '-b', 'ui/upgrade-to-ui-in-konto', '--no-track', 'master')
+
+    const fake = createFakeHerdr(RESPONSES)
+    await up(['--repo', repo.root, '--branch', 'ui/upgrade-to-ui-in-konto', '--no-agent'], deps(fake))
+
+    expect(logged).toContain(`worktree already exists: ${elsewhere}`)
+    expect(logged).toContain(`worktree:  ${elsewhere}`)
+    expect(fake.commands().find((command) => command.startsWith('tab create'))).toContain(`--cwd ${elsewhere}`)
+    expect(existsSync(join(repo.parent, 'my-repo-ui-upgrade-to-ui-in-konto'))).toBe(false)
+  })
+
+  test('a branch checked out in the main checkout is refused instead of opening a tab on it', async () => {
+    writeLocalConfig('base = "master"\n')
+    const fake = createFakeHerdr(RESPONSES)
+    await expectRejection(
+      up(['--repo', repo.root, '--branch', 'master', '--no-agent'], deps(fake)),
+      /master is checked out in the main checkout \(.*\), not in a worktree/,
+    )
+    expect(fake.callsMatching('tab create')).toHaveLength(0)
+  })
+
+  test('--setup runs the setup commands in a worktree that already exists', async () => {
+    writeLocalConfig('base = "master"\nsetup = ["echo ran >> ran.txt"]\n')
+    await up(['--repo', repo.root, '--branch', 'ABC-1/fix', '--no-agent'], deps(createFakeHerdr(RESPONSES)))
+    logged = []
+    const fake = createFakeHerdr(RESPONSES)
+    await up(['--repo', repo.root, '--branch', 'ABC-1/fix', '--no-agent', '--setup'], deps(fake))
+    expect(logged).toContain('setup: echo ran >> ran.txt')
+    expect(logged.join('\n')).not.toContain('setup commands skipped')
+    expect(readFileSync(join(repo.parent, 'my-repo-abc-1', 'ran.txt'), 'utf8').trim().split('\n')).toEqual([
+      'ran',
+      'ran',
+    ])
+    expect(fake.callsMatching('tab create')).toHaveLength(1)
+  })
+
+  test('a failing --setup command stops the run before the tab is created', async () => {
+    writeLocalConfig('base = "master"\n')
+    await up(['--repo', repo.root, '--branch', 'ABC-1/fix', '--no-agent'], deps(createFakeHerdr(RESPONSES)))
+    writeLocalConfig('base = "master"\nsetup = ["exit 7"]\n')
+    const fake = createFakeHerdr(RESPONSES)
+    await expectRejection(
+      up(['--repo', repo.root, '--branch', 'ABC-1/fix', '--no-agent', '--setup'], deps(fake)),
+      /setup command failed \(exit 7\): exit 7/,
+    )
+    expect(fake.callsMatching('tab create')).toHaveLength(0)
   })
 
   test('bare claude is the last resort when nothing configures an agent', async () => {

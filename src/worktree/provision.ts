@@ -16,6 +16,13 @@ export type ProvisionOptions = {
   // by someone else (Herdr's native worktree flow, before the hook fires): there
   // is nothing to create, but it is still a fresh worktree, so setup must run.
   worktreeState?: 'unknown' | 'just-created'
+  // Run `setup` even though the worktree already exists (`treehouse up --setup`).
+  // A worktree that exists is not the same as a worktree that was provisioned:
+  // it may have been created by hand, by another tool, or by Herdr's own flow in
+  // a repo treehouse only learned about afterwards. Whether the commands are
+  // worth re-running is the caller's call, not something the engine guesses from
+  // the state of the directory.
+  setupExisting?: boolean
   // No console default: what provisioning says is the caller's output.
   log: (message: string) => void
   warn: (message: string) => void
@@ -66,25 +73,35 @@ export const provisionWorktree = (
     )
   }
 
-  // Setup only on a fresh worktree: re-running `up` on an existing one should
-  // not trigger another npm ci.
-  if (existedBefore) {
-    if (repoConfig.setup?.length) {
-      log('worktree already existed; setup commands skipped (run them manually if deps are missing)')
+  // Setup belongs to a fresh worktree: re-running `up` on an existing one must
+  // not trigger another npm ci behind your back. `--setup` is how the caller says
+  // this particular worktree needs it anyway.
+  const setup = repoConfig.setup ?? []
+  if (existedBefore && !options.setupExisting) {
+    if (setup.length > 0) {
+      log('worktree already existed; setup commands skipped (re-run with --setup to run them here)')
     }
     return { created: false, setupRan: false }
   }
-  runSetup(plan, repoConfig, log)
-  return { created: true, setupRan: (repoConfig.setup?.length ?? 0) > 0 }
+  runSetup(plan, setup, log)
+  return { created: !existedBefore, setupRan: setup.length > 0 }
 }
 
+// A half-provisioned worktree is worse than none at all, so a failing setup
+// command aborts before anything opens a tab on it.
 const runSetup = (
   plan: WorktreePlan,
-  repoConfig: RepoConfig,
+  commands: string[],
   log: (message: string) => void,
 ) => {
-  for (const rawCommand of repoConfig.setup ?? []) {
-    const command = plan.expand(rawCommand, 'setup')
+  // Expand the whole list before running any of it, for the same reason `up`
+  // expands pane commands before provisioning: a typo'd placeholder is broken
+  // config, and broken config must stop the run before the first command has
+  // changed anything. Expanding lazily meant a typo in the second command threw
+  // only after the first had spent 30 seconds on npm ci, leaving exactly the
+  // half-provisioned worktree that aborting is supposed to prevent.
+  const expanded = commands.map((rawCommand) => plan.expand(rawCommand, 'setup'))
+  for (const command of expanded) {
     log(`setup: ${command}`)
     const result = spawnSync('bash', ['-lc', command], { cwd: plan.worktree, stdio: 'inherit' })
     if (result.status !== 0) throw new Error(`setup command failed (exit ${result.status}): ${command}`)

@@ -78,6 +78,20 @@ export const listWorktrees = (root: string): WorktreeListing[] =>
     })
     .filter((listing) => listing.path !== '')
 
+// Where a branch is checked out, if anywhere. `up` has to ask before deriving a
+// path from `worktree_dir`, because the convention only describes worktrees
+// treehouse made: one created by hand, by another tool, or under a different
+// ticket id sits wherever that tool put it. Deriving instead sent provisioning
+// off to create a second worktree for a branch git already has checked out,
+// which git refuses (`already used by worktree at ...`) after a bootstrap has
+// run. The main checkout is included, because "the branch is on your desk, not
+// in a worktree" is an answer the caller needs to tell apart from "nowhere".
+export const findWorktreeForBranch = (
+  root: string,
+  branch: string,
+): WorktreeListing | undefined =>
+  listWorktrees(root).find((listing) => listing.branch === branch)
+
 // How many linked worktrees the repo has; the value behind the sidebar's
 // worktree-count token.
 export const countLinkedWorktrees = (root: string): number =>

@@ -92,10 +92,49 @@ describe('existing worktree', () => {
     expect(second.result).toEqual({ created: false, setupRan: false })
     expect(logged).toContain(`worktree already exists: ${second.plan.worktree}`)
     expect(logged).toContain(
-      'worktree already existed; setup commands skipped (run them manually if deps are missing)',
+      'worktree already existed; setup commands skipped (re-run with --setup to run them here)',
     )
     // The setup command appends, so a second run would leave two lines.
     expect(readFileSync(join(second.plan.worktree, 'ran.txt'), 'utf8').trim()).toBe('ran')
+  })
+})
+
+describe('setupExisting', () => {
+  // A worktree that exists is not the same as a worktree that was provisioned:
+  // this is how `up --setup` says "run them here anyway".
+  const setup = { setup: ['echo ran >> ran.txt'] }
+
+  test('runs setup in a worktree that already existed, without claiming it created it', () => {
+    const first = provision(setup)
+    logged = []
+    const second = provision(setup, { setupExisting: true })
+    expect(second.result).toEqual({ created: false, setupRan: true })
+    expect(readFileSync(join(first.plan.worktree, 'ran.txt'), 'utf8').trim().split('\n')).toEqual([
+      'ran',
+      'ran',
+    ])
+    expect(logged).toContain('setup: echo ran >> ran.txt')
+    expect(logged.join('\n')).not.toContain('setup commands skipped')
+  })
+
+  test('changes nothing on a fresh worktree', () => {
+    const { plan, result } = provision(setup, { setupExisting: true })
+    expect(result).toEqual({ created: true, setupRan: true })
+    expect(readFileSync(join(plan.worktree, 'ran.txt'), 'utf8').trim()).toBe('ran')
+  })
+
+  test('a repo with no setup configured is a no-op, not an error', () => {
+    provision({})
+    logged = []
+    const { result } = provision({}, { setupExisting: true })
+    expect(result).toEqual({ created: false, setupRan: false })
+  })
+
+  test('a failing setup command stops the run here too', () => {
+    provision({})
+    expect(() => provision({ setup: ['exit 3'] }, { setupExisting: true })).toThrow(
+      'setup command failed (exit 3): exit 3',
+    )
   })
 })
 
@@ -112,6 +151,15 @@ describe('setup', () => {
 
   test('a failing setup command stops the run and names the command', () => {
     expect(() => provision({ setup: ['exit 3'] })).toThrow('setup command failed (exit 3): exit 3')
+  })
+
+  test('a typo\'d placeholder stops the run before any command has run', () => {
+    // The half-provisioned worktree that setup's abort rule exists to prevent is
+    // exactly what a lazily expanded list produced: command 1 ran, command 2 threw.
+    expect(() => provision({ setup: ['echo first > ran.txt', 'cp {wortkree}/.env .env'] })).toThrow(
+      /unknown placeholder \{wortkree\} in setup/,
+    )
+    expect(existsSync(join(repo.parent, 'my-repo-abc-1', 'ran.txt'))).toBe(false)
   })
 })
 
@@ -143,6 +191,30 @@ describe('bootstrap path', () => {
   test('a failing bootstrap fails the run', () => {
     const script = writeBootstrap('boom.sh', 'exit 4')
     expect(() => provision({ bootstrap: [script] })).toThrow('bootstrap failed (exit 4)')
+  })
+
+  test('the bootstrap runs first, then setup when --setup asks for it', () => {
+    // A bootstrap always runs, and it owns creation, so it has to tolerate being
+    // handed a worktree that is already there - like the real ones do.
+    const script = writeBootstrap(
+      'bootstrap.sh',
+      '[ -d "$2" ] || git worktree add "$2" -b "$3" --no-track master\necho bootstrap >> "$2/order.txt"',
+    )
+    const config = {
+      bootstrap: [script, '--dir', '{worktree}', '{branch}'],
+      setup: ['echo setup >> order.txt'],
+    }
+    const first = provision(config)
+    expect(first.result).toEqual({ created: true, setupRan: true })
+
+    const second = provision(config, { setupExisting: true })
+    expect(second.result).toEqual({ created: false, setupRan: true })
+    expect(readFileSync(join(second.plan.worktree, 'order.txt'), 'utf8').trim().split('\n')).toEqual([
+      'bootstrap',
+      'setup',
+      'bootstrap',
+      'setup',
+    ])
   })
 
   test('setup still runs after a bootstrap created the worktree', () => {
