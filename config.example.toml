@@ -13,8 +13,12 @@
 #   {root}        main checkout path
 #   {base}        base ref (default origin/master); only used by the built-in
 #                 worktree creation - a custom bootstrap owns its own base
+#   {targets}     the --target list, comma-separated ("services/a, packages/b"),
+#                 empty when none were given. Not for bootstrap argv - that
+#                 takes the spread form below
 #   {targets...}  expands to one argv entry per --target (bootstrap only, and
 #                 only as an argv entry of its own)
+#   {context_file} path of the rendered `context` file (agent command only)
 #
 # A single-word brace that is not one of these is an error, not a literal: a
 # typo'd {wortkree} stops the run instead of reaching a shell command as text.
@@ -51,6 +55,10 @@
 # own Claude Code settings, including permission mode. Set it here only for
 # flags you want in every repo.
 # agent = "claude --allow-dangerously-skip-permissions"
+# Standing instructions for every repo's worktree agents, if you have any that
+# are not repo-specific. A repo's own `context` REPLACES this rather than adding
+# to it, like every other key.
+# context = "You are in a git worktree: {worktree}, branch {branch}."
 
 [repos.my-awesome-repo]
 root = "~/dev/my-awesome-repo"
@@ -66,6 +74,19 @@ bootstrap = [
   "{branch}",
   "{targets...}",
 ]
+# Standing instructions for the agent that starts in this repo's worktree tabs:
+# the tab's situation, which no agent can see for itself. Rendered to a file
+# outside the repo and read by {context_file} in the agent command below, which
+# is the only place that placeholder works. Delivery is the system prompt, not a
+# first message: standing context read as a task is worse than none, and a user
+# message ages out on compaction. Set one without the other and `up` refuses.
+context = """
+You are in a git worktree of my-awesome-repo: {worktree}, branch {branch}, ticket {ticket}.
+Bootstrapped targets: {targets}. Dependencies are installed only there.
+Do not start the dev command. It is pre-filled in its own pane, and verification
+is serial: two tabs must never race for the same containers and ports.
+"""
+agent = 'claude --append-system-prompt "$(cat {context_file})"'
 # Panes: each entry splits the PREVIOUS pane (the first splits the main/agent
 # pane). Layout below: agent | right column, right column halved.
 # Verification is serial (tab by tab), so the dev command is only pre-filled;

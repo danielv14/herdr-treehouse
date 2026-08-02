@@ -280,6 +280,42 @@ label = "test"
   })
 })
 
+describe('context', () => {
+  test('is accepted in [defaults] and in a repo block', () => {
+    const { config, diagnostics } = validate(`
+[defaults]
+context = "every repo"
+
+[repos.x]
+root = "/tmp/x"
+context = """
+line one
+line two
+"""
+`)
+    expect(diagnostics).toEqual([])
+    expect(config.defaults.context).toBe('every repo')
+    // Stored as TOML handed it over, blank edges and all (Bun keeps the newline
+    // after the """); trimming them is the rendering side's business.
+    expect(config.repos.x.context).toBe('\nline one\nline two\n')
+  })
+
+  test('is accepted in a repo-local file', () => {
+    const { config, diagnostics } = validateLocalConfigFile(
+      Bun.TOML.parse('context = "just this repo"'),
+      '/repo/.treehouse.toml',
+    )
+    expect(diagnostics).toEqual([])
+    expect(config.context).toBe('just this repo')
+  })
+
+  test('a list is reported rather than reaching the renderer', () => {
+    expect(errors('[repos.x]\nroot = "/tmp/x"\ncontext = ["a", "b"]\n')).toEqual([
+      'repos.x.context in /cfg/config.toml: expected a string, found a list',
+    ])
+  })
+})
+
 describe('resolveAllRepoConfigs', () => {
   let parent: string
   let configDir: string
@@ -329,6 +365,34 @@ base = "origin/master"
     // The local file wins over the central block, as in resolveRepoConfig.
     expect(resolved[1].config.base).toBe('origin/main')
     expect(warned).toEqual([])
+  })
+
+  test('a repo context replaces the default rather than appending to it', async () => {
+    const a = repoDir('a')
+    const b = repoDir('b')
+    const c = repoDir('c')
+    writeFileSync(join(c, '.treehouse.toml'), 'context = "from the local file"\n')
+    writeCentral(`
+[defaults]
+context = "from defaults"
+
+[repos.a]
+root = ${JSON.stringify(a)}
+
+[repos.b]
+root = ${JSON.stringify(b)}
+context = "from the repo block"
+
+[repos.c]
+root = ${JSON.stringify(c)}
+context = "from the repo block"
+`)
+    const resolved = await resolveAllRepoConfigs(configDir, warn)
+    expect(resolved.map((entry) => entry.config.context)).toEqual([
+      'from defaults',
+      'from the repo block',
+      'from the local file',
+    ])
   })
 
   test('a repo with a broken block is skipped with a demoted warning, the rest resolve', async () => {

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Environment } from '../herdr/context.ts'
 import type { EngineDeps } from '../deps.ts'
@@ -347,6 +348,126 @@ describe('two branches under one ticket', () => {
     )
     expect(fake.callsMatching('tab create')).toHaveLength(0)
     expect(fake.callsMatching('pane run')).toHaveLength(0)
+  })
+})
+
+describe('agent context', () => {
+  // The context file lives outside every repo, under a deterministic name per
+  // repo and {id}, so these tests read it where `up` put it.
+  const contextDir = join(tmpdir(), 'treehouse-context')
+  const contextFile = (id: string) => join(contextDir, `my-repo-${id}.md`)
+  const contextFiles = (prefix: string) =>
+    existsSync(contextDir)
+      ? readdirSync(contextDir).filter((name) => name.startsWith(`my-repo-${prefix}`))
+      : []
+
+  const APPEND = 'agent = \'claude --append-system-prompt "$(cat {context_file})"\''
+
+  afterEach(() => {
+    for (const name of contextFiles('')) rmSync(join(contextDir, name), { force: true })
+  })
+
+  test('the agent command carries the file, and the file the expanded text', async () => {
+    writeLocalConfig(`
+base = "master"
+${APPEND}
+context = """
+You are in a worktree of {repo}: {worktree}, branch {branch}, ticket {ticket}.
+Bootstrapped targets: {targets}.
+Do not start the dev command.
+"""
+`)
+    const fake = createFakeHerdr(RESPONSES)
+    await up(
+      ['--repo', repo.root, '--branch', 'ABC-1/fix-thing', '--target', 'services/a', '--target', 'packages/b'],
+      deps(fake),
+    )
+
+    const worktree = join(repo.parent, 'my-repo-abc-1')
+    expect(fake.commands()).toContain(
+      `pane run wA:p5 claude --append-system-prompt "$(cat ${contextFile('abc-1')})"`,
+    )
+    expect(readFileSync(contextFile('abc-1'), 'utf8')).toBe(
+      `You are in a worktree of my-repo: ${worktree}, branch ABC-1/fix-thing, ticket abc-1.\n` +
+        'Bootstrapped targets: services/a, packages/b.\n' +
+        'Do not start the dev command.\n',
+    )
+  })
+
+  test('re-running up overwrites the file instead of accumulating', async () => {
+    writeLocalConfig(`base = "master"\n${APPEND}\ncontext = "first"\n`)
+    await up(['--repo', repo.root, '--branch', 'ABC-77/fix'], deps(createFakeHerdr(RESPONSES)))
+    writeLocalConfig(`base = "master"\n${APPEND}\ncontext = "second"\n`)
+    await up(['--repo', repo.root, '--branch', 'ABC-77/fix'], deps(createFakeHerdr(RESPONSES)))
+
+    expect(contextFiles('abc-77')).toEqual(['my-repo-abc-77.md'])
+    expect(readFileSync(contextFile('abc-77'), 'utf8')).toBe('second\n')
+  })
+
+  test('--agent is expanded like a configured one', async () => {
+    writeLocalConfig('base = "master"\ncontext = "standing instructions"\n')
+    const fake = createFakeHerdr(RESPONSES)
+    await up(
+      ['--repo', repo.root, '--branch', 'ABC-1/fix', '--agent', 'codex --cwd {worktree} --context {context_file}'],
+      deps(fake),
+    )
+    expect(fake.commands()).toContain(
+      `pane run wA:p5 codex --cwd ${join(repo.parent, 'my-repo-abc-1')} --context ${contextFile('abc-1')}`,
+    )
+  })
+
+  test('context the agent command never reads is refused, not silently dropped', async () => {
+    writeLocalConfig('base = "master"\nagent = "claude --resume"\ncontext = "standing instructions"\n')
+    const fake = createFakeHerdr(RESPONSES)
+    await expectRejection(
+      up(['--repo', repo.root, '--branch', 'ABC-1/fix'], deps(fake)),
+      /context is configured for my-repo but the agent command has no \{context_file\}/,
+    )
+    expect(fake.calls).toHaveLength(0)
+  })
+
+  test('{context_file} with no context to put in it is refused', async () => {
+    writeLocalConfig(`base = "master"\n${APPEND}\n`)
+    const fake = createFakeHerdr(RESPONSES)
+    await expectRejection(
+      up(['--repo', repo.root, '--branch', 'ABC-1/fix'], deps(fake)),
+      /uses \{context_file\} but no context is configured/,
+    )
+    expect(fake.calls).toHaveLength(0)
+  })
+
+  test('--no-agent needs neither and writes no file', async () => {
+    writeLocalConfig('base = "master"\nagent = "claude --resume"\ncontext = "standing instructions"\n')
+    const fake = createFakeHerdr(RESPONSES)
+    await up(['--repo', repo.root, '--branch', 'ABC-88/fix', '--no-agent'], deps(fake))
+    expect(fake.callsMatching('pane run')).toHaveLength(0)
+    expect(contextFiles('abc-88')).toEqual([])
+  })
+
+  test('a placeholder typo in the context fails before the worktree is provisioned', async () => {
+    writeLocalConfig(`base = "master"\n${APPEND}\ncontext = "branch {brnach}"\n`)
+    await expectRejection(
+      up(['--repo', repo.root, '--branch', 'ABC-1/fix'], deps(createFakeHerdr(RESPONSES))),
+      'unknown placeholder {brnach} in context',
+    )
+    expect(existsSync(join(repo.parent, 'my-repo-abc-1'))).toBe(false)
+  })
+
+  test('a placeholder typo in the agent command fails before the worktree is provisioned', async () => {
+    writeLocalConfig('base = "master"\nagent = "claude --cwd {wortkree}"\n')
+    await expectRejection(
+      up(['--repo', repo.root, '--branch', 'ABC-1/fix'], deps(createFakeHerdr(RESPONSES))),
+      'unknown placeholder {wortkree} in the agent command',
+    )
+    expect(existsSync(join(repo.parent, 'my-repo-abc-1'))).toBe(false)
+  })
+
+  test('a repo with no context is untouched', async () => {
+    writeLocalConfig('base = "master"\n')
+    const fake = createFakeHerdr(RESPONSES)
+    await up(['--repo', repo.root, '--branch', 'ABC-99/fix'], deps(fake))
+    expect(fake.commands()).toContain('pane run wA:p5 claude')
+    expect(contextFiles('abc-99')).toEqual([])
   })
 })
 

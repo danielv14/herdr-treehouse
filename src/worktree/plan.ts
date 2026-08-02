@@ -5,15 +5,40 @@ import { DEFAULT_BASE, DEFAULT_WORKTREE_DIR, expandHome, type RepoConfig } from 
 // Everything derived about one worktree, resolved in a single call: callers ask
 // once and read fields off the result. Pure: no filesystem, no git, no Herdr.
 
-const PLACEHOLDERS = ['repo', 'branch', 'slug', 'ticket', 'id', 'worktree', 'root', 'base'] as const
+const PLACEHOLDERS = [
+  'repo',
+  'branch',
+  'slug',
+  'ticket',
+  'id',
+  'worktree',
+  'root',
+  'base',
+  'targets',
+] as const
 
 const TARGETS_PLACEHOLDER = '{targets...}'
+
+// The prose form of the same list. Legal everywhere ordinary placeholders are,
+// but NOT in bootstrap argv: there it is a mistyped {targets...}, and joining
+// two dirs into one argument is never what the script was waiting for.
+const TARGETS_JOINED_PLACEHOLDER = '{targets}'
+
+// The rendered context file, legal in the agent command and nowhere else, the
+// way {targets...} is legal in bootstrap argv and nowhere else. Not in
+// PLACEHOLDERS: only expandAgent below can supply a value for it.
+const CONTEXT_FILE_PLACEHOLDER = '{context_file}'
 
 // Whether a repo's bootstrap consumes targets, i.e. whether asking for any
 // makes sense. The placeholder itself stays private: this is the question
 // callers actually have.
 export const bootstrapTakesTargets = (repoConfig: RepoConfig): boolean =>
   repoConfig.bootstrap?.includes(TARGETS_PLACEHOLDER) ?? false
+
+// Whether an agent command asks for the repo's rendered context, the other
+// question a caller has about a placeholder it cannot spell itself.
+export const agentCommandTakesContext = (agentCommand: string): boolean =>
+  agentCommand.includes(CONTEXT_FILE_PLACEHOLDER)
 
 export type WorktreePlan = {
   repo: string
@@ -31,6 +56,10 @@ export type WorktreePlan = {
   // Expand a bootstrap argv: `{targets...}` becomes one entry per target, every
   // other entry gets normal placeholder expansion plus ~ expansion.
   expandArgv: (argv: string[]) => string[]
+  // Expand an agent command, where `{context_file}` is legal. The path arrives
+  // as an argument rather than living in the plan: only the caller that renders
+  // the context knows whether there is a file at all.
+  expandAgent: (command: string, contextFile?: string) => string
 }
 
 // An unknown placeholder used to pass through unexpanded into shell commands and
@@ -52,6 +81,11 @@ const expandWith = (
       `${TARGETS_PLACEHOLDER} only expands as a standalone bootstrap argv entry, not in ${where}: ${JSON.stringify(template)}`,
     )
   }
+  if (template.includes(CONTEXT_FILE_PLACEHOLDER) && values.context_file === undefined) {
+    throw new Error(
+      `${CONTEXT_FILE_PLACEHOLDER} only expands in the agent command, not in ${where}: ${JSON.stringify(template)}`,
+    )
+  }
   return template.replace(/(?<!\$)\{(\w+)\}/g, (_whole, key: string) => {
     const value = values[key]
     if (value !== undefined) return value
@@ -61,7 +95,7 @@ const expandWith = (
     throw new Error(
       `unknown placeholder {${key}} in ${where}: ${JSON.stringify(template)}. Known placeholders: ${PLACEHOLDERS.map(
         (name) => `{${name}}`,
-      ).join(', ')}, plus ${TARGETS_PLACEHOLDER} in bootstrap argv`,
+      ).join(', ')}, plus ${TARGETS_PLACEHOLDER} in bootstrap argv and ${CONTEXT_FILE_PLACEHOLDER} in the agent command`,
     )
   })
 }
@@ -155,7 +189,13 @@ export const buildWorktreePlan = ({
   const withoutWorktree = placeholderValues({ repoName, branch, mainRepoRoot, repoConfig }, id)
 
   const worktreePath = worktree ?? resolveWorktreePath(repoConfig, mainRepoRoot, withoutWorktree)
-  const values: Record<string, string> = { ...withoutWorktree, worktree: worktreePath }
+  // {targets} is the prose form of the list {targets...} spreads into bootstrap
+  // argv: one string to drop into a sentence, empty when nothing was asked for.
+  const values: Record<string, string> = {
+    ...withoutWorktree,
+    worktree: worktreePath,
+    targets: targets.join(', '),
+  }
 
   const expand = (template: string, where = 'a config template') =>
     expandWith(template, values, where)
@@ -172,8 +212,20 @@ export const buildWorktreePlan = ({
     targets,
     expand,
     expandArgv: (argv) =>
-      argv.flatMap((entry) =>
-        entry === TARGETS_PLACEHOLDER ? targets : [expandHome(expand(entry, 'bootstrap'))],
+      argv.flatMap((entry) => {
+        if (entry === TARGETS_PLACEHOLDER) return targets
+        if (entry.includes(TARGETS_JOINED_PLACEHOLDER)) {
+          throw new Error(
+            `${TARGETS_JOINED_PLACEHOLDER} is the comma-separated form, for context and commands; bootstrap argv takes ${TARGETS_PLACEHOLDER} as an entry of its own: ${JSON.stringify(entry)}`,
+          )
+        }
+        return [expandHome(expand(entry, 'bootstrap'))]
+      }),
+    expandAgent: (command, contextFile) =>
+      expandWith(
+        command,
+        contextFile === undefined ? values : { ...values, context_file: contextFile },
+        'the agent command',
       ),
   }
 }

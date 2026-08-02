@@ -28,6 +28,12 @@ export type RepoConfig = {
   // Command that starts the coding agent in the main pane. Overrides
   // [defaults].agent; `treehouse up --agent` overrides both.
   agent?: string
+  // Standing instructions for the agent that starts in this repo's worktree
+  // tabs, placeholder-expanded and delivered through the agent command's
+  // {context_file}. The config owns the text, the `agent` line owns how it
+  // arrives. Layered like every other key: a repo's value replaces the default
+  // rather than appending to it.
+  context?: string
 }
 
 // Settings that apply to every repo, each overridable per repo. A table rather
@@ -36,6 +42,7 @@ export type RepoConfig = {
 // would silently become that repo's setting instead of the global one.
 export type DefaultsConfig = {
   agent?: string
+  context?: string
 }
 
 export type TreehouseConfig = {
@@ -102,10 +109,12 @@ const REPO_SHAPE: Shape = {
   setup: { kind: 'string-list' },
   panes: { kind: 'table-list', shape: PANE_SHAPE },
   agent: { kind: 'string' },
+  context: { kind: 'string' },
 }
 
 const DEFAULTS_SHAPE: Shape = {
   agent: { kind: 'string' },
+  context: { kind: 'string' },
 }
 
 const TOP_LEVEL_SHAPE: Shape = {

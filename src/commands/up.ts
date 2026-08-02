@@ -16,6 +16,7 @@ import {
   worktreePlacements,
   type WorktreePlacement,
 } from '../worktree/plan.ts'
+import { prepareAgentCommand } from '../worktree/agentContext.ts'
 import { provisionWorktree } from '../worktree/provision.ts'
 import type { PaneSpec } from '../herdr/tabs.ts'
 
@@ -212,16 +213,22 @@ export const up = async (argv: string[], deps: EngineDeps) => {
     id: placement.id,
   })
 
-  // Expand the pane commands before provisioning: a placeholder typo in a pane
-  // command should fail before a worktree exists, not after npm ci.
+  // Expand the pane commands and the agent command before provisioning: a
+  // placeholder typo, or a half-configured context, should fail before a
+  // worktree exists, not after npm ci.
   const panes = options.noDev ? [] : paneSpecs(repoConfig, plan.expand)
-
-  provisionWorktree(plan, repoConfig, { setupExisting: options.setup, log, warn })
-
   // repoConfig.agent already has [defaults].agent layered under it; bare
   // `claude` is the last resort so the user's own Claude Code settings decide
-  // things like permission mode when nothing here is configured.
-  const agent = options.agent ?? repoConfig.agent ?? 'claude'
+  // things like permission mode when nothing here is configured. --no-agent
+  // needs neither an agent command nor a context, and writes no context file.
+  const agent = options.noAgent
+    ? undefined
+    : prepareAgentCommand(plan, {
+        command: options.agent ?? repoConfig.agent ?? 'claude',
+        context: repoConfig.context,
+      })
+
+  provisionWorktree(plan, repoConfig, { setupExisting: options.setup, log, warn })
   // The tree marks worktree tabs apart from ordinary ones everywhere a tab
   // label shows (tab list, the sidebar's agent rows). An explicit --label is
   // the caller's to spell, prefix included.
@@ -244,7 +251,7 @@ export const up = async (argv: string[], deps: EngineDeps) => {
     label,
     focus: options.focus,
     panes,
-    agent: options.noAgent ? undefined : agent,
+    agent,
     prompt: options.prompt,
   })
 
