@@ -25,6 +25,7 @@ export const UP_COMMAND: CommandSpec = {
     { flag: '--agent', kind: 'value', key: 'agent', placeholder: '<cmd>', help: 'agent command (default: repo config, [defaults], then claude)' },
     { flag: '--no-agent', kind: 'boolean', key: 'noAgent', help: 'skip starting an agent in the main pane' },
     { flag: '--no-dev', kind: 'boolean', key: 'noDev', help: 'skip the extra panes from repo config' },
+    { flag: '--setup', kind: 'boolean', key: 'setup', help: 'run the repo setup commands even if the worktree already exists' },
     { flag: '--focus', kind: 'boolean', key: 'focus', help: 'focus the new tab (default: stay where you are)' },
     { flag: '--interactive', kind: 'boolean', key: 'interactive', help: 'ask for branch and targets in a popup pane (used by the keybinding action)' },
     { flag: '--from-link', kind: 'boolean', key: 'fromLink', help: 'derive the branch from a ctrl+clicked Jira/GitHub link (used by the link handlers)' },
@@ -40,6 +41,7 @@ type UpOptions = {
   agent?: string
   noAgent: boolean
   noDev: boolean
+  setup: boolean
   focus: boolean
   interactive: boolean
   fromLink: boolean
@@ -56,6 +58,7 @@ const readOptions = (argv: string[]): UpOptions => {
     agent: flags.value('agent'),
     noAgent: flags.flag('noAgent'),
     noDev: flags.flag('noDev'),
+    setup: flags.flag('setup'),
     focus: flags.flag('focus'),
     interactive: flags.flag('interactive'),
     fromLink: flags.flag('fromLink'),
@@ -142,7 +145,7 @@ export const up = async (argv: string[], deps: EngineDeps) => {
   // command should fail before a worktree exists, not after npm ci.
   const panes = options.noDev ? [] : paneSpecs(repoConfig, plan.expand)
 
-  provisionWorktree(plan, repoConfig, { log, warn })
+  provisionWorktree(plan, repoConfig, { setupExisting: options.setup, log, warn })
 
   // repoConfig.agent already has [defaults].agent layered under it; bare
   // `claude` is the last resort so the user's own Claude Code settings decide

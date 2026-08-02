@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Environment } from '../herdr/context.ts'
 import type { EngineDeps } from '../deps.ts'
@@ -143,8 +143,35 @@ command = "npm run dev"
     logged = []
     const fake = createFakeHerdr(RESPONSES)
     await up(['--repo', repo.root, '--branch', 'ABC-1/fix', '--no-agent'], deps(fake))
-    expect(logged).toContain('worktree already existed; setup commands skipped (run them manually if deps are missing)')
+    expect(logged).toContain('worktree already existed; setup commands skipped (re-run with --setup to run them here)')
     expect(fake.callsMatching('tab create')).toHaveLength(1)
+  })
+
+  test('--setup runs the setup commands in a worktree that already exists', async () => {
+    writeLocalConfig('base = "master"\nsetup = ["echo ran >> ran.txt"]\n')
+    await up(['--repo', repo.root, '--branch', 'ABC-1/fix', '--no-agent'], deps(createFakeHerdr(RESPONSES)))
+    logged = []
+    const fake = createFakeHerdr(RESPONSES)
+    await up(['--repo', repo.root, '--branch', 'ABC-1/fix', '--no-agent', '--setup'], deps(fake))
+    expect(logged).toContain('setup: echo ran >> ran.txt')
+    expect(logged.join('\n')).not.toContain('setup commands skipped')
+    expect(readFileSync(join(repo.parent, 'my-repo-abc-1', 'ran.txt'), 'utf8').trim().split('\n')).toEqual([
+      'ran',
+      'ran',
+    ])
+    expect(fake.callsMatching('tab create')).toHaveLength(1)
+  })
+
+  test('a failing --setup command stops the run before the tab is created', async () => {
+    writeLocalConfig('base = "master"\n')
+    await up(['--repo', repo.root, '--branch', 'ABC-1/fix', '--no-agent'], deps(createFakeHerdr(RESPONSES)))
+    writeLocalConfig('base = "master"\nsetup = ["exit 7"]\n')
+    const fake = createFakeHerdr(RESPONSES)
+    await expectRejection(
+      up(['--repo', repo.root, '--branch', 'ABC-1/fix', '--no-agent', '--setup'], deps(fake)),
+      /setup command failed \(exit 7\): exit 7/,
+    )
+    expect(fake.callsMatching('tab create')).toHaveLength(0)
   })
 
   test('bare claude is the last resort when nothing configures an agent', async () => {

@@ -17,8 +17,9 @@ export type RepoConfig = {
   base?: string
   bootstrap?: string[]
   // Simple shell commands run inside a FRESHLY CREATED worktree (skipped when
-  // the worktree already existed), e.g. ["corepack enable", "npm ci"].
-  // The middle ground between no bootstrap and a full bootstrap script.
+  // the worktree already existed, unless `up --setup` asks for them),
+  // e.g. ["corepack enable", "npm ci"]. The middle ground between no bootstrap
+  // and a full bootstrap script.
   setup?: string[]
   // Extra panes in the worktree tab. Each entry splits the PREVIOUS pane
   // (the first splits the main/agent pane), so a 1|1 layout with the right

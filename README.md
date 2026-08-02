@@ -40,6 +40,7 @@ Requires bun on PATH and Herdr >= 0.7. `bun test` and `bun run typecheck` cover 
 treehouse up --branch ABC-1234/fix-thing --target services/web
 treehouse up --branch ABC-1234/fix-thing --prompt "Solve ABC-1234 as described in the ticket"
 treehouse up --interactive          # used by the popup action (keybinding)
+treehouse up --branch ABC-1234/fix-thing --setup   # run setup in a worktree that already exists
 treehouse down                      # from inside a worktree; refuses if dirty or panes are busy
 treehouse down --path ../my-awesome-repo-abc-1234
 treehouse ls                        # every worktree across configured repos
@@ -75,6 +76,12 @@ Two homes, same fields:
 - **Repo-local**: `<repo>/.treehouse.toml`, the same fields without the `[repos.X]` wrapper and without `root` (the file's location is the repo root). Works with or without a central entry, and whether or not you commit it.
 
 Layering is `[defaults]` → `[repos.X]` → `.treehouse.toml`, last one wins, so a repo-local file can also refine a central entry rather than replace it. `treehouse onboard --local` generates the repo-local shape.
+
+### Reopening a worktree
+
+`up` on a branch whose worktree already exists does not create anything: it opens a tab on the worktree that is there, with the repo's panes and agent. That is the whole reopen story, and `setup` stays out of it, because coming back to your own work should not mean another `npm ci`.
+
+A worktree that exists is not the same as a worktree that was provisioned, though. One created by hand, by another tool, or before the repo had a treehouse config has no dependencies and no env file, and the engine cannot tell that from the state of the directory. `treehouse up --setup` is how you say so: it runs the repo's `setup` commands in the existing worktree and then opens the tab as usual. A failing command still stops the run, so a broken setup never leaves a tab open on a worktree that cannot build.
 
 ### Agent command
 
