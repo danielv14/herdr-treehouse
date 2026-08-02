@@ -265,6 +265,91 @@ command = "npm run dev"
   })
 })
 
+describe('two branches under one ticket', () => {
+  // Attacking one ticket from several angles: two branches, two worktrees, two
+  // tabs, two agents. They derive the same {id} path, and the second one used
+  // to land on the first one's worktree without a word.
+  const reducer = 'VKT-1/reducer-approach'
+  const stateMachine = 'VKT-1/state-machine-approach'
+  const short = () => join(repo.parent, 'my-repo-vkt-1')
+  const longFor = (branch: string) =>
+    join(repo.parent, `my-repo-vkt-1-${branch.split('/')[1]}`)
+
+  const upFor = async (branch: string, extra: string[] = []) => {
+    const fake = createFakeHerdr(RESPONSES)
+    await up(['--repo', repo.root, '--branch', branch, '--no-agent', ...extra], deps(fake))
+    return fake
+  }
+
+  const tabCreate = (fake: FakeHerdr) =>
+    fake.commands().find((command) => command.startsWith('tab create')) ?? ''
+
+  test('each branch gets its own worktree and tab, the first keeping the short path', async () => {
+    writeLocalConfig('base = "master"\n')
+    await upFor(reducer)
+    const second = await upFor(stateMachine)
+
+    expect(existsSync(short())).toBe(true)
+    expect(existsSync(longFor(stateMachine))).toBe(true)
+    // Each worktree stands on its own branch, which is the whole point: two
+    // agents committing over each other on one branch is what this prevents.
+    expect(repo.git('worktree', 'list')).toContain(`[${reducer}]`)
+    expect(repo.git('worktree', 'list')).toContain(`[${stateMachine}]`)
+    expect(tabCreate(second)).toContain(`--cwd ${longFor(stateMachine)}`)
+    // Two tabs labelled 🌳 vkt-1 would be indistinguishable in the sidebar, so
+    // the disambiguated worktree is labelled by the name it actually goes by.
+    expect(tabCreate(second)).toContain('--label 🌳 vkt-1-state-machine-approach')
+  })
+
+  test('the short path goes to whichever branch was created first', async () => {
+    writeLocalConfig('base = "master"\n')
+    await upFor(stateMachine)
+    const second = await upFor(reducer)
+
+    expect(existsSync(join(repo.parent, 'my-repo-vkt-1'))).toBe(true)
+    expect(existsSync(longFor(reducer))).toBe(true)
+    expect(tabCreate(second)).toContain(`--cwd ${longFor(reducer)}`)
+  })
+
+  test('reopening the second branch returns to its own worktree, under the same name', async () => {
+    writeLocalConfig('base = "master"\nsetup = ["echo ran >> ran.txt"]\n')
+    await upFor(reducer)
+    await upFor(stateMachine)
+    logged = []
+    const again = await upFor(stateMachine)
+
+    expect(logged).toContain(`worktree already exists: ${longFor(stateMachine)}`)
+    expect(tabCreate(again)).toContain(`--cwd ${longFor(stateMachine)}`)
+    expect(tabCreate(again)).toContain('--label 🌳 vkt-1-state-machine-approach')
+    // Nothing new was created for the reopen, and setup did not run again.
+    expect(repo.git('worktree', 'list').split('\n')).toHaveLength(3)
+    expect(readFileSync(join(longFor(stateMachine), 'ran.txt'), 'utf8').trim().split('\n')).toEqual(['ran'])
+  })
+
+  test('one branch per ticket still lands on the short path it always had', async () => {
+    writeLocalConfig('base = "master"\n')
+    const fake = await upFor(reducer)
+    expect(existsSync(short())).toBe(true)
+    expect(tabCreate(fake)).toContain(`--cwd ${short()}`)
+    expect(tabCreate(fake)).toContain('--label 🌳 vkt-1')
+    expect(existsSync(longFor(reducer))).toBe(false)
+  })
+
+  test('a worktree_dir with no room to tell them apart refuses instead of opening a tab', async () => {
+    // Every branch of the ticket derives one path here, so there is no second
+    // one to move to; saying so beats reusing the first branch's worktree.
+    writeLocalConfig('base = "master"\nworktree_dir = "../{repo}-{ticket}"\n')
+    await upFor(reducer)
+    const fake = createFakeHerdr(RESPONSES)
+    await expectRejection(
+      up(['--repo', repo.root, '--branch', stateMachine, '--no-agent'], deps(fake)),
+      /every path worktree_dir derives for VKT-1\/state-machine-approach is already a worktree of another branch: .*my-repo-vkt-1 \(VKT-1\/reducer-approach\)/,
+    )
+    expect(fake.callsMatching('tab create')).toHaveLength(0)
+    expect(fake.callsMatching('pane run')).toHaveLength(0)
+  })
+})
+
 describe('invocation context', () => {
   const context = (fields: Record<string, unknown>): Environment => ({
     HERDR_PLUGIN_CONTEXT_JSON: JSON.stringify(fields),

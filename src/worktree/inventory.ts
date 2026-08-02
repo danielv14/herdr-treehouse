@@ -1,8 +1,8 @@
-import { existsSync, realpathSync } from 'node:fs'
+import { existsSync } from 'node:fs'
 import { slugFromBranch, ticketFromBranch } from './branch.ts'
 import { DEFAULT_BASE, type RepoConfig } from '../config/config.ts'
-import { listWorktrees, worktreeFacts } from './git.ts'
-import { buildWorktreePlan } from './plan.ts'
+import { listWorktrees, samePath, worktreeFacts } from './git.ts'
+import { worktreePlacements, type WorktreePlacement } from './plan.ts'
 
 // One record per linked worktree of a configured repo, assembled from git facts
 // and the repo's config. Assembles and returns; rendering is the ls command's
@@ -23,10 +23,11 @@ export type InventoryWorktree = {
   // Undefined when detached.
   branch?: string
   // Ticket parsed from the branch ('' when the branch has none) and the short
-  // id (ticket, else slug) the naming convention derives.
+  // name this worktree goes by: the ticket, the slug when a second branch of
+  // the same ticket made the ticket ambiguous, else the slug.
   ticket: string
   id: string
-  // Whether the path is where the repo's worktree_dir convention would put this
+  // Whether the path is one the repo's worktree_dir convention allows for this
   // branch; a manual `git worktree add` elsewhere still appears, unmanaged.
   managed: boolean
   // The directory is gone but git still lists it (removed by hand; prunable).
@@ -47,19 +48,6 @@ export type RepoInventory = {
   worktrees: InventoryWorktree[]
 }
 
-// Paths meet here from three spellings (config roots, git listings, plan
-// templates); realpath levels symlinks like macOS /var vs /private/var.
-const samePath = (a: string, b: string): boolean => {
-  const canonical = (path: string) => {
-    try {
-      return realpathSync(path)
-    } catch {
-      return path
-    }
-  }
-  return canonical(a) === canonical(b)
-}
-
 export const collectRepoInventory = (
   name: string,
   config: RepoConfig,
@@ -78,9 +66,15 @@ export const collectRepoInventory = (
   // A broken worktree_dir template throws for every branch alike; one warning
   // says why the whole repo reads as unmanaged.
   let templateWarned = false
-  const conventionPath = (branch: string): string | undefined => {
+  // Which of the branch's legal spots this worktree is standing on, if any.
+  // Asking for the whole set rather than one derived path is what keeps the
+  // slug path of a second branch under the same ticket from reading as an
+  // off-convention worktree, and it names the worktree the way `up` named it.
+  const placementOf = (branch: string, path: string): WorktreePlacement | undefined => {
     try {
-      return buildWorktreePlan({ repoName: name, branch, mainRepoRoot: root, repoConfig: config }).worktree
+      return worktreePlacements({ repoName: name, branch, mainRepoRoot: root, repoConfig: config }).find(
+        (placement) => samePath(placement.worktree, path),
+      )
     } catch (error) {
       if (!templateWarned) {
         templateWarned = true
@@ -106,15 +100,15 @@ export const collectRepoInventory = (
           warn(`warning: could not read ${path}: ${error instanceof Error ? error.message : error}`)
         }
       }
-      const convention = branch ? conventionPath(branch) : undefined
+      const placement = branch ? placementOf(branch, path) : undefined
       const ticket = branch ? ticketFromBranch(branch) : ''
       return {
         repo: name,
         path,
         branch,
         ticket,
-        id: branch ? ticket || slugFromBranch(branch) : '',
-        managed: convention !== undefined && samePath(convention, path),
+        id: placement?.id ?? (branch ? ticket || slugFromBranch(branch) : ''),
+        managed: placement !== undefined,
         missing,
         base,
         ...(facts ?? {}),

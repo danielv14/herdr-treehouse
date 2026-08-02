@@ -76,7 +76,67 @@ export type PlanInput = {
   // checkout before the plugin hook runs, so its path is a given, not a
   // worktree_dir question).
   worktree?: string
+  // The short name this worktree goes by, when the caller has picked one from
+  // worktreePlacements() below rather than taking the convention's default.
+  id?: string
 }
+
+export type PlacementInput = {
+  repoName: string
+  branch: string
+  mainRepoRoot: string
+  repoConfig: RepoConfig
+}
+
+// One legal spot for a branch's worktree: a path and the short name that
+// derives it. `id` is what {id} expands to and what the tab is labelled with,
+// so the two never disagree about which worktree this is.
+export type WorktreePlacement = {
+  id: string
+  worktree: string
+}
+
+// The short names one branch can go by, shortest first. A ticket branch has
+// two: the ticket id, and the full slug that keeps VKT-1/reducer-approach and
+// VKT-1/state-machine-approach apart. Everything else has only the slug.
+const idCandidates = (branch: string): string[] => {
+  const slug = slugFromBranch(branch)
+  const ticket = ticketFromBranch(branch)
+  return ticket === '' || ticket === slug ? [slug] : [ticket, slug]
+}
+
+// Where a branch's worktree may go under this repo's convention, in the order a
+// caller should prefer: the short {id} path first, the slug path as the way out
+// when another branch of the same ticket already holds the short one. Only the
+// caller knows which paths are taken (that is a git question), so this answers
+// the pure half and stays a path derivation.
+//
+// A worktree_dir that ignores {id} derives one path for every branch of the
+// ticket. That yields a single placement, not a duplicate that is just as
+// taken, so the caller refuses with something to say instead of silently
+// reusing another branch's worktree.
+export const worktreePlacements = (input: PlacementInput): WorktreePlacement[] =>
+  idCandidates(input.branch).reduce<WorktreePlacement[]>((placements, id) => {
+    const worktree = resolveWorktreePath(
+      input.repoConfig,
+      input.mainRepoRoot,
+      placeholderValues(input, id),
+    )
+    return placements.some((placement) => placement.worktree === worktree)
+      ? placements
+      : [...placements, { id, worktree }]
+  }, [])
+
+// Every placeholder except {worktree}, which needs the path this feeds into.
+const placeholderValues = (input: PlacementInput, id: string): Record<string, string> => ({
+  repo: input.repoName,
+  branch: input.branch,
+  slug: slugFromBranch(input.branch),
+  ticket: ticketFromBranch(input.branch),
+  id,
+  root: input.mainRepoRoot,
+  base: input.repoConfig.base ?? DEFAULT_BASE,
+})
 
 export const buildWorktreePlan = ({
   repoName,
@@ -85,21 +145,14 @@ export const buildWorktreePlan = ({
   repoConfig,
   targets = [],
   worktree,
+  id: chosenId,
 }: PlanInput): WorktreePlan => {
   const slug = slugFromBranch(branch)
   const ticket = ticketFromBranch(branch)
-  const id = ticket || slug
+  const id = chosenId ?? idCandidates(branch)[0]
   const base = repoConfig.base ?? DEFAULT_BASE
 
-  const withoutWorktree: Record<string, string> = {
-    repo: repoName,
-    branch,
-    slug,
-    ticket,
-    id,
-    root: mainRepoRoot,
-    base,
-  }
+  const withoutWorktree = placeholderValues({ repoName, branch, mainRepoRoot, repoConfig }, id)
 
   const worktreePath = worktree ?? resolveWorktreePath(repoConfig, mainRepoRoot, withoutWorktree)
   const values: Record<string, string> = { ...withoutWorktree, worktree: worktreePath }

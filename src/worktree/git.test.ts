@@ -1,8 +1,16 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { addWorktree, findWorktreeForBranch, inspectCheckout, listWorktrees, removeWorktree, worktreeFacts } from './git.ts'
+import {
+  addWorktree,
+  findWorktreeAtPath,
+  findWorktreeForBranch,
+  inspectCheckout,
+  listWorktrees,
+  removeWorktree,
+  worktreeFacts,
+} from './git.ts'
 import { createTempRepo, type TempRepo } from '../testing/tempRepo.ts'
 
 // These behaviours used to be reachable only through the commands; now the git
@@ -173,6 +181,31 @@ describe('findWorktreeForBranch', () => {
     repo.git('branch', 'ABC-2/not-checked-out')
     expect(findWorktreeForBranch(repo.root, 'ABC-2/not-checked-out')).toBeUndefined()
     expect(findWorktreeForBranch(repo.root, 'no-such-branch')).toBeUndefined()
+  })
+})
+
+describe('findWorktreeAtPath', () => {
+  test('names the branch occupying a path, which is the ticket path question', () => {
+    // The path a second branch of ABC-1 would derive: the directory being there
+    // says nothing, the branch checked out in it says everything.
+    const worktree = join(repo.parent, 'my-repo-abc-1')
+    repo.git('worktree', 'add', worktree, '-b', 'ABC-1/reducer', '--no-track', 'master')
+    expect(findWorktreeAtPath(repo.root, worktree)?.branch).toBe('ABC-1/reducer')
+  })
+
+  test('a path with no worktree on it is undefined, directory or not', () => {
+    mkdirSync(join(repo.parent, 'just-a-directory'))
+    expect(findWorktreeAtPath(repo.root, join(repo.parent, 'just-a-directory'))).toBeUndefined()
+    expect(findWorktreeAtPath(repo.root, join(repo.parent, 'nothing-here'))).toBeUndefined()
+  })
+
+  test('a worktree still registered after its directory was deleted still occupies its path', () => {
+    // Reusing that path means `git worktree add` refuses; it is taken until
+    // someone prunes it.
+    const worktree = join(repo.parent, 'my-repo-abc-2')
+    repo.git('worktree', 'add', worktree, '-b', 'ABC-2/fix', '--no-track', 'master')
+    rmSync(worktree, { recursive: true, force: true })
+    expect(findWorktreeAtPath(repo.root, worktree)?.branch).toBe('ABC-2/fix')
   })
 })
 
