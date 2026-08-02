@@ -3,7 +3,7 @@ import { parseFlags, type CommandSpec } from '../cli.ts'
 import { PANE_DEFAULTS, resolveRepoConfig, type RepoConfig } from '../config/config.ts'
 import { invocationTargetPath, isPluginInvocation, readInvocationContext } from '../herdr/context.ts'
 import { resolveDeps, type Ask, type EngineDeps } from '../deps.ts'
-import { countLinkedWorktrees, findMainRepoRoot } from '../worktree/git.ts'
+import { countLinkedWorktrees, findMainRepoRoot, findWorktreeForBranch } from '../worktree/git.ts'
 import { bootstrapTakesTargets, buildWorktreePlan } from '../worktree/plan.ts'
 import { provisionWorktree } from '../worktree/provision.ts'
 import type { PaneSpec } from '../herdr/tabs.ts'
@@ -133,12 +133,23 @@ export const up = async (argv: string[], deps: EngineDeps) => {
     throw new Error('--prompt needs an agent to hand the task to (drop --no-agent, or drop --prompt)')
   }
 
+  // Git decides where an existing worktree is, not `worktree_dir`: the naming
+  // convention only describes the ones treehouse created, and a tab on the
+  // worktree that actually holds the branch is the whole point of reopening.
+  const checkedOutAt = findWorktreeForBranch(mainRepoRoot, options.branch)
+  if (checkedOutAt?.isMain) {
+    throw new Error(
+      `${options.branch} is checked out in the main checkout (${mainRepoRoot}), not in a worktree. Switch it there, or pick another branch.`,
+    )
+  }
+
   const plan = buildWorktreePlan({
     repoName,
     branch: options.branch,
     mainRepoRoot,
     repoConfig,
     targets: options.targets,
+    worktree: checkedOutAt?.path,
   })
 
   // Expand the pane commands before provisioning: a placeholder typo in a pane

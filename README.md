@@ -81,6 +81,8 @@ Layering is `[defaults]` → `[repos.X]` → `.treehouse.toml`, last one wins, s
 
 `up` on a branch whose worktree already exists does not create anything: it opens a tab on the worktree that is there, with the repo's panes and agent. That is the whole reopen story, and `setup` stays out of it, because coming back to your own work should not mean another `npm ci`.
 
+Where that worktree is comes from git, not from `worktree_dir`. The convention only describes worktrees treehouse made; a worktree created by hand, by another tool, or under a different ticket id lives wherever it was put, and `up` asks `git worktree list` which one holds the branch before falling back to deriving a path. A branch checked out in the main checkout is refused rather than opened as a tab.
+
 A worktree that exists is not the same as a worktree that was provisioned, though. One created by hand, by another tool, or before the repo had a treehouse config has no dependencies and no env file, and the engine cannot tell that from the state of the directory. `treehouse up --setup` is how you say so: it runs the repo's `setup` commands in the existing worktree and then opens the tab as usual. A failing command still stops the run, so a broken setup never leaves a tab open on a worktree that cannot build.
 
 ### Agent command

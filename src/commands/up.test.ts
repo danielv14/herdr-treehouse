@@ -147,6 +147,34 @@ command = "npm run dev"
     expect(fake.callsMatching('tab create')).toHaveLength(1)
   })
 
+  test('a worktree at a path the convention would never derive is reused, not recreated', async () => {
+    // The real case: a worktree made by another tool, named after a ticket that
+    // is not in the branch name. Deriving the path from worktree_dir sent
+    // provisioning off to create a second worktree for a branch git already had
+    // checked out, and git refused with "already used by worktree at ...".
+    writeLocalConfig('base = "master"\nsetup = ["echo ran > ran.txt"]\n')
+    const elsewhere = join(repo.parent, 'npm-packages-vkt-11206')
+    repo.git('worktree', 'add', elsewhere, '-b', 'ui/upgrade-to-ui-in-konto', '--no-track', 'master')
+
+    const fake = createFakeHerdr(RESPONSES)
+    await up(['--repo', repo.root, '--branch', 'ui/upgrade-to-ui-in-konto', '--no-agent'], deps(fake))
+
+    expect(logged).toContain(`worktree already exists: ${elsewhere}`)
+    expect(logged).toContain(`worktree:  ${elsewhere}`)
+    expect(fake.commands().find((command) => command.startsWith('tab create'))).toContain(`--cwd ${elsewhere}`)
+    expect(existsSync(join(repo.parent, 'my-repo-ui-upgrade-to-ui-in-konto'))).toBe(false)
+  })
+
+  test('a branch checked out in the main checkout is refused instead of opening a tab on it', async () => {
+    writeLocalConfig('base = "master"\n')
+    const fake = createFakeHerdr(RESPONSES)
+    await expectRejection(
+      up(['--repo', repo.root, '--branch', 'master', '--no-agent'], deps(fake)),
+      /master is checked out in the main checkout \(.*\), not in a worktree/,
+    )
+    expect(fake.callsMatching('tab create')).toHaveLength(0)
+  })
+
   test('--setup runs the setup commands in a worktree that already exists', async () => {
     writeLocalConfig('base = "master"\nsetup = ["echo ran >> ran.txt"]\n')
     await up(['--repo', repo.root, '--branch', 'ABC-1/fix', '--no-agent'], deps(createFakeHerdr(RESPONSES)))

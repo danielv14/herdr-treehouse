@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { addWorktree, inspectCheckout, listWorktrees, removeWorktree, worktreeFacts } from './git.ts'
+import { addWorktree, findWorktreeForBranch, inspectCheckout, listWorktrees, removeWorktree, worktreeFacts } from './git.ts'
 import { createTempRepo, type TempRepo } from '../testing/tempRepo.ts'
 
 // These behaviours used to be reachable only through the commands; now the git
@@ -145,6 +145,34 @@ describe('listWorktrees', () => {
     repo.git('worktree', 'add', '--detach', worktree, 'master')
     const detached = listWorktrees(repo.root).find((listing) => listing.path === worktree)
     expect(detached).toEqual({ path: worktree, branch: undefined, isMain: false })
+  })
+})
+
+describe('findWorktreeForBranch', () => {
+  test('finds the worktree holding a branch, wherever it happens to live', () => {
+    // The naming convention says nothing here: this path matches no
+    // worktree_dir template, which is exactly the case that used to be missed.
+    const worktree = join(repo.parent, 'somewhere-else-entirely')
+    repo.git('worktree', 'add', worktree, '-b', 'ui/upgrade', '--no-track', 'master')
+    expect(findWorktreeForBranch(repo.root, 'ui/upgrade')).toEqual({
+      path: worktree,
+      branch: 'ui/upgrade',
+      isMain: false,
+    })
+  })
+
+  test('reports the main checkout as such rather than hiding it', () => {
+    expect(findWorktreeForBranch(repo.root, 'master')).toEqual({
+      path: repo.root,
+      branch: 'master',
+      isMain: true,
+    })
+  })
+
+  test('a branch that is not checked out anywhere is undefined', () => {
+    repo.git('branch', 'ABC-2/not-checked-out')
+    expect(findWorktreeForBranch(repo.root, 'ABC-2/not-checked-out')).toBeUndefined()
+    expect(findWorktreeForBranch(repo.root, 'no-such-branch')).toBeUndefined()
   })
 })
 
