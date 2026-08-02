@@ -1,4 +1,5 @@
 import { spawnSync } from 'node:child_process'
+import { realpathSync } from 'node:fs'
 
 // The one place that knows git, the way tabs.ts is the one place that knows
 // Herdr: argv, ref shapes, and the flags that must NOT be there. Commands ask
@@ -91,6 +92,29 @@ export const findWorktreeForBranch = (
   branch: string,
 ): WorktreeListing | undefined =>
   listWorktrees(root).find((listing) => listing.branch === branch)
+
+// Paths meet here in several spellings (config roots, git listings, derived
+// paths); realpath levels symlinks like macOS /var vs /private/var, which git
+// resolves and a path built from a template does not. A path that does not
+// exist compares as written, which is what a not-yet-created worktree needs.
+export const samePath = (a: string, b: string): boolean => {
+  const canonical = (path: string) => {
+    try {
+      return realpathSync(path)
+    } catch {
+      return path
+    }
+  }
+  return canonical(a) === canonical(b)
+}
+
+// Which worktree, if any, sits at a path: the mirror of findWorktreeForBranch,
+// and the question `up` has to ask about the paths its convention derives.
+// Answering it from git rather than from `existsSync` is the point: two
+// branches under one ticket derive the same path, and the directory being there
+// says nothing about whose branch is checked out in it.
+export const findWorktreeAtPath = (root: string, path: string): WorktreeListing | undefined =>
+  listWorktrees(root).find((listing) => samePath(listing.path, path))
 
 // How many linked worktrees the repo has; the value behind the sidebar's
 // worktree-count token.

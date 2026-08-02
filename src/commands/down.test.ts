@@ -154,6 +154,54 @@ describe('down', () => {
     expect(fake.calls).toHaveLength(0)
   })
 
+  test('one of two worktrees of the same ticket goes down without touching the other', async () => {
+    // Two branches of ABC-1, so the second sits at the disambiguated path.
+    // Teardown resolves from cwd, which is per worktree and not per ticket.
+    const second = join(repo.parent, 'my-repo-abc-1-second-take')
+    repo.git('worktree', 'add', second, '-b', 'ABC-1/second-take', '--no-track', 'master')
+    const fake = createFakeHerdr({
+      'worktree list': { source: { source_workspace_id: 'wA' } },
+      'pane list': paneList([
+        { pane_id: 'p1', tab_id: 't1', cwd: worktree },
+        { pane_id: 'p2', tab_id: 't2', cwd: second },
+      ]),
+      'pane process-info': { process_info: { foreground_processes: [{ name: 'zsh' }] } },
+      'tab close': {},
+      'workspace report-metadata': {},
+    })
+
+    process.chdir(second)
+    await down([], deps(fake))
+
+    expect(existsSync(second)).toBe(false)
+    expect(existsSync(worktree)).toBe(true)
+    // Only the tab standing in the removed worktree is closed.
+    expect(fake.callsMatching('tab close').map((call) => call[2])).toEqual(['t2'])
+    expect(repo.git('worktree', 'list')).toContain('my-repo-abc-1 ')
+  })
+
+  test('the short-path worktree of a shared ticket goes down the same way', async () => {
+    const second = join(repo.parent, 'my-repo-abc-1-second-take')
+    repo.git('worktree', 'add', second, '-b', 'ABC-1/second-take', '--no-track', 'master')
+    const fake = createFakeHerdr({
+      'worktree list': { source: { source_workspace_id: 'wA' } },
+      'pane list': paneList([
+        { pane_id: 'p1', tab_id: 't1', cwd: worktree },
+        { pane_id: 'p2', tab_id: 't2', cwd: second },
+      ]),
+      'pane process-info': { process_info: { foreground_processes: [{ name: 'zsh' }] } },
+      'tab close': {},
+      'workspace report-metadata': {},
+    })
+
+    process.chdir(worktree)
+    await down([], deps(fake))
+
+    expect(existsSync(worktree)).toBe(false)
+    expect(existsSync(second)).toBe(true)
+    expect(fake.callsMatching('tab close').map((call) => call[2])).toEqual(['t1'])
+  })
+
   test('a main checkout is refused', async () => {
     await expectRejection(
       down(['--path', repo.root], deps(createFakeHerdr({}))),

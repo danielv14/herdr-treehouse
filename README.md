@@ -57,7 +57,7 @@ treehouse onboard --apply           # append it to the plugin config
 
 ### Worktree overview
 
-`treehouse ls` prints one row per worktree across every repo in the central config: branch, dirty state, ahead/behind against the repo's base, last commit age, and (inside Herdr) which tab and agent it has. It is read-only and offline: ahead/behind is against the base as last fetched, and nothing is ever fetched or mutated. Repos configured only by a repo-local `.treehouse.toml` do not appear (there is deliberately no registry of them). A worktree whose path does not match the repo's `worktree_dir` convention still shows up, marked with `*` (the check is a path comparison against the current branch name, so a branch renamed after creation trips it too).
+`treehouse ls` prints one row per worktree across every repo in the central config: branch, dirty state, ahead/behind against the repo's base, last commit age, and (inside Herdr) which tab and agent it has. It is read-only and offline: ahead/behind is against the base as last fetched, and nothing is ever fetched or mutated. Repos configured only by a repo-local `.treehouse.toml` do not appear (there is deliberately no registry of them). A worktree whose path does not match the repo's `worktree_dir` convention still shows up, marked with `*` (the check is a path comparison against the current branch name, so a branch renamed after creation trips it too; the disambiguated path of a second branch under one ticket counts as conventional and is not marked).
 
 ### Sidebar token
 
@@ -88,6 +88,16 @@ Layering is `[defaults]` → `[repos.X]` → `.treehouse.toml`, last one wins, s
 Where that worktree is comes from git, not from `worktree_dir`. The convention only describes worktrees treehouse made; a worktree created by hand, by another tool, or under a different ticket id lives wherever it was put, and `up` asks `git worktree list` which one holds the branch before falling back to deriving a path. A branch checked out in the main checkout is refused rather than opened as a tab.
 
 A worktree that exists is not the same as a worktree that was provisioned, though. One created by hand, by another tool, or before the repo had a treehouse config has no dependencies and no env file, and the engine cannot tell that from the state of the directory. `treehouse up --setup` is how you say so: it runs the repo's `setup` commands in the existing worktree and then opens the tab as usual. A failing command still stops the run, so a broken setup never leaves a tab open on a worktree that cannot build.
+
+### Two branches under one ticket
+
+Attacking one ticket from several angles is a normal way to work: two branches, two worktrees, two tabs, two agents, and you keep the winner.
+
+`worktree_dir` derives its path from `{id}`, which is the ticket when the branch has one, so `VKT-123/reducer-approach` and `VKT-123/state-machine-approach` both point at `../my-repo-vkt-123`. Whichever branch gets a worktree first keeps that path; the next one under the same ticket goes to `../my-repo-vkt-123-state-machine-approach` (the full branch slug) rather than moving into the first branch's worktree. Its tab label and its `{id}` use that same name, so the path, the label and any `{id}` in a setup or pane command agree about which of the two it is. One branch per ticket is untouched: the short path stays the short path.
+
+`treehouse ls` shows both as ordinary worktrees, and `down` works per worktree, so tearing one down leaves the other alone.
+
+If `worktree_dir` has no room to tell two branches apart, for instance `../{repo}-{ticket}`, `up` refuses and says which branch holds the path instead of opening a tab on someone else's worktree.
 
 ### Agent command
 

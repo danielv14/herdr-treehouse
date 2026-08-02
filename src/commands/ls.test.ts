@@ -121,6 +121,18 @@ describe('ls', () => {
     expect(logged.join('\n')).toContain("* path does not match the repo's worktree_dir convention")
   })
 
+  test('a second worktree of one ticket is not marked as off-convention', async () => {
+    addWorktree('my-repo-abc-1', 'ABC-1/reducer')
+    addWorktree('my-repo-abc-1-state-machine', 'ABC-1/state-machine')
+    const fake = createFakeHerdr({ 'worktree list': { source: {} } })
+    await ls([], deps(fake))
+
+    const row = logged.find((line) => line.includes('ABC-1/state-machine'))
+    expect(row).toContain('../my-repo-abc-1-state-machine')
+    expect(row).not.toContain('*')
+    expect(logged.join('\n')).not.toContain("* path does not match the repo's worktree_dir convention")
+  })
+
   test('--repo filters to one configured repo and an unknown name is refused', async () => {
     addWorktree('my-repo-abc-1', 'ABC-1/fix')
     const fake = createFakeHerdr({ 'worktree list': { source: {} } })

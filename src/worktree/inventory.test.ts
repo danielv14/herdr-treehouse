@@ -54,6 +54,27 @@ describe('collectRepoInventory', () => {
     expect(warned).toEqual([])
   })
 
+  test('a second branch of one ticket is managed too, under the name that tells it apart', () => {
+    // The path `up` disambiguates to is as conventional as the short one, so a
+    // row for it must not read as somebody's stray `git worktree add`.
+    repo.git('worktree', 'add', join(repo.parent, 'my-repo-abc-1'), '-b', 'ABC-1/reducer', '--no-track', 'master')
+    const second = join(repo.parent, 'my-repo-abc-1-state-machine')
+    repo.git('worktree', 'add', second, '-b', 'ABC-1/state-machine', '--no-track', 'master')
+
+    const inventory = collectRepoInventory('my-repo', config(), warn)
+    expect(inventory?.worktrees).toEqual([
+      expect.objectContaining({ branch: 'ABC-1/reducer', id: 'abc-1', managed: true }),
+      expect.objectContaining({
+        path: second,
+        branch: 'ABC-1/state-machine',
+        ticket: 'abc-1',
+        id: 'abc-1-state-machine',
+        managed: true,
+      }),
+    ])
+    expect(warned).toEqual([])
+  })
+
   test('a manual worktree outside the convention appears, unmanaged', () => {
     const elsewhere = join(repo.parent, 'somewhere-else')
     repo.git('worktree', 'add', elsewhere, '-b', 'experiment', '--no-track', 'master')

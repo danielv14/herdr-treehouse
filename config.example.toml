@@ -5,7 +5,10 @@
 #   {branch}      full branch name, e.g. ABC-1234/fix-thing
 #   {slug}        slugified branch, e.g. abc-1234-fix-thing
 #   {ticket}      leading ticket id lowercased (abc-1234), empty if none
-#   {id}          {ticket} if present, otherwise {slug}
+#   {id}          {ticket} if present, otherwise {slug}. Falls back to {slug}
+#                 when another worktree of the same ticket already took the
+#                 ticket, so two branches of one ticket stay apart (path, tab
+#                 label and {id} all follow)
 #   {worktree}    resolved worktree path
 #   {root}        main checkout path
 #   {base}        base ref (default origin/master); only used by the built-in
