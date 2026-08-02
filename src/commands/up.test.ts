@@ -352,14 +352,19 @@ describe('two branches under one ticket', () => {
 })
 
 describe('agent context', () => {
-  // The context file lives outside every repo, under a deterministic name per
-  // repo and {id}, so these tests read it where `up` put it.
+  // The context file lives outside every repo, under a name that starts with
+  // the repo and the {id}. These tests look it up by that prefix rather than
+  // spelling the whole name, so the naming rule stays the engine's business.
   const contextDir = join(tmpdir(), 'treehouse-context')
-  const contextFile = (id: string) => join(contextDir, `my-repo-${id}.md`)
   const contextFiles = (prefix: string) =>
     existsSync(contextDir)
       ? readdirSync(contextDir).filter((name) => name.startsWith(`my-repo-${prefix}`))
       : []
+  const contextFile = (id: string) => {
+    const found = contextFiles(`${id}-`)
+    expect(found).toHaveLength(1)
+    return join(contextDir, found[0])
+  }
 
   const APPEND = 'agent = \'claude --append-system-prompt "$(cat {context_file})"\''
 
@@ -400,7 +405,7 @@ Do not start the dev command.
     writeLocalConfig(`base = "master"\n${APPEND}\ncontext = "second"\n`)
     await up(['--repo', repo.root, '--branch', 'ABC-77/fix'], deps(createFakeHerdr(RESPONSES)))
 
-    expect(contextFiles('abc-77')).toEqual(['my-repo-abc-77.md'])
+    expect(contextFiles('abc-77')).toHaveLength(1)
     expect(readFileSync(contextFile('abc-77'), 'utf8')).toBe('second\n')
   })
 
@@ -431,7 +436,7 @@ Do not start the dev command.
     const fake = createFakeHerdr(RESPONSES)
     await expectRejection(
       up(['--repo', repo.root, '--branch', 'ABC-1/fix'], deps(fake)),
-      /uses \{context_file\} but no context is configured/,
+      /uses \{context_file\} but the context is empty/,
     )
     expect(fake.calls).toHaveLength(0)
   })
@@ -468,6 +473,59 @@ Do not start the dev command.
     await up(['--repo', repo.root, '--branch', 'ABC-99/fix'], deps(fake))
     expect(fake.commands()).toContain('pane run wA:p5 claude')
     expect(contextFiles('abc-99')).toEqual([])
+  })
+
+  test('both halves in [defaults] reach a repo that only overrides the text', async () => {
+    // The arrangement that works cleanly when several repos are configured:
+    // [defaults] owns the agent line (permission posture included) and a context
+    // that is true everywhere, and a repo replaces only the text.
+    writeFileSync(
+      join(configDir, 'config.toml'),
+      `[defaults]\n${APPEND}\ncontext = "generic, from defaults"\n\n` +
+        `[repos.my-repo]\nroot = ${JSON.stringify(repo.root)}\nbase = "master"\ncontext = "specific, from the repo block"\n`,
+    )
+    const fake = createFakeHerdr(RESPONSES)
+    await up(['--repo', repo.root, '--branch', 'ABC-2/fix'], deps(fake))
+
+    expect(fake.commands()).toContain(
+      `pane run wA:p5 claude --append-system-prompt "$(cat ${contextFile('abc-2')})"`,
+    )
+    expect(readFileSync(contextFile('abc-2'), 'utf8')).toBe('specific, from the repo block\n')
+  })
+
+  test('a context that expands to nothing is refused, not written as an empty file', async () => {
+    // Configured and still nothing to deliver: {ticket} is empty on a branch
+    // without one, and an empty --append-system-prompt is the state the other
+    // refusal exists to prevent, reached from the other side.
+    writeLocalConfig(`base = "master"\n${APPEND}\ncontext = "{ticket}"\n`)
+    const fake = createFakeHerdr(RESPONSES)
+    await expectRejection(
+      up(['--repo', repo.root, '--branch', 'fix/no-ticket-here'], deps(fake)),
+      /uses \{context_file\} but the context is empty/,
+    )
+    expect(fake.calls).toHaveLength(0)
+    expect(contextFiles('fix-no-ticket')).toEqual([])
+  })
+
+  test('a typo in the agent command leaves no context file behind', async () => {
+    writeLocalConfig(
+      `base = "master"\ncontext = "standing instructions"\n` +
+        `agent = 'claude --cwd {wortkree} --append-system-prompt "$(cat {context_file})"'\n`,
+    )
+    await expectRejection(
+      up(['--repo', repo.root, '--branch', 'ABC-3/fix'], deps(createFakeHerdr(RESPONSES))),
+      'unknown placeholder {wortkree} in the agent command',
+    )
+    expect(contextFiles('abc-3')).toEqual([])
+  })
+
+  test('braces that are not placeholders still pass through the agent command', async () => {
+    // The agent command is expanded now, which it was not before, so the same
+    // shell-braces guarantee the other expansions have applies here too.
+    writeLocalConfig('base = "master"\nagent = "docker exec ${HOST} claude --fmt \'{{.Names}}\'"\n')
+    const fake = createFakeHerdr(RESPONSES)
+    await up(['--repo', repo.root, '--branch', 'ABC-4/fix'], deps(fake))
+    expect(fake.commands()).toContain("pane run wA:p5 docker exec ${HOST} claude --fmt '{{.Names}}'")
   })
 })
 
