@@ -6,8 +6,8 @@ import { worktreePlacements, type WorktreePlacement } from './plan.ts'
 
 // One record per linked worktree of a configured repo, assembled from git facts
 // and the repo's config. Assembles and returns; rendering is the ls command's
-// job and acting on records is prune's (#27). Herdr facts arrive as plain data
-// through attachTabFacts below, so this module never knows Herdr.
+// job and nothing in the engine acts on the records. Herdr facts arrive as plain
+// data through attachTabFacts below, so this module never knows Herdr.
 
 export type WorktreeTab = {
   tabId: string

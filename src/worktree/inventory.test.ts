@@ -5,7 +5,7 @@ import { attachTabFacts, collectRepoInventory, type RepoInventory } from './inve
 import { createTempRepo, type TempRepo } from '../testing/tempRepo.ts'
 
 // Against real repos, like the git module's own tests: the records are what a
-// user observes through ls and what prune will act on.
+// user observes through ls.
 
 let repo: TempRepo
 let warned: string[]
