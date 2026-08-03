@@ -438,9 +438,14 @@ root = ${JSON.stringify(a)}
 `)
     const resolved = await resolveAllRepoConfigs(configDir, warn)
     expect(resolved.map((entry) => entry.name)).toEqual(['a'])
-    expect(warned).toHaveLength(2)
-    expect(warned[0]).toContain('skipping empty: root must be an absolute path')
-    expect(warned[1]).toContain('skipping relative: root must be an absolute path')
+    // Two per bad repo: the rejected value, then the required key it left
+    // unfilled, the same pair a wrong-typed root has always produced.
+    expect(warned).toHaveLength(4)
+    expect(warned[0]).toContain('repos.empty.root')
+    expect(warned[0]).toContain('expected an absolute path, found ""')
+    expect(warned[0]).toContain('(repo skipped here)')
+    expect(warned[2]).toContain('repos.relative.root')
+    expect(warned[2]).toContain('expected an absolute path, found "../somewhere"')
   })
 
   test('a repo with a broken local file is skipped with a warning', async () => {
@@ -506,6 +511,34 @@ base = "origin/main"
   test('a repo-local file still needs no root', () => {
     const { diagnostics } = validateLocalConfigFile(Bun.TOML.parse('base = "origin/main"'), '/repo/.treehouse.toml')
     expect(diagnostics).toEqual([])
+  })
+})
+
+describe('root must be an absolute path', () => {
+  test('an empty root is an error, not a block that claims the cwd', () => {
+    expect(errors('[repos.x]\nroot = ""\n')).toEqual([
+      'repos.x.root in /cfg/config.toml: expected an absolute path, found ""',
+      '[repos.x] in /cfg/config.toml: missing required key "root"',
+    ])
+  })
+
+  test('a relative root is an error', () => {
+    expect(errors('[repos.x]\nroot = "../somewhere"\n')[0]).toBe(
+      'repos.x.root in /cfg/config.toml: expected an absolute path, found "../somewhere"',
+    )
+  })
+
+  test('a ~ root is expanded before the check, not rejected', () => {
+    const { config, diagnostics } = validate('[repos.x]\nroot = "~/dev/x"\n')
+    expect(diagnostics).toEqual([])
+    // Stored unexpanded; expansion happens where the path is used.
+    expect(config.repos.x.root).toBe('~/dev/x')
+  })
+
+  test('the error is scoped to the repo, so it demotes and skips like any other', () => {
+    const { diagnostics } = validate('[repos.x]\nroot = "relative"\n')
+    expect(diagnostics[0].key).toBe('repos.x.root')
+    expect(diagnosticsForRepo(diagnostics, 'other')[0].severity).toBe('warning')
   })
 })
 
