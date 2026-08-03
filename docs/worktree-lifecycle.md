@@ -35,7 +35,7 @@ a tab with an agent standing on the other branch.
 
 `worktreePlacements()` returns the ordered spots the convention allows one
 branch — the short `{id}` path first, the full-slug path second (that is what
-keeps `VKT-1/reducer-approach` and `VKT-1/state-machine-approach` apart). The
+keeps `ABC-1/reducer-approach` and `ABC-1/state-machine-approach` apart). The
 placement derivation is pure; only the caller can ask git which spots are
 taken:
 
@@ -49,7 +49,7 @@ taken:
 
 The chosen placement carries its `id` into the plan, so the path, `{id}` in
 setup and pane commands, and the tab label all name the same worktree — two
-tabs labelled `🌳 vkt-123` would defeat the point, and a `{id}` docker project
+tabs labelled `🌳 abc-123` would defeat the point, and a `{id}` docker project
 name would collide the way the paths did. A `worktree_dir` with no room to
 disambiguate (no `{id}`, e.g. `../{repo}-{ticket}`) yields one placement and is
 refused with an explanation, not silently reused.

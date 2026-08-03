@@ -1,6 +1,6 @@
 # herdr-treehouse
 
-Herdr plugin for a worktree-as-tab workflow: point it at a branch (or a Jira/GitHub link) and it bootstraps a git worktree according to per-repo config, opens it as a new tab in the repo's Herdr workspace, sets up the repo's pane layout, and starts a coding agent.
+Herdr plugin for a worktree-as-tab workflow: point it at a branch and it bootstraps a git worktree according to per-repo config, opens it as a new tab in the repo's Herdr workspace, sets up the repo's pane layout, and starts a coding agent. Any branch name works; ticket-style names (`ABC-1234/fix-thing`) are a convention the engine understands — they get the short worktree paths and tab labels, and a Jira/GitHub link can stand in for typing the branch — not a requirement.
 
 The mental model: **a workspace is a repo, a tab is a worktree**. Work happens in parallel across tabs; verification is serial, so a dev pane pre-fills its command (`npm run dev`, `docker compose up`, ...) without running it (`autostart = false`). Press Enter when it is that tab's turn.
 
@@ -61,6 +61,7 @@ Requires bun on PATH and Herdr >= 0.7. `bun test` and `bun run typecheck` cover 
 ## Usage
 
 ```bash
+treehouse up --branch fix-flaky-login-test
 treehouse up --branch ABC-1234/fix-thing --target services/web
 treehouse up --branch ABC-1234/fix-thing --prompt "Solve ABC-1234 as described in the ticket"
 treehouse up --interactive          # used by the popup action (keybinding)
@@ -87,7 +88,7 @@ A worktree that exists is not the same as one that was provisioned: made by hand
 
 ### Two branches under one ticket
 
-Attacking one ticket from several angles is a normal way to work: two branches, two worktrees, two tabs, two agents, and you keep the winner. `{id}` is the ticket when the branch has one, so `VKT-123/reducer-approach` and `VKT-123/state-machine-approach` both derive `../my-repo-vkt-123`. Whichever branch gets a worktree first keeps that path; the next one goes to the full branch slug (`../my-repo-vkt-123-state-machine-approach`), and its tab label and `{id}` use that same name, so the path, the label and any `{id}` in a setup or pane command agree about which of the two it is.
+Attacking one ticket from several angles is a normal way to work: two branches, two worktrees, two tabs, two agents, and you keep the winner. `{id}` is the ticket when the branch has one, so `ABC-123/reducer-approach` and `ABC-123/state-machine-approach` both derive `../my-repo-abc-123`. Whichever branch gets a worktree first keeps that path; the next one goes to the full branch slug (`../my-repo-abc-123-state-machine-approach`), and its tab label and `{id}` use that same name, so the path, the label and any `{id}` in a setup or pane command agree about which of the two it is.
 
 `treehouse ls` shows both as ordinary worktrees, and `down` works per worktree. If `worktree_dir` has no room to tell two branches apart (say `../{repo}-{ticket}`), `up` refuses and says which branch holds the path instead of opening a tab on someone else's worktree. Details in [`docs/worktree-lifecycle.md`](docs/worktree-lifecycle.md).
 

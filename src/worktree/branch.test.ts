@@ -9,8 +9,8 @@ describe('branch parts', () => {
   })
 
   test('a ticket is only recognised at the start of the branch', () => {
-    expect(ticketFromBranch('feature/VKT-1234')).toBe('')
-    expect(ticketFromBranch('vkt-1234/x')).toBe('vkt-1234')
+    expect(ticketFromBranch('feature/ABC-1234')).toBe('')
+    expect(ticketFromBranch('abc-1234/x')).toBe('abc-1234')
   })
 })
 

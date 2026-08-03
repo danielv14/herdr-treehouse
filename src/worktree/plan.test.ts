@@ -16,10 +16,10 @@ const plan = (branch: string, repoConfig: Partial<RepoConfig> = {}, targets: str
 
 describe('derived fields', () => {
   test('a ticket branch yields ticket, slug and a ticket id', () => {
-    const result = plan('VKT-1234/fix-thing')
-    expect(result.ticket).toBe('vkt-1234')
-    expect(result.slug).toBe('vkt-1234-fix-thing')
-    expect(result.id).toBe('vkt-1234')
+    const result = plan('ABC-1234/fix-thing')
+    expect(result.ticket).toBe('abc-1234')
+    expect(result.slug).toBe('abc-1234-fix-thing')
+    expect(result.id).toBe('abc-1234')
   })
 
   test('a branch without a ticket falls back to the slug as id', () => {
@@ -43,27 +43,27 @@ describe('base ref', () => {
 
 describe('worktree path', () => {
   test('defaults to a sibling of the main checkout', () => {
-    expect(plan('VKT-1/x').worktree).toBe('/tmp/checkouts/my-repo-vkt-1')
+    expect(plan('ABC-1/x').worktree).toBe('/tmp/checkouts/my-repo-abc-1')
   })
 
   test('relative worktree_dir resolves against the main checkout, not cwd', () => {
-    expect(plan('VKT-1/x', { worktree_dir: '../trees/{repo}-{id}' }).worktree).toBe(
-      '/tmp/checkouts/trees/my-repo-vkt-1',
+    expect(plan('ABC-1/x', { worktree_dir: '../trees/{repo}-{id}' }).worktree).toBe(
+      '/tmp/checkouts/trees/my-repo-abc-1',
     )
   })
 
   test('absolute worktree_dir is used as is', () => {
-    expect(plan('VKT-1/x', { worktree_dir: '/var/wt/{id}' }).worktree).toBe('/var/wt/vkt-1')
+    expect(plan('ABC-1/x', { worktree_dir: '/var/wt/{id}' }).worktree).toBe('/var/wt/abc-1')
   })
 
   test('~ expands to the home directory', () => {
-    expect(plan('VKT-1/x', { worktree_dir: '~/wt/{id}' }).worktree).toBe(`${homedir()}/wt/vkt-1`)
+    expect(plan('ABC-1/x', { worktree_dir: '~/wt/{id}' }).worktree).toBe(`${homedir()}/wt/abc-1`)
   })
 
   test('an already-created worktree path overrides worktree_dir', () => {
     const result = buildWorktreePlan({
       repoName: 'my-repo',
-      branch: 'VKT-1/x',
+      branch: 'ABC-1/x',
       mainRepoRoot: MAIN,
       repoConfig: { root: MAIN, worktree_dir: '../ignored-{id}' },
       worktree: '/somewhere/herdr-made-this',
@@ -73,7 +73,7 @@ describe('worktree path', () => {
   })
 
   test('{worktree} in worktree_dir is refused instead of passed through', () => {
-    expect(() => plan('VKT-1/x', { worktree_dir: '{worktree}-copy' })).toThrow(
+    expect(() => plan('ABC-1/x', { worktree_dir: '{worktree}-copy' })).toThrow(
       '{worktree} is not available in worktree_dir',
     )
   })
@@ -91,9 +91,9 @@ describe('placements', () => {
   test('a ticket branch may go by its ticket, then by its full slug', () => {
     // The second spot is what two branches of one ticket need; the first is
     // still the short path a single branch per ticket has always had.
-    expect(placements('VKT-1/reducer-approach')).toEqual([
-      { id: 'vkt-1', worktree: '/tmp/checkouts/my-repo-vkt-1' },
-      { id: 'vkt-1-reducer-approach', worktree: '/tmp/checkouts/my-repo-vkt-1-reducer-approach' },
+    expect(placements('ABC-1/reducer-approach')).toEqual([
+      { id: 'abc-1', worktree: '/tmp/checkouts/my-repo-abc-1' },
+      { id: 'abc-1-reducer-approach', worktree: '/tmp/checkouts/my-repo-abc-1-reducer-approach' },
     ])
   })
 
@@ -104,16 +104,16 @@ describe('placements', () => {
   })
 
   test('a worktree_dir that is already unique per branch has one spot, not a duplicate', () => {
-    expect(placements('VKT-1/x', { worktree_dir: '../{repo}-{slug}' })).toEqual([
-      { id: 'vkt-1', worktree: '/tmp/checkouts/my-repo-vkt-1-x' },
+    expect(placements('ABC-1/x', { worktree_dir: '../{repo}-{slug}' })).toEqual([
+      { id: 'abc-1', worktree: '/tmp/checkouts/my-repo-abc-1-x' },
     ])
   })
 
   test('a worktree_dir that ignores {id} has one spot, so the caller can refuse', () => {
     // {ticket} is fixed for every branch of the ticket: there is no second path
     // to offer, and pretending otherwise would hand back the occupied one.
-    expect(placements('VKT-1/x', { worktree_dir: '../{repo}-{ticket}' })).toEqual([
-      { id: 'vkt-1', worktree: '/tmp/checkouts/my-repo-vkt-1' },
+    expect(placements('ABC-1/x', { worktree_dir: '../{repo}-{ticket}' })).toEqual([
+      { id: 'abc-1', worktree: '/tmp/checkouts/my-repo-abc-1' },
     ])
   })
 
@@ -122,28 +122,28 @@ describe('placements', () => {
     // the same collision the paths do, so {id} follows the placement.
     const result = buildWorktreePlan({
       repoName: 'my-repo',
-      branch: 'VKT-1/state-machine',
+      branch: 'ABC-1/state-machine',
       mainRepoRoot: MAIN,
       repoConfig: { root: MAIN },
-      worktree: '/tmp/checkouts/my-repo-vkt-1-state-machine',
-      id: 'vkt-1-state-machine',
+      worktree: '/tmp/checkouts/my-repo-abc-1-state-machine',
+      id: 'abc-1-state-machine',
     })
-    expect(result.id).toBe('vkt-1-state-machine')
-    expect(result.ticket).toBe('vkt-1')
-    expect(result.expand('docker compose -p {id}')).toBe('docker compose -p vkt-1-state-machine')
+    expect(result.id).toBe('abc-1-state-machine')
+    expect(result.ticket).toBe('abc-1')
+    expect(result.expand('docker compose -p {id}')).toBe('docker compose -p abc-1-state-machine')
   })
 })
 
 describe('placeholder expansion', () => {
   test('expands every known placeholder', () => {
-    const result = plan('VKT-1/x', { base: 'origin/main' })
+    const result = plan('ABC-1/x', { base: 'origin/main' })
     expect(result.expand('{repo} {branch} {slug} {ticket} {id} {root} {base} {worktree}')).toBe(
-      `my-repo VKT-1/x vkt-1-x vkt-1 vkt-1 ${MAIN} origin/main /tmp/checkouts/my-repo-vkt-1`,
+      `my-repo ABC-1/x abc-1-x abc-1 abc-1 ${MAIN} origin/main /tmp/checkouts/my-repo-abc-1`,
     )
   })
 
   test('an unknown placeholder fails, naming it and the known ones', () => {
-    expect(() => plan('VKT-1/x').expand('cp {wortkree}/.env .env', 'setup')).toThrow(
+    expect(() => plan('ABC-1/x').expand('cp {wortkree}/.env .env', 'setup')).toThrow(
       /unknown placeholder \{wortkree\} in setup.*\{repo\}, \{branch\}, \{slug\}, \{ticket\}, \{id\}, \{worktree\}, \{root\}, \{base\}/s,
     )
   })
@@ -153,31 +153,31 @@ describe('placeholder expansion', () => {
   })
 
   test('{targets} renders the --target list comma-separated', () => {
-    expect(plan('VKT-1/x', {}, ['services/a', 'packages/b']).expand('deps: {targets}')).toBe(
+    expect(plan('ABC-1/x', {}, ['services/a', 'packages/b']).expand('deps: {targets}')).toBe(
       'deps: services/a, packages/b',
     )
   })
 
   test('{targets} with no targets is an empty string, so the text can say so itself', () => {
-    expect(plan('VKT-1/x').expand('deps: [{targets}]')).toBe('deps: []')
+    expect(plan('ABC-1/x').expand('deps: [{targets}]')).toBe('deps: []')
   })
 })
 
 describe('the agent command', () => {
   test('gets the ordinary placeholders', () => {
-    expect(plan('VKT-1/x').expandAgent('claude --resume --cwd {worktree}')).toBe(
-      'claude --resume --cwd /tmp/checkouts/my-repo-vkt-1',
+    expect(plan('ABC-1/x').expandAgent('claude --resume --cwd {worktree}')).toBe(
+      'claude --resume --cwd /tmp/checkouts/my-repo-abc-1',
     )
   })
 
   test('{context_file} expands to the path it is handed', () => {
     expect(
-      plan('VKT-1/x').expandAgent('claude --append-system-prompt "$(cat {context_file})"', '/tmp/ctx.md'),
+      plan('ABC-1/x').expandAgent('claude --append-system-prompt "$(cat {context_file})"', '/tmp/ctx.md'),
     ).toBe('claude --append-system-prompt "$(cat /tmp/ctx.md)"')
   })
 
   test('{context_file} is refused everywhere else, saying where it belongs', () => {
-    const result = plan('VKT-1/x')
+    const result = plan('ABC-1/x')
     expect(() => result.expand('cat {context_file}', 'setup')).toThrow(
       '{context_file} only expands in the agent command, not in setup',
     )
@@ -190,7 +190,7 @@ describe('the agent command', () => {
   })
 
   test('a placeholder typo in it fails like any other', () => {
-    expect(() => plan('VKT-1/x').expandAgent('claude --cwd {wortkree}')).toThrow(
+    expect(() => plan('ABC-1/x').expandAgent('claude --cwd {wortkree}')).toThrow(
       'unknown placeholder {wortkree} in the agent command',
     )
   })
@@ -198,23 +198,23 @@ describe('the agent command', () => {
 
 describe('bootstrap argv', () => {
   test('{targets...} becomes one entry per target', () => {
-    const result = plan('VKT-1/x', {}, ['services/a', 'packages/b'])
+    const result = plan('ABC-1/x', {}, ['services/a', 'packages/b'])
     expect(result.expandArgv(['s.sh', '--dir', '{worktree}', '{branch}', '{targets...}'])).toEqual([
       's.sh',
       '--dir',
-      '/tmp/checkouts/my-repo-vkt-1',
-      'VKT-1/x',
+      '/tmp/checkouts/my-repo-abc-1',
+      'ABC-1/x',
       'services/a',
       'packages/b',
     ])
   })
 
   test('{targets...} with no targets drops the entry entirely', () => {
-    expect(plan('VKT-1/x').expandArgv(['s.sh', '{targets...}'])).toEqual(['s.sh'])
+    expect(plan('ABC-1/x').expandArgv(['s.sh', '{targets...}'])).toEqual(['s.sh'])
   })
 
   test('{targets...} inside a larger argument is refused', () => {
-    expect(() => plan('VKT-1/x').expandArgv(['s.sh', '--dirs={targets...}'])).toThrow(
+    expect(() => plan('ABC-1/x').expandArgv(['s.sh', '--dirs={targets...}'])).toThrow(
       '{targets...} only expands as a standalone bootstrap argv entry',
     )
   })
@@ -223,17 +223,17 @@ describe('bootstrap argv', () => {
     // It is a real placeholder elsewhere, but in argv it is a mistyped
     // {targets...}, and "services/a, packages/b" as a single argument is not
     // what any bootstrap script is waiting for.
-    expect(() => plan('VKT-1/x', {}, ['services/a']).expandArgv(['s.sh', '{targets}'])).toThrow(
+    expect(() => plan('ABC-1/x', {}, ['services/a']).expandArgv(['s.sh', '{targets}'])).toThrow(
       'bootstrap argv takes {targets...} as an entry of its own',
     )
   })
 
   test('~ expands in bootstrap argv', () => {
-    expect(plan('VKT-1/x').expandArgv(['~/scripts/s.sh'])).toEqual([`${homedir()}/scripts/s.sh`])
+    expect(plan('ABC-1/x').expandArgv(['~/scripts/s.sh'])).toEqual([`${homedir()}/scripts/s.sh`])
   })
 
   test('an unknown placeholder in bootstrap argv fails', () => {
-    expect(() => plan('VKT-1/x').expandArgv(['s.sh', '{tikcet}'])).toThrow(
+    expect(() => plan('ABC-1/x').expandArgv(['s.sh', '{tikcet}'])).toThrow(
       'unknown placeholder {tikcet} in bootstrap',
     )
   })
@@ -249,15 +249,15 @@ describe('braces that are not placeholders', () => {
     'echo ${SHELL}',
     'find . -exec rm {} \;',
   ])('passes %p through untouched', (template) => {
-    expect(plan('VKT-1/x').expand(template, 'setup')).toBe(template)
+    expect(plan('ABC-1/x').expand(template, 'setup')).toBe(template)
   })
 
   test('but a single-word brace is still checked', () => {
-    expect(() => plan('VKT-1/x').expand('{wortkree}/x', 'setup')).toThrow('unknown placeholder {wortkree}')
+    expect(() => plan('ABC-1/x').expand('{wortkree}/x', 'setup')).toThrow('unknown placeholder {wortkree}')
   })
 
   test('{targets...} anywhere in a plain template is refused', () => {
-    expect(() => plan('VKT-1/x').expand('--dirs={targets...}', 'a pane command')).toThrow(
+    expect(() => plan('ABC-1/x').expand('--dirs={targets...}', 'a pane command')).toThrow(
       '{targets...} only expands as a standalone bootstrap argv entry',
     )
   })

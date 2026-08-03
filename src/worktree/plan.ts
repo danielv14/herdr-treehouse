@@ -124,8 +124,8 @@ export type WorktreePlacement = {
 }
 
 // The short names one branch can go by, shortest first. A ticket branch has
-// two: the ticket id, and the full slug that keeps VKT-1/reducer-approach and
-// VKT-1/state-machine-approach apart. Everything else has only the slug.
+// two: the ticket id, and the full slug that keeps ABC-1/reducer-approach and
+// ABC-1/state-machine-approach apart. Everything else has only the slug.
 const idCandidates = (branch: string): string[] => {
   const slug = slugFromBranch(branch)
   const ticket = ticketFromBranch(branch)
