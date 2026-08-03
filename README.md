@@ -81,6 +81,8 @@ Two homes, same fields:
 
 Layering is `[defaults]` → `[repos.X]` → `.treehouse.toml`, last one wins, so a repo-local file can also refine a central entry rather than replace it. `treehouse onboard --local` generates the repo-local shape.
 
+This repo carries its own `.treehouse.toml`: `setup = ["bun install"]` so a fresh worktree has `node_modules`, a pre-filled `bun test --watch` pane, and a `context` telling the agent it is in a worktree and that editing `herdr-plugin.toml` needs `herdr plugin link .` again. `worktree_dir`, `base` and `agent` are left to the defaults.
+
 ### Reopening a worktree
 
 `up` on a branch whose worktree already exists does not create anything: it opens a tab on the worktree that is there, with the repo's panes and agent. That is the whole reopen story, and `setup` stays out of it, because coming back to your own work should not mean another `npm ci`.

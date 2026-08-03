@@ -1,0 +1,32 @@
+# treehouse config for herdr-treehouse itself: the plugin configures the repo it
+# lives in. Same fields as a [repos.X] block in the central plugin config, minus
+# the wrapper and `root`. Keep scalar keys above [[panes]] or TOML reads them as
+# pane keys.
+#
+# worktree_dir and base are left to the defaults (../{repo}-{id},
+# origin/master), and `agent` to [defaults] in the central config, which is
+# where the permission posture belongs.
+
+# Not --frozen-lockfile: that form is for CI, a worktree just wants deps.
+setup = ["bun install"]
+
+# Replaces [defaults].context rather than appending to it, so it has to restate
+# the worktree situation before adding what is specific to this repo.
+context = '''
+You are working in a git worktree of {repo}, not in the main checkout: {worktree}, branch {branch}.
+The main checkout is {root}.
+A pane in this tab holds a pre-filled `bun test --watch` that has not been run. That is deliberate:
+verification is serial, so two worktree tabs do not race for the same watchers. Starting it is the
+user's call, so if the work needs it running, say so rather than starting it yourself.
+`bun test` needs no Herdr session: the fake invoker in src/testing/ covers the Herdr calls. It
+proves the sequence, not that Herdr accepts it, so anything touching Herdr's real behaviour still
+needs live verification in a session.
+After editing herdr-plugin.toml, re-run `herdr plugin link .` or Herdr keeps serving the old
+manifest.
+'''
+
+[[panes]]
+split = "down"
+label = "test"
+command = "bun test --watch"
+autostart = false
