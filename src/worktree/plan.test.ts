@@ -151,6 +151,49 @@ describe('placeholder expansion', () => {
   test('an empty ticket expands to an empty string rather than failing', () => {
     expect(plan('fix/thing').expand('[{ticket}]')).toBe('[]')
   })
+
+  test('{targets} renders the --target list comma-separated', () => {
+    expect(plan('VKT-1/x', {}, ['services/a', 'packages/b']).expand('deps: {targets}')).toBe(
+      'deps: services/a, packages/b',
+    )
+  })
+
+  test('{targets} with no targets is an empty string, so the text can say so itself', () => {
+    expect(plan('VKT-1/x').expand('deps: [{targets}]')).toBe('deps: []')
+  })
+})
+
+describe('the agent command', () => {
+  test('gets the ordinary placeholders', () => {
+    expect(plan('VKT-1/x').expandAgent('claude --resume --cwd {worktree}')).toBe(
+      'claude --resume --cwd /tmp/checkouts/my-repo-vkt-1',
+    )
+  })
+
+  test('{context_file} expands to the path it is handed', () => {
+    expect(
+      plan('VKT-1/x').expandAgent('claude --append-system-prompt "$(cat {context_file})"', '/tmp/ctx.md'),
+    ).toBe('claude --append-system-prompt "$(cat /tmp/ctx.md)"')
+  })
+
+  test('{context_file} is refused everywhere else, saying where it belongs', () => {
+    const result = plan('VKT-1/x')
+    expect(() => result.expand('cat {context_file}', 'setup')).toThrow(
+      '{context_file} only expands in the agent command, not in setup',
+    )
+    expect(() => result.expand('cat {context_file}', 'a pane command')).toThrow(
+      '{context_file} only expands in the agent command, not in a pane command',
+    )
+    expect(() => result.expandArgv(['s.sh', '{context_file}'])).toThrow(
+      '{context_file} only expands in the agent command, not in bootstrap',
+    )
+  })
+
+  test('a placeholder typo in it fails like any other', () => {
+    expect(() => plan('VKT-1/x').expandAgent('claude --cwd {wortkree}')).toThrow(
+      'unknown placeholder {wortkree} in the agent command',
+    )
+  })
 })
 
 describe('bootstrap argv', () => {
@@ -176,9 +219,12 @@ describe('bootstrap argv', () => {
     )
   })
 
-  test('{targets} without the ellipsis is refused rather than silently ignored', () => {
-    expect(() => plan('VKT-1/x').expandArgv(['s.sh', '{targets}'])).toThrow(
-      'unknown placeholder {targets}',
+  test('{targets} without the ellipsis is refused rather than joined into one argument', () => {
+    // It is a real placeholder elsewhere, but in argv it is a mistyped
+    // {targets...}, and "services/a, packages/b" as a single argument is not
+    // what any bootstrap script is waiting for.
+    expect(() => plan('VKT-1/x', {}, ['services/a']).expandArgv(['s.sh', '{targets}'])).toThrow(
+      'bootstrap argv takes {targets...} as an entry of its own',
     )
   })
 

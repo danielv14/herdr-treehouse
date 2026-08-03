@@ -22,6 +22,9 @@ export type RepoConfig = {
   setup?: string[]
   panes?: PaneConfig[]
   agent?: string
+  // Standing agent instructions, delivered through the agent command's
+  // {context_file}. Layered like every other key: replaces, never appends.
+  context?: string
 }
 
 // A table rather than bare top-level keys on purpose: TOML bare keys attach to
@@ -29,6 +32,7 @@ export type RepoConfig = {
 // [repos.X] block would silently become that repo's setting.
 export type DefaultsConfig = {
   agent?: string
+  context?: string
 }
 
 export type TreehouseConfig = {
@@ -87,10 +91,12 @@ const REPO_SHAPE: Shape = {
   setup: { kind: 'string-list' },
   panes: { kind: 'table-list', shape: PANE_SHAPE },
   agent: { kind: 'string' },
+  context: { kind: 'string' },
 }
 
 const DEFAULTS_SHAPE: Shape = {
   agent: { kind: 'string' },
+  context: { kind: 'string' },
 }
 
 const TOP_LEVEL_SHAPE: Shape = {

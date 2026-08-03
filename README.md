@@ -13,7 +13,7 @@ config.example.toml per-repo config reference
 src/                the engine
   main.ts           dispatch, cli.ts flags/help, deps.ts the dependency seam
   commands/         up | down | ls | onboard | action | bootstrap | report, plus the registry
-  worktree/         branch naming, worktree plan, provisioning, inventory, git
+  worktree/         branch naming, worktree plan, provisioning, agent context, inventory, git
   herdr/            the Herdr seam: invoker, tab/pane choreography, env payloads
   config/           config shape, validation, defaults
 ```
@@ -109,7 +109,35 @@ The command that starts the agent in the main pane resolves in this order, first
 4. `agent` in the `[defaults]` block in `config.toml`, which applies to every repo
 5. bare `claude`
 
-Left unset, a bare `claude` inherits your own Claude Code settings, so permission mode stays one decision in `~/.claude/settings.json`. Set `[defaults]` instead when you want flags in every worktree tab, including ones with no settings.json equivalent such as `--allow-dangerously-skip-permissions`. A per-repo `agent` is for repos that genuinely deserve different treatment, not for restating something global.
+Left unset, a bare `claude` inherits your own Claude Code settings, so permission mode stays one decision in `~/.claude/settings.json`. Set `[defaults]` instead when you want flags in every worktree tab, including ones with no settings.json equivalent such as `--dangerously-skip-permissions`. A per-repo `agent` is for repos that genuinely deserve different treatment, not for restating something global.
+
+The command is placeholder-expanded, whether it comes from `--agent` or from config, so `{worktree}`, `{branch}` and the rest are available in it.
+
+### Standing context for the agent
+
+A repo can carry standing instructions for the agent that starts in its worktree tabs: which branch and ticket the tab stands on, which `--target` dirs the bootstrap actually installed for, that the dev pane is pre-filled and must not be started. `--prompt` is the wrong channel for that; it is a task, carrying judgment from whoever asked.
+
+```toml
+[repos.some-monorepo]
+context = """
+You are in a git worktree of some-monorepo: {worktree}, branch {branch}, ticket {ticket}.
+Bootstrapped targets: {targets}. node_modules exists only there.
+Do not start the dev command. It is pre-filled in its own pane and verification is serial.
+"""
+agent = 'claude --append-system-prompt "$(cat {context_file})"'
+```
+
+`context` is legal in `[defaults]`, in a `[repos.X]` block and in a repo-local `.treehouse.toml`, layered like every other key: a repo's value replaces the default rather than appending to it. It takes the usual placeholders plus `{targets}`, the `--target` list comma-separated.
+
+It goes in the config rather than the repo's `CLAUDE.md` because the plugin is a layer above the work code, which is the only option for repos you do not own. It is delivered as the **system prompt**, not as a first conversation turn: a block of standing instructions arriving as a user message reads as the task, and it ages out on compaction.
+
+`{context_file}` is available only in the agent command. The engine renders `context`, writes it to a throwaway file outside any repo (one per repo and `{id}`, so re-running `up` overwrites instead of accumulating), and the shell reads it once at agent start. That keeps the delivery mechanism in the `agent` line, where agent-specific knowledge belongs, and nothing here is Claude-specific except the flag you chose.
+
+Half-configured is an error rather than silence, the same way a typo'd placeholder is: `context` with no `{context_file}` to read it is refused, and `{context_file}` with no `context` to put in it is refused (including a `context` that expands to nothing, say `{ticket}` on a branch without one). `--no-agent` needs neither and writes no file. All of it is checked before the worktree is provisioned.
+
+The two halves layer separately, so they have to end up at the same level. A `{context_file}` in `[defaults].agent` refuses every repo that has no `context`, and a per-repo `context` under a `[defaults].agent` without `{context_file}` refuses that repo. With several repos configured, both halves in `[defaults]` is the arrangement that stays out of the way: every repo inherits the agent line, permission posture included, and a repo replaces only the text. Since `context` replaces rather than appends, a repo cannot opt out of a `[defaults].context` without rewriting the agent line too. That follows from replace semantics being the same for every key, and is a deliberate consequence rather than an oversight: keep the default text true everywhere, or set both halves per repo.
+
+The engine writes no instructions of its own. With `{branch}`, `{ticket}`, `{worktree}` and `{targets}` you say those things in your own words, and there is no generated block to argue with.
 
 ### Keybinding
 
