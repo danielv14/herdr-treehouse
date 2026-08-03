@@ -1,8 +1,8 @@
 # herdr-treehouse
 
-Herdr plugin for a worktree-as-tab workflow: point it at a branch and it bootstraps a git worktree according to per-repo config, opens it as a new tab in the repo's Herdr workspace, sets up the repo's pane layout, and starts a coding agent. Any branch name works; ticket-style names (`ABC-1234/fix-thing`) are a convention the engine understands — they get the short worktree paths and tab labels, and a Jira/GitHub link can stand in for typing the branch — not a requirement.
+Herdr plugin for a worktree-as-tab workflow: point it at a branch and it bootstraps a git worktree according to per-repo config, opens it as a new tab in the repo's Herdr workspace, sets up the repo's pane layout, and starts a coding agent.
 
-The mental model: **a workspace is a repo, a tab is a worktree**. Work happens in parallel across tabs; verification is serial, so a dev pane pre-fills its command (`npm run dev`, `docker compose up`, ...) without running it (`autostart = false`). Press Enter when it is that tab's turn.
+The mental model: **a workspace is a repo, a tab is a worktree**. Work happens in parallel across tabs; verification is serial, so a dev pane pre-fills its command (`npm run dev`, `docker compose up`, ...) without running it. Press Enter when it is that tab's turn.
 
 ## Table of contents
 
@@ -14,37 +14,25 @@ The mental model: **a workspace is a repo, a tab is a worktree**. Work happens i
   - [Two branches under one ticket](#two-branches-under-one-ticket)
 - [Configuration](#configuration)
   - [Where a repo's config lives](#where-a-repos-config-lives)
+  - [Placeholders](#placeholders)
   - [Agent command](#agent-command)
   - [Standing context for the agent](#standing-context-for-the-agent)
   - [Sidebar token](#sidebar-token)
   - [Keybinding](#keybinding)
-  - [Link handlers](#link-handlers)
 - [Driving it from Claude Code](#driving-it-from-claude-code)
 - [Design docs](#design-docs)
 
 ## How it works
 
-```
-herdr-plugin.toml   manifest: actions, popup pane, link handlers, worktree.created hook
-bin/treehouse       stable engine entrypoint (bash shim -> bun)
-config.example.toml per-repo config reference
-src/                the engine
-  main.ts           dispatch, cli.ts flags/help, deps.ts the dependency seam
-  commands/         up | down | ls | onboard | action | bootstrap | report, plus the registry
-  worktree/         branch naming, worktree plan, provisioning, agent context, inventory, git
-  herdr/            the Herdr seam: invoker, tab/pane choreography, env payloads
-  config/           config shape, validation, defaults
-```
+Everything is one plain CLI, `bin/treehouse`. The Herdr plugin manifest is just one of its call sites; Claude skills, lazygit custom commands, and keybindings call the same binary. `treehouse up` creates the worktree (or finds the one the branch already has), runs the repo's setup, opens a tab on it, splits the configured panes, and starts the agent in the main pane. `treehouse down` tears all of that down again, safely.
 
-The engine is deliberately a plain CLI. The plugin manifest is just one of its call sites; Claude skills, lazygit custom commands, and keybindings call the same `bin/treehouse`. That includes the manifest's own actions: `treehouse action up|down` reads Herdr's invocation context and opens the right popup pane, so no manifest entry needs a script of its own.
-
-Herdr's native worktree flow (`herdr worktree open`) opens worktrees as workspaces; this plugin intentionally bypasses it and opens them as tabs.
+Worktrees live as siblings of the main checkout (`../{repo}-{id}` by default), so `cd ../my-repo-abc-1234` is the whole navigation story. Herdr's own worktree flow (`herdr worktree open`) opens worktrees as workspaces; treehouse intentionally bypasses it and opens them as tabs.
 
 ## Install
 
 ```bash
 cd /path/to/herdr-treehouse
-bun install                      # dev types only, engine has no runtime deps
+bun install                      # dev types only, no runtime deps
 herdr plugin link .              # takes any path; the repo root is what it needs
 mkdir -p "$(herdr plugin config-dir treehouse)"
 cp config.example.toml "$(herdr plugin config-dir treehouse)/config.toml"   # then edit
@@ -56,7 +44,7 @@ cp config.example.toml "$(herdr plugin config-dir treehouse)/config.toml"   # th
 ln -s "$PWD/bin/treehouse" ~/.local/bin/treehouse
 ```
 
-Requires bun on PATH and Herdr >= 0.7. `bun test` and `bun run typecheck` cover the engine without a Herdr session.
+Requires bun on PATH and Herdr >= 0.7. `bun test` and `bun run typecheck` cover the CLI without a Herdr session.
 
 ## Usage
 
@@ -74,6 +62,8 @@ treehouse onboard                   # propose config for the current repo
 treehouse onboard --apply           # append it to the plugin config
 ```
 
+Any branch name works. Ticket-style names (`ABC-1234/fix-thing`) get the short worktree path and tab label, and a Jira ticket or GitHub issue URL can be ctrl+clicked in any pane instead of typing the branch: that creates an `ABC-1234/wip` branch and opens the tab with a bare agent. A click carries no task, so what to do about the ticket is yours to type.
+
 `down` removes the worktree and closes its tab, but never kills running processes and never uses `git worktree remove --force`; it tells you what is in the way instead.
 
 ### Worktree overview
@@ -84,7 +74,7 @@ treehouse onboard --apply           # append it to the plugin config
 
 `up` on a branch whose worktree already exists creates nothing: it opens a tab on the worktree that is there, with the repo's panes and agent. Where that worktree is comes from git, not from `worktree_dir`, so one created by hand or by another tool is found wherever it was put. A branch checked out in the main checkout is refused rather than opened as a tab.
 
-A worktree that exists is not the same as one that was provisioned: made by hand, by another tool, or before the repo had a config, it has no dependencies and no env file, and the engine does not guess from the state of the directory. `treehouse up --setup` is how you say so: it runs the repo's `setup` commands in the existing worktree and then opens the tab as usual. The reasoning is in [`docs/worktree-lifecycle.md`](docs/worktree-lifecycle.md).
+A worktree that exists is not the same as one that was provisioned: made by hand, by another tool, or before the repo had a config, it has no dependencies and no env file, and treehouse does not guess from the state of the directory. `treehouse up --setup` is how you say so: it runs the repo's `setup` commands in the existing worktree and then opens the tab as usual. The reasoning is in [`docs/worktree-lifecycle.md`](docs/worktree-lifecycle.md).
 
 ### Two branches under one ticket
 
@@ -107,6 +97,26 @@ Layering is `[defaults]` → `[repos.X]` → `.treehouse.toml`, last one wins, s
 
 This repo carries its own `.treehouse.toml`: `setup = ["bun install"]` so a fresh worktree has `node_modules`, a pre-filled `bun test --watch` pane, and a `context` telling the agent it is in a worktree and that editing `herdr-plugin.toml` needs `herdr plugin link .` again. `worktree_dir`, `base` and `agent` are left to the defaults.
 
+### Placeholders
+
+`worktree_dir`, `setup`, `bootstrap`, pane commands, `context` and the agent command are all placeholder-expanded:
+
+| Placeholder | Value |
+| --- | --- |
+| `{repo}` | repo name (the config key) |
+| `{branch}` | full branch name, e.g. `ABC-1234/fix-thing` |
+| `{slug}` | slugified branch, e.g. `abc-1234-fix-thing` |
+| `{ticket}` | leading ticket id lowercased (`abc-1234`), empty if none |
+| `{id}` | `{ticket}` if the branch has one, otherwise `{slug}`; also the tab label. Falls back to `{slug}` when a second branch of the same ticket needs its own worktree |
+| `{worktree}` | resolved worktree path |
+| `{root}` | main checkout path |
+| `{base}` | base ref (default `origin/master`) |
+| `{targets}` | the `--target` list, comma-separated; empty when none were given |
+| `{targets...}` | one argv entry per `--target` — bootstrap argv only |
+| `{context_file}` | path of the rendered `context` file — agent command only |
+
+A typo'd placeholder (`{wortkree}`) is an error that stops the run, not a literal that reaches a shell command. Any other brace passes through untouched, since config values are shell commands: `{{.Names}}`, `{print $1}` and `${HOME}` all survive.
+
 ### Agent command
 
 The command that starts the agent in the main pane resolves in this order, first match wins:
@@ -119,11 +129,9 @@ The command that starts the agent in the main pane resolves in this order, first
 
 Left unset, a bare `claude` inherits your own Claude Code settings, so permission mode stays one decision in `~/.claude/settings.json`. Set `[defaults]` instead when you want flags in every worktree tab, including ones with no settings.json equivalent such as `--dangerously-skip-permissions`. A per-repo `agent` is for repos that genuinely deserve different treatment, not for restating something global.
 
-The command is placeholder-expanded, whether it comes from `--agent` or from config, so `{worktree}`, `{branch}` and the rest are available in it.
-
 ### Standing context for the agent
 
-A repo can carry standing instructions for the agent that starts in its worktree tabs: which branch and ticket the tab stands on, which `--target` dirs the bootstrap actually installed for, that the dev pane is pre-filled and must not be started. `--prompt` is the wrong channel for that; it is a task, carrying judgment from whoever asked.
+A repo can carry standing instructions for the agent that starts in its worktree tabs: which branch and ticket the tab stands on, which `--target` dirs got dependencies, that the dev pane is pre-filled and must not be started. `--prompt` is the wrong channel for that; it is a task, carrying judgment from whoever asked.
 
 ```toml
 [repos.some-monorepo]
@@ -135,15 +143,15 @@ Do not start the dev command. It is pre-filled in its own pane and verification 
 agent = 'claude --append-system-prompt "$(cat {context_file})"'
 ```
 
-`context` is legal in `[defaults]`, in a `[repos.X]` block and in a repo-local `.treehouse.toml`, layered like every other key: a repo's value replaces the default rather than appending to it. It takes the usual placeholders plus `{targets}`, the `--target` list comma-separated. It goes in the config rather than the repo's `CLAUDE.md` because the plugin is a layer above the work code, which is the only option for repos you do not own — and it is delivered as the **system prompt**, not as a first conversation turn, which would read as the task and age out on compaction.
+`context` is legal in `[defaults]`, in a `[repos.X]` block and in a repo-local `.treehouse.toml`, layered like every other key: a repo's value replaces the default rather than appending to it. It goes in the config rather than the repo's `CLAUDE.md` because the plugin is a layer above the work code, which is the only option for repos you do not own — and it is delivered as the **system prompt**, not as a first conversation turn, which would read as the task and age out on compaction.
 
-`{context_file}` is available only in the agent command: the engine renders `context`, writes it to a throwaway file outside any repo, and the shell reads it once at agent start. That keeps the delivery mechanism in the `agent` line, where agent-specific knowledge belongs, and nothing here is Claude-specific except the flag you chose. Half-configured is an error rather than silence: `context` with no `{context_file}` to read it is refused, and `{context_file}` with no `context` to put in it is refused (including a `context` that expands to nothing), all checked before the worktree is provisioned. The engine writes no instructions of its own — with `{branch}`, `{ticket}`, `{worktree}` and `{targets}` you say those things in your own words, and there is no generated block to argue with. The engine-side reasoning, including how the two halves layer across `[defaults]` and a repo, is in [`docs/worktree-lifecycle.md`](docs/worktree-lifecycle.md).
+`{context_file}` is available only in the agent command: treehouse renders `context`, writes it to a throwaway file outside any repo, and the shell reads it once at agent start. Half-configured is an error rather than silence: `context` with no `{context_file}` to read it is refused, and `{context_file}` with no `context` to put in it is refused, all checked before the worktree is provisioned. Treehouse writes no instructions of its own — with `{branch}`, `{ticket}`, `{worktree}` and `{targets}` you say those things in your own words. The reasoning, including how the two halves layer across `[defaults]` and a repo, is in [`docs/worktree-lifecycle.md`](docs/worktree-lifecycle.md).
 
 ### Sidebar token
 
-The engine reports one workspace metadata token to Herdr: `worktrees`, the repo's linked-worktree count. A count of zero clears the token, so repos without worktrees show nothing rather than a `0`. It refreshes when `treehouse up`/`down` change the count, when Herdr's own worktree flow fires `worktree.created`/`worktree.removed`, and on server startup (Herdr does not persist reported tokens across restarts).
+treehouse reports one workspace metadata token to Herdr: `worktrees`, the repo's linked-worktree count. A count of zero clears the token, so repos without worktrees show nothing rather than a `0`. It refreshes when `treehouse up`/`down` change the count, when Herdr's own worktree flow fires `worktree.created`/`worktree.removed`, and on server startup (Herdr does not persist reported tokens across restarts).
 
-Styling stays in your own Herdr config; the engine only reports the value. `rows` replaces the defaults, so keep the built-in items you still want (inline styles take strict `#RGB`/`#RRGGBB` foregrounds):
+Styling stays in your own Herdr config; treehouse only reports the value. `rows` replaces the defaults, so keep the built-in items you still want (inline styles take strict `#RGB`/`#RRGGBB` foregrounds):
 
 ```toml
 # ~/.config/herdr/config.toml
@@ -171,30 +179,16 @@ command = "treehouse.down"
 description = "treehouse: tear down worktree tab"
 ```
 
-### Link handlers
-
-Ctrl+click a Jira ticket URL (`*.atlassian.net/browse/ABC-1234`) or GitHub issue URL in any pane. Since a click carries no judgment, the engine stays mechanical: it creates an `ABC-1234/wip` branch and opens the tab with a bare agent. What to do about the ticket (explore, fix, just read up) is yours to type; the engine never injects a task prompt on its own. `--prompt` exists for callers (skills) that DO carry that judgment.
-
 ## Driving it from Claude Code
 
-Because the engine is a plain CLI with no interactive requirements, a coding agent can run it for you. Wrapping the commands in Claude Code skills means asking for a worktree in prose instead of assembling flags:
+Because treehouse is a plain CLI with no interactive requirements, a coding agent can run it for you. The nicest setup is a small Claude Code skill on top: ask for a worktree in prose ("start a worktree for ABC-1234, the API and the web app") and let the skill read the ticket, derive the branch name, pick the `--target` dirs and decide whether the agent should get a `--prompt`. Those flags are exactly the part that needs judgment, and the CLI deliberately refuses to guess them. Point your agent at this repo and have it write skills tailored to your own workflow — branch conventions, ticket system, teardown habits and all.
 
-> "start a worktree for ABC-1234, the API and the web app" → `treehouse up --branch ABC-1234/... --target services/api --target apps/web --prompt "..."`
-
-That is worth doing because the flags are exactly the part that needs judgment: which branch name follows your convention, which targets the bootstrap needs, whether the agent should get a task prompt at all, and whether the worktree is safe to tear down. The engine deliberately refuses to guess any of it.
-
-The split to keep if you write your own skills:
-
-- **The skill carries judgment.** Read the ticket, derive the branch, pick the targets, decide the prompt, decide when teardown is appropriate.
-- **The engine carries mechanics.** Worktree creation, setup, panes, tabs, teardown safety. Anything a skill teaches itself about those is a second implementation that will drift.
-- **Permission posture belongs at a launch site, never in a skill.** Configure `agent` in `[defaults]`, or leave it unset and let your own Claude Code settings decide. A skill that injects `--dangerously-skip-permissions` hides that decision in markdown and makes the skill path behave differently from `treehouse up`.
-
-The three skills used with this plugin day to day are `herdr-worktree`, `herdr-worktree-teardown` and `herdr-repo-onboard`. They are thin by design and live outside this repo.
+One thing to keep out of skills: permission flags like `--dangerously-skip-permissions`. That decision belongs in your `agent` config or your own Claude Code settings, not hidden in a skill's markdown where the skill path behaves differently from a plain `treehouse up`.
 
 ## Design docs
 
-The reasoning behind the engine's behaviour lives in `docs/`:
+The reasoning behind the CLI's behaviour lives in `docs/`:
 
 - [`docs/worktree-lifecycle.md`](docs/worktree-lifecycle.md) — placement and naming (one worktree per branch), provisioning, standing agent context, teardown safety
 - [`docs/config.md`](docs/config.md) — config resolution, validation policy, TOML footguns
-- [`docs/herdr-quirks.md`](docs/herdr-quirks.md) — live-observed Herdr behaviours the engine codes around (agent prompt delivery, busy-pane detection, tab choreography, plugin payloads)
+- [`docs/herdr-quirks.md`](docs/herdr-quirks.md) — live-observed Herdr behaviours the CLI codes around (agent prompt delivery, busy-pane detection, tab choreography, plugin payloads)
