@@ -1,10 +1,9 @@
 import { spawnSync } from 'node:child_process'
 import type { Environment } from './context.ts'
 
-// Reaching Herdr is a dependency the engine accepts, not something it creates:
-// the spawning adapter below is one implementation, the recording fake in
+// The spawning adapter is one implementation; the recording fake in
 // src/testing/fakeHerdr.ts is the other. Responses stay `unknown` on purpose so
-// decoding happens once, at the seam in tabs.ts, instead of at every call site.
+// decoding happens once, at the seam in tabs.ts.
 export type HerdrInvoker = (args: string[]) => unknown
 
 export const createHerdrInvoker = (env: Environment): HerdrInvoker => {

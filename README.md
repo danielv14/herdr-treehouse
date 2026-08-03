@@ -176,6 +176,14 @@ The split to keep if you write your own skills:
 
 The three skills used with this plugin day to day are `herdr-worktree`, `herdr-worktree-teardown` and `herdr-repo-onboard`. They are thin by design and live outside this repo.
 
+## Design docs
+
+The reasoning behind the engine's behaviour lives in `docs/`:
+
+- [`docs/worktree-lifecycle.md`](docs/worktree-lifecycle.md) — placement and naming (one worktree per branch), provisioning, teardown safety
+- [`docs/config.md`](docs/config.md) — config resolution, validation policy, TOML footguns
+- [`docs/herdr-quirks.md`](docs/herdr-quirks.md) — live-observed Herdr behaviours the engine codes around
+
 ## Status / iteration notes
 
 - `worktree.created` hook: verified live on herdr 0.7.5, payload as documented by `herdr api schema` (worktree with `path` + `branch`). It runs the same provisioning as `treehouse up`, so a repo configured with only `setup` gets its dependencies here too. The raw payload is still logged (`herdr plugin log list --plugin treehouse`).

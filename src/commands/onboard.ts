@@ -69,10 +69,6 @@ export const onboard = async (argv: string[], deps: EngineDeps) => {
   const configDir = pluginConfigDir()
   const centralPath = configPath(configDir)
 
-  // Either location already configuring this repo means there is nothing to
-  // onboard. Naming the file matters here: moving a repo between the two is a
-  // question of removing the old entry, which only the reader can decide.
-  //
   // Matched by `root` rather than by the directory name, the same way config
   // resolution matches: a block keyed differently from the directory still
   // configures this repo, and appending a second one would leave two blocks
@@ -86,8 +82,6 @@ export const onboard = async (argv: string[], deps: EngineDeps) => {
     throw new Error(`${localPath} already exists (delete it first if you are moving this repo to ${centralPath})`)
   }
 
-  // Onboard's product is a value: what the scan learned about the repo. The
-  // config module renders it, next to the shape the block must satisfy.
   const scan = await scanRepo(repoRoot)
   const block = renderProposedBlock(
     { name: repoName, root: repoRoot, installCommand: scan.installCommand, devCommand: scan.devCommand },
@@ -95,8 +89,6 @@ export const onboard = async (argv: string[], deps: EngineDeps) => {
   )
   const target = local ? localPath : centralPath
 
-  // In its default mode the proposed block IS the product: nothing is written
-  // and the reader pastes it.
   log(`# Proposed config for ${repoName} (${target})\n`)
   log(block)
   if (scan.notes.length > 0) {

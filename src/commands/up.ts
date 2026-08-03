@@ -77,8 +77,6 @@ const readOptions = (argv: string[]): UpOptions => {
   }
 }
 
-// Runs after repo resolution so the popup can say which repo it targets and
-// only ask questions that apply to it.
 const askInteractively = async (
   repoConfig: RepoConfig,
   repoName: string,
@@ -96,24 +94,17 @@ const askInteractively = async (
   return { branch, targets }
 }
 
-// The worktree is already there and git said where (see findWorktreeForBranch):
-// all that is left is what to call it. A worktree standing on a placement keeps
-// that placement's name, so a disambiguated worktree gets the same tab label and
-// the same {id} when it is reopened as when it was created; one somewhere else
-// entirely keeps the convention's short name, as it always has.
+// A worktree standing on a placement keeps that placement's name, so a
+// disambiguated worktree reopens under the same tab label and {id} it was
+// created with; one somewhere else keeps the convention's short name.
 const placementOfExisting = (placements: WorktreePlacement[], worktree: string): WorktreePlacement =>
   placements.find((placement) => samePath(placement.worktree, worktree)) ?? {
     id: placements[0].id,
     worktree,
   }
 
-// Nothing holds this branch yet, so pick the shortest placement no other
-// worktree occupies. One branch per ticket takes the first one and lands on
-// exactly the path it always has; a second branch under the same ticket takes
-// the slug path instead of quietly moving into the first branch's worktree
-// (nothing is checked out there under its name, the directory exists, so
-// provisioning called it "already exists" and opened a tab with an agent
-// standing on the other branch).
+// Nothing holds this branch yet: pick the shortest placement no other worktree
+// occupies (two branches under one ticket, see docs/worktree-lifecycle.md).
 const freePlacement = (
   placements: WorktreePlacement[],
   mainRepoRoot: string,
@@ -146,9 +137,8 @@ const paneSpecs = (repoConfig: RepoConfig, expand: (template: string, where?: st
 export const up = async (argv: string[], deps: EngineDeps) => {
   const { tabs, env, insideHerdr, log, warn, ask, pluginConfigDir } = resolveDeps(deps)
   const options = readOptions(argv)
-  // A clicked link and an interactive answer both mean "take me there", which
-  // is why either one focuses the tab that a bare --branch leaves in the
-  // background.
+  // A clicked link means "take me there", so it focuses the tab that a bare
+  // --branch leaves in the background; the interactive popup does the same.
   if (options.fromLink) {
     const url = readInvocationContext(env).clickedUrl
     const branch = branchFromUrl(url)
@@ -177,15 +167,13 @@ export const up = async (argv: string[], deps: EngineDeps) => {
     options.focus = true
   }
   if (!options.branch) throw new Error('up requires --branch (or --interactive / --from-link)')
-  // Silently dropping the task would be worse than refusing: the tab would open
-  // and nothing would ever act on it.
+  // Silently dropping the task would open a tab nothing ever acts on.
   if (options.prompt && options.noAgent) {
     throw new Error('--prompt needs an agent to hand the task to (drop --no-agent, or drop --prompt)')
   }
 
   // Git decides where an existing worktree is, not `worktree_dir`: the naming
-  // convention only describes the ones treehouse created, and a tab on the
-  // worktree that actually holds the branch is the whole point of reopening.
+  // convention only describes the ones treehouse created.
   const checkedOutAt = findWorktreeForBranch(mainRepoRoot, options.branch)
   if (checkedOutAt?.isMain) {
     throw new Error(
@@ -213,9 +201,9 @@ export const up = async (argv: string[], deps: EngineDeps) => {
     id: placement.id,
   })
 
-  // Expand the pane commands and the agent command before provisioning: a
-  // placeholder typo, or a half-configured context, should fail before a
-  // worktree exists, not after npm ci.
+  // Pane and agent commands expand before provisioning: a placeholder typo, or
+  // a half-configured context, should fail before a worktree exists, not after
+  // npm ci.
   const panes = options.noDev ? [] : paneSpecs(repoConfig, plan.expand)
   // repoConfig.agent already has [defaults].agent layered under it; bare
   // `claude` is the last resort so the user's own Claude Code settings decide
@@ -229,16 +217,13 @@ export const up = async (argv: string[], deps: EngineDeps) => {
       })
 
   provisionWorktree(plan, repoConfig, { setupExisting: options.setup, log, warn })
-  // The tree marks worktree tabs apart from ordinary ones everywhere a tab
-  // label shows (tab list, the sidebar's agent rows). An explicit --label is
-  // the caller's to spell, prefix included.
+  // An explicit --label is the caller's to spell, tree prefix included.
   const label = options.label ?? `🌳 ${plan.id}`
   const workspaceId = tabs.resolveWorkspace(mainRepoRoot)
 
-  // Report the sidebar token before the tab choreography: the count changed at
-  // provisioning, and the agent handshake ahead can take a minute or throw,
-  // neither of which may leave the token stale (Herdr's worktree events do not
-  // see our git-side changes). Best-effort: a failed report never fails up.
+  // Before the tab choreography: the agent handshake ahead can take a minute
+  // or throw, neither of which may leave the token stale (Herdr's worktree
+  // events do not see our git-side changes). A failed report never fails up.
   try {
     tabs.reportWorktreeCount(workspaceId, countLinkedWorktrees(mainRepoRoot))
   } catch (error) {

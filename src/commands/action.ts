@@ -14,11 +14,9 @@ export const ACTION_COMMAND: CommandSpec = {
 }
 
 // Actions run headless, so anything that needs to prompt happens in a popup
-// plugin pane. The popup process runs with cwd = plugin root, so the target path
-// is resolved here and handed over through the env convention instead.
-//
-// The entrypoints must exist as [[panes]] ids in herdr-plugin.toml, and the keys
-// are the action names the manifest invokes; manifest.test.ts pins both.
+// plugin pane. The popup runs with cwd = plugin root, so the target path is
+// resolved here and handed over through the env convention. Entrypoints and
+// keys are pinned against herdr-plugin.toml by manifest.test.ts.
 export const POPUP_ENTRYPOINTS = {
   up: { entrypoint: 'up-interactive', prefer: 'workspace' },
   down: { entrypoint: 'down-interactive', prefer: 'pane' },
@@ -37,8 +35,7 @@ export const action = async (argv: string[], deps: EngineDeps) => {
   }
   if (rest.length > 0) throw new Error(`unknown option for action: ${rest[0]}`)
 
-  // Visible via `herdr plugin log list --plugin treehouse`, which is the only
-  // way to see what Herdr actually sent an action.
+  // The plugin log is the only way to see what Herdr actually sent an action.
   warn(`invocation context: ${readInvocationContext(env).raw ?? '(none)'}`)
 
   const { entrypoint, prefer } = POPUP_ENTRYPOINTS[name]

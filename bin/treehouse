@@ -1,11 +1,9 @@
 #!/usr/bin/env bash
-# Stable entrypoint for the treehouse engine. Callable from anywhere:
-# Claude skills, lazygit custom commands, Herdr plugin actions, keybindings.
+# Stable entrypoint for the treehouse engine.
 set -euo pipefail
 
-# Follow symlinks to the real file before deriving the repo path. The README
-# tells you to put this on your PATH, and the obvious way to do that is a symlink
-# into ~/.local/bin, which used to resolve to ~/.local/src/main.ts and fail.
+# Follow symlinks to the real file before deriving the repo path: the README's
+# ~/.local/bin symlink used to resolve to ~/.local/src/main.ts and fail.
 SOURCE="${BASH_SOURCE[0]}"
 while [ -L "$SOURCE" ]; do
   LINK_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
