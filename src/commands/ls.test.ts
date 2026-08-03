@@ -108,7 +108,6 @@ describe('ls', () => {
       behind: 0,
       lastCommitAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
       tab: null,
-      pr: null,
     })
   })
 
