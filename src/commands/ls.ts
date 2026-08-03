@@ -24,7 +24,6 @@ export const LS_COMMAND: CommandSpec = {
 }
 
 // The published shape (--json): every field always present, absent facts null.
-// `pr` is reserved for the planned GitHub enrichment.
 type JsonWorktree = {
   repo: string
   path: string
@@ -39,7 +38,6 @@ type JsonWorktree = {
   behind: number | null
   lastCommitAt: string | null
   tab: { tabId: string; agent: string | null; agentStatus: string | null } | null
-  pr: null
 }
 
 const toJson = (worktree: InventoryWorktree): JsonWorktree => ({
@@ -63,7 +61,6 @@ const toJson = (worktree: InventoryWorktree): JsonWorktree => ({
         agentStatus: worktree.tab.agentStatus ?? null,
       }
     : null,
-  pr: null,
 })
 
 const age = (unixSeconds: number | undefined, nowMs: number): string => {
