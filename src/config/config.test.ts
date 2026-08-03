@@ -570,4 +570,12 @@ describe('diagnosticsForRepo', () => {
   test('leaves warnings alone', () => {
     expect(diagnosticsForRepo(diagnostics, 'mine')[3]).toEqual(diagnostics[3])
   })
+
+  test('a repo whose name merely starts with mine is still another repo', () => {
+    const scoped = diagnosticsForRepo(
+      [{ severity: 'error', key: 'repos.mine-too.setup', message: 'broken' }],
+      'mine',
+    )
+    expect(scoped[0].severity).toBe('warning')
+  })
 })

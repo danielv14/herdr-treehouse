@@ -451,6 +451,14 @@ export const findRepoEntry = (
     return root !== undefined && sameDir(expandHome(root), mainRepoRoot)
   })
 
+// The `repos.<name>[.<field>]` key convention, read in one place. Three call
+// sites ask these two questions and want different answers from them.
+const isRepoScoped = (diagnostic: Diagnostic) => diagnostic.key?.startsWith('repos.') ?? false
+
+// The trailing dot matters: repos.foobar must not read as scoped to repos.foo.
+const isScopedToRepo = (diagnostic: Diagnostic, name: string) =>
+  diagnostic.key === `repos.${name}` || (diagnostic.key?.startsWith(`repos.${name}.`) ?? false)
+
 // Demotes other repos' errors to warnings: a typo in [repos.b] must not break
 // every command for repo a. Pass the matched entry's key (falling back to the
 // checkout's directory name) so a block that broke its own `root` cannot demote
@@ -460,11 +468,8 @@ export const diagnosticsForRepo = (
   repoName: string | undefined,
 ): Diagnostic[] =>
   diagnostics.map((diagnostic) => {
-    if (diagnostic.severity !== 'error' || !diagnostic.key?.startsWith('repos.')) return diagnostic
-    const mine =
-      repoName !== undefined &&
-      (diagnostic.key === `repos.${repoName}` || diagnostic.key.startsWith(`repos.${repoName}.`))
-    if (mine) return diagnostic
+    if (diagnostic.severity !== 'error' || !isRepoScoped(diagnostic)) return diagnostic
+    if (repoName !== undefined && isScopedToRepo(diagnostic, repoName)) return diagnostic
     return {
       ...diagnostic,
       severity: 'warning',
@@ -517,7 +522,7 @@ export const resolveAllRepoConfigs = async (
   // run); errors outside any repo block break every entry equally and still stop.
   reportDiagnostics(
     diagnostics.map((diagnostic) =>
-      diagnostic.severity === 'error' && diagnostic.key?.startsWith('repos.')
+      diagnostic.severity === 'error' && isRepoScoped(diagnostic)
         ? { ...diagnostic, severity: 'warning' as const, message: `${diagnostic.message} (repo skipped here)` }
         : diagnostic,
     ),
@@ -526,9 +531,7 @@ export const resolveAllRepoConfigs = async (
 
   const brokenRepo = (name: string) =>
     diagnostics.some(
-      (diagnostic) =>
-        diagnostic.severity === 'error' &&
-        (diagnostic.key === `repos.${name}` || diagnostic.key?.startsWith(`repos.${name}.`)),
+      (diagnostic) => diagnostic.severity === 'error' && isScopedToRepo(diagnostic, name),
     )
 
   const resolved: Array<{ name: string; config: RepoConfig }> = []
