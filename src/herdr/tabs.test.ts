@@ -277,17 +277,8 @@ describe('listPanes', () => {
   })
 })
 
-describe('reportWorkspaceMetadata', () => {
-  test('reports every token with the plugin as source, a seq and a ttl', () => {
-    const fake = createFakeHerdr({ 'workspace report-metadata': {} })
-    const tabs = createTabChoreography(fake.invoke, { now: () => 1234 })
-    tabs.reportWorkspaceMetadata({ workspaceId: 'wA', tokens: { worktrees: '3' } })
-    expect(fake.commands()).toEqual([
-      'workspace report-metadata wA --source treehouse --token worktrees=3 --seq 1234 --ttl-ms 86400000',
-    ])
-  })
-
-  test('the worktree-count token is spelled in one place', () => {
+describe('reportWorktreeCount', () => {
+  test('reports the token with the plugin as source, a wall-clock seq and a ttl', () => {
     const fake = createFakeHerdr({ 'workspace report-metadata': {} })
     const tabs = createTabChoreography(fake.invoke, { now: () => 1234 })
     tabs.reportWorktreeCount('wA', 2)
