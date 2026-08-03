@@ -90,33 +90,22 @@ describe('onboard flags', () => {
 })
 
 describe('isInteractiveInvocation', () => {
-  // What holds the popup pane open, derived from the declarations instead of a
-  // literal '--interactive' at the entrypoint.
-  test('true when the command declares the flag and argv carries it', () => {
-    expect(isInteractiveInvocation(UP_COMMAND, ['--interactive'])).toBe(true)
-    expect(isInteractiveInvocation(DOWN_COMMAND, ['--path', 'x', '--interactive'])).toBe(true)
+  test('true when argv carries the flag', () => {
+    expect(isInteractiveInvocation(['--interactive'])).toBe(true)
+    expect(isInteractiveInvocation(['--path', 'x', '--interactive'])).toBe(true)
   })
 
-  test('false without the flag in argv, and for a command that does not declare it', () => {
-    expect(isInteractiveInvocation(UP_COMMAND, ['--branch', 'x'])).toBe(false)
-    expect(isInteractiveInvocation(ONBOARD_COMMAND, ['--interactive'])).toBe(false)
+  test('false without the flag in argv', () => {
+    expect(isInteractiveInvocation(['--branch', 'x'])).toBe(false)
+    expect(isInteractiveInvocation([])).toBe(false)
   })
 
-  test('an unknown command with --interactive still holds, so a stale-manifest popup stays readable', () => {
-    // A linked manifest naming a renamed command opens a popup whose only
-    // output is the unknown-command error; closing instantly would hide it.
-    expect(isInteractiveInvocation(undefined, ['--interactive'])).toBe(true)
-    expect(isInteractiveInvocation(undefined, ['--branch', 'x'])).toBe(false)
-  })
-
-  test('a value that happens to equal --interactive does not count as the flag', () => {
-    expect(isInteractiveInvocation(UP_COMMAND, ['--prompt', '--interactive'])).toBe(false)
-    expect(isInteractiveInvocation(UP_COMMAND, ['--prompt', '--interactive', '--interactive'])).toBe(true)
-  })
-
-  test('answers even for argv that would not parse, so the error path can hold the popup open', () => {
+  test('answers without knowing the command, so a stale-manifest popup stays readable', () => {
+    // A linked manifest naming a renamed command opens a popup whose only output
+    // is the unknown-command error; closing instantly would hide it. Same for
+    // argv the parser refuses.
+    expect(isInteractiveInvocation(['--nope', '--interactive'])).toBe(true)
     expect(() => parseFlags(UP_COMMAND, ['--nope', '--interactive'])).toThrow()
-    expect(isInteractiveInvocation(UP_COMMAND, ['--nope', '--interactive'])).toBe(true)
   })
 })
 
