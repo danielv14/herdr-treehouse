@@ -80,25 +80,13 @@ export const parseFlags = (command: CommandSpec, argv: string[]): ParsedFlags =>
   }
 }
 
-// Whether this invocation runs in the interactive popup. Tolerates malformed
-// argv on purpose: the entrypoint needs the answer on the error path too, where
-// parseFlags would throw. Value flags consume their argument, so a value that
-// happens to equal the flag never counts as it.
-export const isInteractiveInvocation = (command: CommandSpec | undefined, argv: string[]): boolean => {
-  // An unknown command's popup is the one that most needs holding open: a stale
-  // linked manifest naming a renamed command would otherwise print the error
-  // and close before it can be read.
-  if (!command) return argv.includes('--interactive')
-  const spec = command.flags.find((flag) => flag.key === 'interactive')
-  if (!spec) return false
-  for (let index = 0; index < argv.length; index += 1) {
-    const arg = argv[index]
-    if (arg === spec.flag || arg === spec.alias) return true
-    const known = command.flags.find((flag) => flag.flag === arg || flag.alias === arg)
-    if (known && known.kind !== 'boolean') index += 1
-  }
-  return false
-}
+// Whether this invocation runs in the interactive popup. A plain scan of argv,
+// deliberately independent of the command declarations: the entrypoint needs the
+// answer for an unknown command and for argv parseFlags would throw on, which is
+// exactly when holding the popup open matters most. It does not distinguish a
+// value that happens to be the string --interactive (`up --label --interactive`),
+// which is not a real invocation.
+export const isInteractiveInvocation = (argv: string[]): boolean => argv.includes('--interactive')
 
 const flagLabel = (spec: FlagSpec): string => {
   const names = spec.alias ? `${spec.flag}, ${spec.alias}` : spec.flag

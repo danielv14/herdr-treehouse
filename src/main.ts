@@ -32,7 +32,7 @@ if (import.meta.main) {
   const { ask } = resolveDeps(deps)
   // The interactive popup pane closes the moment the process exits, so hold it
   // open until the user has read the summary or error.
-  const holdOpen = isInteractiveInvocation(findCommand(argv[0] ?? ''), argv.slice(1))
+  const holdOpen = isInteractiveInvocation(argv.slice(1))
   try {
     await runCommand(argv, deps)
     if (holdOpen) await ask('\n[Enter] to close')
