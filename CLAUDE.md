@@ -2,6 +2,8 @@
 
 Herdr plugin + CLI engine for a worktree-as-tab workflow. Mental model: **a Herdr workspace is a repo, a tab is a worktree**. See README.md for install and usage.
 
+Longer design reasoning lives in `docs/` (worktree-lifecycle, config, herdr-quirks). Code comments are reserved for gotchas the code cannot show; when a change needs prose beyond that, extend the matching docs/ file instead of commenting.
+
 ## Architecture
 
 Three layers, strictly separated:

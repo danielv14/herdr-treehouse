@@ -3,6 +3,9 @@ import { homedir } from 'node:os'
 import { basename, isAbsolute, join } from 'node:path'
 import { reportDiagnostics } from './diagnostics.ts'
 
+// Config shape, validation and resolution. Policy and rationale live in
+// docs/config.md; field semantics in config.example.toml.
+
 export type PaneConfig = {
   split?: 'down' | 'right'
   ratio?: number
@@ -16,24 +19,14 @@ export type RepoConfig = {
   worktree_dir?: string
   base?: string
   bootstrap?: string[]
-  // Simple shell commands run inside a FRESHLY CREATED worktree (skipped when
-  // the worktree already existed, unless `up --setup` asks for them),
-  // e.g. ["corepack enable", "npm ci"]. The middle ground between no bootstrap
-  // and a full bootstrap script.
   setup?: string[]
-  // Extra panes in the worktree tab. Each entry splits the PREVIOUS pane
-  // (the first splits the main/agent pane), so a 1|1 layout with the right
-  // column halved is: [{split: "right"}, {split: "down"}].
   panes?: PaneConfig[]
-  // Command that starts the coding agent in the main pane. Overrides
-  // [defaults].agent; `treehouse up --agent` overrides both.
   agent?: string
 }
 
-// Settings that apply to every repo, each overridable per repo. A table rather
-// than bare top-level keys on purpose: TOML bare keys attach to whatever table
-// precedes them, so an `agent = "..."` line appended below a [repos.X] block
-// would silently become that repo's setting instead of the global one.
+// A table rather than bare top-level keys on purpose: TOML bare keys attach to
+// whatever table precedes them, so an `agent = "..."` line appended below a
+// [repos.X] block would silently become that repo's setting.
 export type DefaultsConfig = {
   agent?: string
 }
@@ -46,34 +39,26 @@ export type TreehouseConfig = {
 export const expandHome = (path: string) =>
   path.startsWith('~') ? join(homedir(), path.slice(1)) : path
 
-// Resolving WHERE the config dir is takes asking Herdr, which is the Herdr
-// module's job (pluginConfigDir in tabs.ts). Everything here takes the resolved
-// dir: TOML in, typed config plus diagnostics out.
+// Resolving WHERE the config dir is takes asking Herdr (pluginConfigDir in
+// tabs.ts); everything here takes the resolved dir.
 export const configPath = (configDir: string) => join(configDir, 'config.toml')
 
-// The defaults applied when config leaves a field out, declared next to the
-// shape they belong to. plan.ts applies the first two, up.ts the pane ones, and
-// renderProposedBlock below advertises them, so onboard cannot drift from what
-// the engine actually does.
+// Defaults applied when config leaves a field out. renderProposedBlock below
+// advertises them, and config.test.ts pins the round-trip, so onboard cannot
+// drift from what the engine does.
 export const DEFAULT_BASE = 'origin/master'
 
 export const DEFAULT_WORKTREE_DIR = '../{repo}-{id}'
 
 export const PANE_DEFAULTS = { split: 'down', ratio: 0.5, autostart: false } as const
 
-// Per-repo config checked into (or gitignored inside) the repo itself, for
-// repos whose config has no reason to live in the user's plugin config dir.
 export const LOCAL_CONFIG_FILE = '.treehouse.toml'
 
 // ---------------------------------------------------------------------------
 // Shape declaration
 // ---------------------------------------------------------------------------
 
-// The TOML arrives as untyped data, so keys AND value shapes are declared once
-// here and checked in a single pass. Both halves matter: a typo'd key means a
-// feature silently never happens, and a wrong value shape used to reach the
-// engine as-is (a string `setup` ran one command per character, a quoted
-// `autostart = "false"` was truthy and started dev servers that must not race).
+// Keys AND value shapes are declared once here and checked in a single pass.
 type FieldSpec =
   | { kind: 'string'; values?: readonly string[] }
   | { kind: 'number' }
@@ -110,9 +95,8 @@ const DEFAULTS_SHAPE: Shape = {
 
 const TOP_LEVEL_SHAPE: Shape = {
   defaults: { kind: 'table', shape: DEFAULTS_SHAPE },
-  // `root` is what matches a [repos.X] block to a checkout. Without it the block
-  // can only be dead weight, and an empty root resolves to the caller's cwd, so
-  // the block would silently claim whichever repo you ran from.
+  // `root` is required: it is what matches a block to a checkout, and an empty
+  // root would resolve to the caller's cwd and claim whichever repo you ran from.
   repos: { kind: 'table-map', shape: REPO_SHAPE, required: ['root'] },
 }
 
@@ -126,8 +110,6 @@ const LOCAL_SHAPE: Shape = Object.fromEntries(
 // Rendering a proposed block (the write side of the shape)
 // ---------------------------------------------------------------------------
 
-// What onboard learned about a repo; everything else the block shows comes from
-// the defaults above.
 export type RepoProposal = {
   name: string
   root: string
@@ -135,18 +117,14 @@ export type RepoProposal = {
   devCommand?: string
 }
 
-// The block onboard proposes, rendered next to the shape it must satisfy so the
-// key names and the advertised defaults cannot drift from what validation
-// accepts (config.test.ts round-trips it through the validators, commented
-// examples included). Two homes of the same fields: the central config
-// namespaces them under [repos.X] and needs `root` to find the repo; a
-// repo-local .treehouse.toml is already at its repo, so it drops both. Scalars
-// stay above the pane table: TOML would otherwise read them as pane keys.
 // TOML bare keys are letters, digits, dashes and underscores; anything else
-// (dots, spaces) needs quoting. JSON string escapes are a subset of TOML basic
-// string escapes, so JSON.stringify renders a valid TOML string either way.
+// needs quoting. JSON string escapes are a subset of TOML basic string escapes,
+// so JSON.stringify renders a valid TOML string either way.
 const BARE_KEY = /^[A-Za-z0-9_-]+$/
 
+// Rendered next to the shape it must satisfy; config.test.ts round-trips the
+// output through the validators, commented examples included. Scalars stay
+// above the pane table or TOML reads them as pane keys.
 export const renderProposedBlock = (proposal: RepoProposal, home: 'central' | 'local'): string => {
   const tomlKey = BARE_KEY.test(proposal.name) ? proposal.name : JSON.stringify(proposal.name)
   const head =
@@ -178,12 +156,9 @@ export const renderProposedBlock = (proposal: RepoProposal, home: 'central' | 'l
 // Validation
 // ---------------------------------------------------------------------------
 
-// The validators return diagnostics as data so tests can assert on them; what a
-// diagnostic means for a run is diagnostics.ts's decision, applied inside the
-// resolvers below so no caller can obtain a usable config while an unreported
-// error sits in the data. Unknown keys are warnings - never fatal, the config
-// still works. A wrong value shape is an error: guessing what was meant is how
-// "false" started dev servers.
+// Unknown keys warn (the config still works); a wrong value shape is an error,
+// because guessing is how a quoted "false" started dev servers. See
+// docs/config.md for the full policy.
 export type Diagnostic = {
   severity: 'warning' | 'error'
   message: string
@@ -194,8 +169,7 @@ export type Diagnostic = {
 
 type Scope = {
   file: string
-  // TOML path of the enclosing table, e.g. "repos.npm-packages". Empty at the
-  // top level of a file.
+  // TOML path of the enclosing table; empty at the top level of a file.
   prefix: string
 }
 
@@ -287,9 +261,8 @@ const validateField = (
       return validateTable(raw, spec.shape, child(scope, key), diagnostics, spec.required)
     case 'table-list': {
       if (isTable(raw)) {
-        // The single-vs-double bracket mistake: [repos.X.panes] parses as one
-        // table, [[repos.X.panes]] as a list of them. Worth its own message,
-        // because the generic "expected a list" says nothing about the fix.
+        // The single-vs-double bracket mistake gets its own message; the
+        // generic "expected a list" says nothing about the fix.
         const path = keyPath(scope, key)
         diagnostics.push({
           severity: 'error',
@@ -437,8 +410,7 @@ export const loadConfig = async (
 
 const sameDir = (a: string, b: string) => {
   // realpathSync('') resolves to the process cwd, so an empty root would match
-  // whichever repo the caller happens to stand in. A block without a usable root
-  // matches nothing (validation reports it separately).
+  // whichever repo the caller happens to stand in.
   if (a === '' || b === '') return false
   try {
     return realpathSync(a) === realpathSync(b)
@@ -447,22 +419,18 @@ const sameDir = (a: string, b: string) => {
   }
 }
 
-// Which [repos.X] block belongs to a checkout, by path rather than by name: the
-// config key is a label, `root` is the identity. Shared with onboard so both
-// answer "is this repo already configured" the same way.
+// Matched by path, not by name: the config key is a label, `root` is the
+// identity. Shared with onboard so both answer "already configured" the same way.
 export const findRepoEntry = (
   repos: Record<string, RepoConfig>,
   mainRepoRoot: string,
 ): [string, RepoConfig] | undefined =>
   Object.entries(repos).find(([, repo]) => sameDir(expandHome(repo.root ?? ''), mainRepoRoot))
 
-// A broken block in some other repo's config must not stop work in this one: a
-// typo in [repos.b] would otherwise break every command for repo a, including
-// the worktree.created hook. Pass the resolved repo name: the matched entry's
-// key, falling back to the checkout's directory name, so a block that would
-// configure this repo but broke its own `root` (the match key) cannot demote
-// itself to "another repo's block" and slip through. Undefined means no single
-// repo is in scope.
+// Demotes other repos' errors to warnings: a typo in [repos.b] must not break
+// every command for repo a. Pass the matched entry's key (falling back to the
+// checkout's directory name) so a block that broke its own `root` cannot demote
+// itself to "another repo's block" and slip through.
 export const diagnosticsForRepo = (
   diagnostics: Diagnostic[],
   repoName: string | undefined,
@@ -480,8 +448,6 @@ export const diagnosticsForRepo = (
     }
   })
 
-// The repo-local half of the layering: .treehouse.toml at the main checkout
-// root, validated but not yet reported (the resolvers below own that).
 const loadLocalConfig = async (
   mainRepoRoot: string,
 ): Promise<{ config: Partial<RepoConfig>; diagnostics: Diagnostic[] }> => {
@@ -490,11 +456,10 @@ const loadLocalConfig = async (
   return validateLocalConfigFile(await parseToml(localPath), localPath)
 }
 
-// Config for a repo, layered lowest to highest: [defaults] from the central
-// config.toml, then its [repos.X] entry, then a repo-local .treehouse.toml at
-// the main checkout root. Reports its own diagnostics: the returned config is
-// either usable or the run has already stopped, so "diagnostics existed but
-// nobody looked" is not expressible at a call site.
+// Layered lowest to highest: [defaults], the repo's [repos.X] entry, then a
+// repo-local .treehouse.toml. Reports its own diagnostics before returning, so
+// a call site cannot obtain a usable config while an unreported error sits in
+// the data.
 export const resolveRepoConfig = async (
   mainRepoRoot: string,
   configDir: string,
@@ -515,21 +480,17 @@ export const resolveRepoConfig = async (
   return { name, config }
 }
 
-// Every centrally configured repo with the same layering as resolveRepoConfig,
-// for commands that span repos (ls, report) rather than act on one. Repos known
-// only by a repo-local .treehouse.toml are invisible here by design: there is
-// deliberately no registry of them. A repo whose own block or local file is
-// broken is skipped with a warning instead of stopping the listing - one bad
-// block must not blind the overview to every other repo.
+// The multi-repo view (ls, report): same layering per repo, but a repo whose
+// own block or local file is broken is skipped with a warning instead of
+// stopping the listing. Repos known only by a repo-local .treehouse.toml are
+// invisible here by design: there is deliberately no registry of them.
 export const resolveAllRepoConfigs = async (
   configDir: string,
   warn: (message: string) => void,
 ): Promise<Array<{ name: string; config: RepoConfig }>> => {
   const { config: loaded, diagnostics } = await loadConfig(configDir)
   // Repo-scoped errors demote to warnings (the repo is skipped below, not the
-  // run); warnings print as-is so a typo'd key stays visible here too. Errors
-  // outside any repo block (a malformed [defaults], an unreadable top level)
-  // break every entry equally, so they still stop the run.
+  // run); errors outside any repo block break every entry equally and still stop.
   reportDiagnostics(
     diagnostics.map((diagnostic) =>
       diagnostic.severity === 'error' && diagnostic.key?.startsWith('repos.')
@@ -551,8 +512,7 @@ export const resolveAllRepoConfigs = async (
     if (brokenRepo(name)) continue
     const root = expandHome(entry.root)
     // An empty or relative root would resolve against the caller's cwd (the
-    // plugin root when a hook runs), listing or even reporting a token for the
-    // wrong repo; sameDir guards single-repo resolution the same way.
+    // plugin root when a hook runs), listing or reporting for the wrong repo.
     if (root === '' || !isAbsolute(root)) {
       warn(`warning: skipping ${name}: root must be an absolute path, got ${JSON.stringify(entry.root)}`)
       continue
@@ -569,8 +529,7 @@ export const resolveAllRepoConfigs = async (
 }
 
 // Onboard's view of the central config: which entry (if any) already claims the
-// checkout, with the same demote-and-report policy as resolveRepoConfig, so a
-// broken block for another repo cannot block onboarding this one.
+// checkout, with the same demote-and-report policy as resolveRepoConfig.
 export const findConfiguredEntry = async (
   mainRepoRoot: string,
   configDir: string,

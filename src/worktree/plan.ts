@@ -2,16 +2,15 @@ import { isAbsolute, resolve } from 'node:path'
 import { slugFromBranch, ticketFromBranch } from './branch.ts'
 import { DEFAULT_BASE, DEFAULT_WORKTREE_DIR, expandHome, type RepoConfig } from '../config/config.ts'
 
-// Everything derived about one worktree, resolved in a single call: callers ask
-// once and read fields off the result. Pure: no filesystem, no git, no Herdr.
+// Everything derived about one worktree, resolved in a single call. Pure: no
+// filesystem, no git, no Herdr.
 
 const PLACEHOLDERS = ['repo', 'branch', 'slug', 'ticket', 'id', 'worktree', 'root', 'base'] as const
 
 const TARGETS_PLACEHOLDER = '{targets...}'
 
-// Whether a repo's bootstrap consumes targets, i.e. whether asking for any
-// makes sense. The placeholder itself stays private: this is the question
-// callers actually have.
+// Whether a repo's bootstrap consumes targets; the placeholder itself stays
+// private.
 export const bootstrapTakesTargets = (repoConfig: RepoConfig): boolean =>
   repoConfig.bootstrap?.includes(TARGETS_PLACEHOLDER) ?? false
 
@@ -25,23 +24,21 @@ export type WorktreePlan = {
   root: string
   base: string
   targets: string[]
-  // Expand placeholders in a single string (setup commands, pane commands).
-  // `where` only shapes the error message.
+  // Expand placeholders in a single string; `where` only shapes the error message.
   expand: (template: string, where?: string) => string
   // Expand a bootstrap argv: `{targets...}` becomes one entry per target, every
   // other entry gets normal placeholder expansion plus ~ expansion.
   expandArgv: (argv: string[]) => string[]
 }
 
-// An unknown placeholder used to pass through unexpanded into shell commands and
-// bootstrap argv, so a typo became a literal "{wortkree}" argument that some
-// script then mkdir'd. Fail instead, and say which placeholders exist.
+// An unknown placeholder is an error, not a pass-through: a typo used to become
+// a literal "{wortkree}" argument that some script then mkdir'd.
 //
 // Only single-word braces not preceded by `$` are treated as placeholders.
 // Config values are shell commands, and braces are ordinary there:
 // `docker ps --format '{{.Names}}'`, `kubectl -o jsonpath='{.items[0]}'`,
-// `awk '{print $1}'`, `cp ${HOME}/.env .env`. Those never looked like a
-// placeholder and must keep passing through untouched.
+// `awk '{print $1}'`, `cp ${HOME}/.env .env`. Those must keep passing through
+// untouched.
 const expandWith = (
   template: string,
   values: Record<string, string>,
@@ -72,12 +69,11 @@ export type PlanInput = {
   mainRepoRoot: string
   repoConfig: RepoConfig
   targets?: string[]
-  // Path of a worktree that already exists (Herdr's native flow creates the
-  // checkout before the plugin hook runs, so its path is a given, not a
-  // worktree_dir question).
+  // Path of a worktree that already exists, when the caller knows it (Herdr's
+  // native flow, or a placement picked from worktreePlacements below).
   worktree?: string
   // The short name this worktree goes by, when the caller has picked one from
-  // worktreePlacements() below rather than taking the convention's default.
+  // worktreePlacements() rather than taking the convention's default.
   id?: string
 }
 
@@ -105,16 +101,10 @@ const idCandidates = (branch: string): string[] => {
   return ticket === '' || ticket === slug ? [slug] : [ticket, slug]
 }
 
-// Where a branch's worktree may go under this repo's convention, in the order a
-// caller should prefer: the short {id} path first, the slug path as the way out
-// when another branch of the same ticket already holds the short one. Only the
-// caller knows which paths are taken (that is a git question), so this answers
-// the pure half and stays a path derivation.
-//
-// A worktree_dir that ignores {id} derives one path for every branch of the
-// ticket. That yields a single placement, not a duplicate that is just as
-// taken, so the caller refuses with something to say instead of silently
-// reusing another branch's worktree.
+// The ordered spots the convention allows one branch; only the caller can ask
+// git which are taken. A worktree_dir that ignores {id} yields a single
+// placement, so the caller refuses instead of silently reusing another
+// branch's worktree. Background: docs/worktree-lifecycle.md.
 export const worktreePlacements = (input: PlacementInput): WorktreePlacement[] =>
   idCandidates(input.branch).reduce<WorktreePlacement[]>((placements, id) => {
     const worktree = resolveWorktreePath(
@@ -178,11 +168,6 @@ export const buildWorktreePlan = ({
   }
 }
 
-// Sibling by default: `cd ../{repo}-{id}` from the main checkout is the shortest
-// path back and forth, worktrees sort next to the repo they belong to, and
-// staying outside the checkout keeps them away from watchers, test globs and
-// build contexts (which is why Claude Code's own <repo>/.claude/worktrees/
-// layout is a poor fit for long-lived tabs).
 // {repo} is the config key, which for unconfigured repos is the directory name;
 // set worktree_dir explicitly if a key deliberately differs from it.
 const resolveWorktreePath = (

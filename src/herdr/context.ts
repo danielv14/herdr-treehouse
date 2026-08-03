@@ -1,17 +1,16 @@
 // The only reader of the payloads Herdr hands the engine through the
-// environment: the plugin invocation context and the worktree.created event.
-// Both decode tolerantly, keeping the raw payload for the plugin log and
-// treating the fields as absent, because neither may take an invocation down.
+// environment. Both payloads decode tolerantly (raw kept for the plugin log,
+// fields read as absent): a malformed payload may not take an invocation down.
 
-// Plugin-invoked processes (actions, link handlers, plugin panes) run with
-// cwd = plugin root, so the target path has to be carried explicitly.
+// Plugin-invoked processes run with cwd = plugin root, so the target path has
+// to be carried explicitly.
 export const TARGET_PATH_ENV = 'TREEHOUSE_TARGET_PATH'
 
 export type Environment = Record<string, string | undefined>
 
 export type InvocationContext = {
   // Raw payload, kept for logging: the plugin log is how an unexpected shape
-  // gets noticed (`herdr plugin log list --plugin treehouse`).
+  // gets noticed.
   raw?: string
   workspaceCwd?: string
   focusedPaneCwd?: string
@@ -36,7 +35,7 @@ export const readInvocationContext = (env: Environment): InvocationContext => {
     const candidate = JSON.parse(raw)
     if (isObject(candidate)) parsed = candidate
   } catch {
-    // Malformed: the raw payload still goes back for the log, fields absent.
+    // Malformed: raw still goes back for the log, fields read as absent.
   }
   return {
     raw,
@@ -51,15 +50,12 @@ export const isPluginInvocation = (env: Environment) =>
   env.HERDR_PLUGIN_CONTEXT_JSON !== undefined
 
 export type WorktreeCreatedEvent = {
-  // Kept for logging, same reason as InvocationContext.raw above.
   raw?: string
   path?: string
   branch?: string
 }
 
-// Herdr's worktree.created payload, delivered to the event hook in its own env
-// variable (the invocation context carries no branch or path). Shape confirmed
-// live on herdr 0.7.5 and matching `herdr api schema`:
+// Payload shape confirmed live on herdr 0.7.5 and matching `herdr api schema`:
 // { event, data: { type, workspace, worktree: { path, branch, ... } } }.
 export const readWorktreeCreatedEvent = (env: Environment): WorktreeCreatedEvent => {
   const raw = env.HERDR_PLUGIN_EVENT_JSON
@@ -71,15 +67,13 @@ export const readWorktreeCreatedEvent = (env: Environment): WorktreeCreatedEvent
     const candidate = isObject(data) ? data.worktree : undefined
     if (isObject(candidate)) worktree = candidate
   } catch {
-    // Malformed: the raw payload still goes back for the log, fields absent.
-    // An uncaught throw here would leave only a failed plugin log entry, and
-    // the hook is the one path that runs unattended.
+    // Malformed: raw still goes back for the log, fields read as absent. An
+    // uncaught throw here would take down the hook, the one unattended path.
   }
   return { raw, path: readString(worktree, 'path'), branch: readString(worktree, 'branch') }
 }
 
 export type TargetPathInput = {
-  // An explicit --repo / --path always wins.
   explicit?: string
   // 'pane' for anything about the focused worktree (teardown, a clicked link),
   // 'workspace' for anything about the repo as a whole.
@@ -87,10 +81,8 @@ export type TargetPathInput = {
   env: Environment
 }
 
-// Precedence: explicit flag, then the env convention the popup shims use, then
-// the plugin invocation context. Undefined means nothing said, which is a
-// caller's decision to make: `up` refuses (the plugin repo must never become the
-// target), a plain shell invocation falls back to cwd.
+// Precedence: explicit flag, then TARGET_PATH_ENV, then the invocation context.
+// Undefined means nothing said; what to do about it is the caller's decision.
 export const invocationTargetPath = ({
   explicit,
   prefer,
@@ -105,7 +97,7 @@ export const invocationTargetPath = ({
     : (context.focusedPaneCwd ?? context.workspaceCwd)
 }
 
-// The caller's own pane/tab, so teardown can skip itself in a busy check and
-// close its own tab last.
+// The caller's own pane/tab: teardown skips itself in the busy check and
+// closes its own tab last.
 export const callerPaneId = (env: Environment) => env.HERDR_PANE_ID
 export const callerTabId = (env: Environment) => env.HERDR_TAB_ID

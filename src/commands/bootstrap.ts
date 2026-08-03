@@ -23,13 +23,10 @@ export const bootstrap = async (argv: string[], deps: EngineDeps) => {
   await bootstrapFromEvent(deps)
 }
 
-// Handler for the worktree.created event (Herdr's native worktree flow). Past
-// decoding it is the same provisioning `up` uses, so a repo configured with
-// only `setup` gets its dependencies here too.
-//
-// Everything goes to stderr, which is where `herdr plugin log list --plugin
-// treehouse` can see it, and the raw payload is logged on every run so a shape
-// change shows up before the fields silently read as absent.
+// Handler for the worktree.created event: the same provisioning `up` uses.
+// Everything goes to stderr (where the plugin log can see it), and the raw
+// payload is logged on every run so a shape change shows up before the fields
+// silently read as absent.
 export const bootstrapFromEvent = async (deps: EngineDeps) => {
   const { env, warn: log, pluginConfigDir } = resolveDeps(deps)
   const { raw, path: worktreePath, branch } = readWorktreeCreatedEvent(env)
@@ -44,11 +41,9 @@ export const bootstrapFromEvent = async (deps: EngineDeps) => {
     return
   }
 
-  // Past this point failures are loud on purpose. The payload seam above is
-  // tolerant because a malformed payload may not take the invocation down; a
-  // failure while acting on a well-formed one (a broken own-repo config, git
-  // refusing) exits non-zero so the plugin log shows a failed run instead of a
-  // silently unprovisioned worktree.
+  // Past this point failures are loud on purpose: a failure while acting on a
+  // well-formed payload exits non-zero so the plugin log shows a failed run
+  // instead of a silently unprovisioned worktree.
   const mainRepoRoot = findMainRepoRoot(worktreePath)
   const { name: repoName, config: repoConfig } = await resolveRepoConfig(mainRepoRoot, pluginConfigDir(), log)
   if (!repoConfig.bootstrap?.length && !repoConfig.setup?.length) {
@@ -61,8 +56,7 @@ export const bootstrapFromEvent = async (deps: EngineDeps) => {
     branch,
     mainRepoRoot,
     repoConfig,
-    // Herdr created the checkout, so its path is a given rather than a
-    // worktree_dir question.
+    // Herdr created the checkout; its path is a given, not a worktree_dir question.
     worktree: worktreePath,
   })
   provisionWorktree(plan, repoConfig, { worktreeState: 'just-created', log, warn: log })

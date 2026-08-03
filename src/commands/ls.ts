@@ -24,8 +24,7 @@ export const LS_COMMAND: CommandSpec = {
 }
 
 // The published shape (--json): every field always present, absent facts null.
-// `pr` is reserved for the planned GitHub enrichment so adding it later does
-// not break consumers.
+// `pr` is reserved for the planned GitHub enrichment.
 type JsonWorktree = {
   repo: string
   path: string
@@ -118,8 +117,7 @@ export const ls = async (argv: string[], deps: EngineDeps) => {
     .filter((inventory): inventory is RepoInventory => inventory !== undefined)
     .map((inventory) => {
       if (!insideHerdr) return inventory
-      // A Herdr hiccup degrades one repo's tab column, never the listing: this
-      // is a read-only overview, not a teardown decision.
+      // A Herdr hiccup degrades one repo's tab column, never the listing.
       try {
         const workspaceId = tabs.findWorkspace(inventory.root)
         return workspaceId ? attachTabFacts(inventory, tabs.listPanes(workspaceId)) : inventory
@@ -152,8 +150,6 @@ export const ls = async (argv: string[], deps: EngineDeps) => {
     ? ['REPO', 'BRANCH', 'DIRTY', 'BASE', 'LAST', 'TAB', 'PATH']
     : ['REPO', 'BRANCH', 'DIRTY', 'BASE', 'LAST', 'PATH']
   const rows = worktrees.map(({ worktree, root }) => {
-    // Sibling layout makes the path relative to the main checkout the short,
-    // recognisable spelling (../my-repo-abc-1); unmanaged paths get a marker.
     const path = `${relative(root, worktree.path)}${worktree.managed ? '' : ' *'}`
     const shared = [
       worktree.repo,
@@ -167,9 +163,6 @@ export const ls = async (argv: string[], deps: EngineDeps) => {
   for (const line of renderTable(rows, header)) log(line)
   if (worktrees.some(({ worktree }) => !worktree.managed)) {
     log('')
-    // Says what the check measures: a path comparison against the convention
-    // for the CURRENT branch. It cannot know who created the worktree, and a
-    // branch renamed after creation trips it too.
     log("* path does not match the repo's worktree_dir convention")
   }
 }
