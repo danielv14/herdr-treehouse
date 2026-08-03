@@ -55,7 +55,10 @@ disambiguate (no `{id}`, e.g. `../{repo}-{ticket}`) yields one placement and is
 refused with an explanation, not silently reused.
 
 `ls` asks for the whole placement set too, which is why a disambiguated slug
-path reads as managed rather than off-convention.
+path reads as managed rather than off-convention. The managed check is a path
+comparison against the *current* branch name, so a branch renamed after
+creation trips the `*` marker as well — the worktree no longer stands where
+the convention would put that name.
 
 ## Sibling layout
 
@@ -142,6 +145,17 @@ agent"); this is the engine-side reasoning behind `src/worktree/agentContext.ts`
   the agent knows nothing. The context renders before anything is decided or
   written, so a placeholder typo is reported as a typo, fails before the
   worktree is provisioned, and never leaves a rendered file behind.
+- **The two halves layer separately, so they have to end up at the same
+  level.** A `{context_file}` in `[defaults].agent` refuses every repo that
+  has no `context`, and a per-repo `context` under a `[defaults].agent`
+  without `{context_file}` refuses that repo. With several repos configured,
+  both halves in `[defaults]` is the arrangement that stays out of the way:
+  every repo inherits the agent line, permission posture included, and a repo
+  replaces only the text. Since `context` replaces rather than appends, a repo
+  cannot opt out of a `[defaults].context` without rewriting the agent line
+  too. That follows from replace semantics being the same for every key, and
+  is a deliberate consequence rather than an oversight: keep the default text
+  true everywhere, or set both halves per repo.
 - **It is its own module**: `plan.ts` is pure (no fs) and `provision.ts` is
   about making the worktree exist, which the context file is not part of.
 - The `worktree.created` hook provisions only and never resolves an agent
