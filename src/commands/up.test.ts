@@ -154,7 +154,7 @@ command = "npm run dev"
     // provisioning off to create a second worktree for a branch git already had
     // checked out, and git refused with "already used by worktree at ...".
     writeLocalConfig('base = "master"\nsetup = ["echo ran > ran.txt"]\n')
-    const elsewhere = join(repo.parent, 'npm-packages-vkt-11206')
+    const elsewhere = join(repo.parent, 'npm-packages-abc-11206')
     repo.git('worktree', 'add', elsewhere, '-b', 'ui/upgrade-to-ui-in-konto', '--no-track', 'master')
 
     const fake = createFakeHerdr(RESPONSES)
@@ -270,11 +270,11 @@ describe('two branches under one ticket', () => {
   // Attacking one ticket from several angles: two branches, two worktrees, two
   // tabs, two agents. They derive the same {id} path, and the second one used
   // to land on the first one's worktree without a word.
-  const reducer = 'VKT-1/reducer-approach'
-  const stateMachine = 'VKT-1/state-machine-approach'
-  const short = () => join(repo.parent, 'my-repo-vkt-1')
+  const reducer = 'ABC-1/reducer-approach'
+  const stateMachine = 'ABC-1/state-machine-approach'
+  const short = () => join(repo.parent, 'my-repo-abc-1')
   const longFor = (branch: string) =>
-    join(repo.parent, `my-repo-vkt-1-${branch.split('/')[1]}`)
+    join(repo.parent, `my-repo-abc-1-${branch.split('/')[1]}`)
 
   const upFor = async (branch: string, extra: string[] = []) => {
     const fake = createFakeHerdr(RESPONSES)
@@ -297,9 +297,9 @@ describe('two branches under one ticket', () => {
     expect(repo.git('worktree', 'list')).toContain(`[${reducer}]`)
     expect(repo.git('worktree', 'list')).toContain(`[${stateMachine}]`)
     expect(tabCreate(second)).toContain(`--cwd ${longFor(stateMachine)}`)
-    // Two tabs labelled 🌳 vkt-1 would be indistinguishable in the sidebar, so
+    // Two tabs labelled 🌳 abc-1 would be indistinguishable in the sidebar, so
     // the disambiguated worktree is labelled by the name it actually goes by.
-    expect(tabCreate(second)).toContain('--label 🌳 vkt-1-state-machine-approach')
+    expect(tabCreate(second)).toContain('--label 🌳 abc-1-state-machine-approach')
   })
 
   test('the short path goes to whichever branch was created first', async () => {
@@ -307,7 +307,7 @@ describe('two branches under one ticket', () => {
     await upFor(stateMachine)
     const second = await upFor(reducer)
 
-    expect(existsSync(join(repo.parent, 'my-repo-vkt-1'))).toBe(true)
+    expect(existsSync(join(repo.parent, 'my-repo-abc-1'))).toBe(true)
     expect(existsSync(longFor(reducer))).toBe(true)
     expect(tabCreate(second)).toContain(`--cwd ${longFor(reducer)}`)
   })
@@ -321,7 +321,7 @@ describe('two branches under one ticket', () => {
 
     expect(logged).toContain(`worktree already exists: ${longFor(stateMachine)}`)
     expect(tabCreate(again)).toContain(`--cwd ${longFor(stateMachine)}`)
-    expect(tabCreate(again)).toContain('--label 🌳 vkt-1-state-machine-approach')
+    expect(tabCreate(again)).toContain('--label 🌳 abc-1-state-machine-approach')
     // Nothing new was created for the reopen, and setup did not run again.
     expect(repo.git('worktree', 'list').split('\n')).toHaveLength(3)
     expect(readFileSync(join(longFor(stateMachine), 'ran.txt'), 'utf8').trim().split('\n')).toEqual(['ran'])
@@ -332,7 +332,7 @@ describe('two branches under one ticket', () => {
     const fake = await upFor(reducer)
     expect(existsSync(short())).toBe(true)
     expect(tabCreate(fake)).toContain(`--cwd ${short()}`)
-    expect(tabCreate(fake)).toContain('--label 🌳 vkt-1')
+    expect(tabCreate(fake)).toContain('--label 🌳 abc-1')
     expect(existsSync(longFor(reducer))).toBe(false)
   })
 
@@ -344,7 +344,7 @@ describe('two branches under one ticket', () => {
     const fake = createFakeHerdr(RESPONSES)
     await expectRejection(
       up(['--repo', repo.root, '--branch', stateMachine, '--no-agent'], deps(fake)),
-      /every path worktree_dir derives for VKT-1\/state-machine-approach is already a worktree of another branch: .*my-repo-vkt-1 \(VKT-1\/reducer-approach\)/,
+      /every path worktree_dir derives for ABC-1\/state-machine-approach is already a worktree of another branch: .*my-repo-abc-1 \(ABC-1\/reducer-approach\)/,
     )
     expect(fake.callsMatching('tab create')).toHaveLength(0)
     expect(fake.callsMatching('pane run')).toHaveLength(0)
