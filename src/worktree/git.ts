@@ -1,10 +1,8 @@
 import { spawnSync } from 'node:child_process'
 import { realpathSync } from 'node:fs'
 
-// The one place that knows git, the way tabs.ts is the one place that knows
-// Herdr: argv, ref shapes, and the flags that must NOT be there. Commands ask
-// questions (inspectCheckout) and name intents (addWorktree, removeWorktree);
-// no raw git argv appears outside this module.
+// The one place that knows git: argv, ref shapes, and the flags that must NOT
+// be there. No raw git argv appears outside this module.
 
 const git = (cwd: string, args: string[]): string => {
   const result = spawnSync('git', args, { cwd, encoding: 'utf8' })
@@ -37,7 +35,6 @@ export type Checkout = {
   dirtyFiles: string[]
 }
 
-// Everything a teardown needs to know about a checkout, in one call.
 export const inspectCheckout = (path: string): Checkout => {
   const root = git(path, ['rev-parse', '--show-toplevel'])
   const mainRoot = findMainRepoRoot(path)
@@ -54,14 +51,11 @@ export type WorktreeListing = {
   path: string
   // Short branch name; undefined when the checkout is detached or bare.
   branch?: string
-  // The main checkout: first entry in `git worktree list`.
   isMain: boolean
 }
 
-// Every worktree of the repo, from `git worktree list --porcelain -z`: the
-// machine-readable contract, NUL-terminated so paths with spaces or newlines
-// survive. Each record is attribute lines ending in NUL, records separated by
-// an extra NUL.
+// `--porcelain -z`: attribute lines end in NUL, records are separated by an
+// extra NUL, so paths with spaces or newlines survive.
 export const listWorktrees = (root: string): WorktreeListing[] =>
   git(root, ['worktree', 'list', '--porcelain', '-z'])
     .split('\0\0')
@@ -79,24 +73,18 @@ export const listWorktrees = (root: string): WorktreeListing[] =>
     })
     .filter((listing) => listing.path !== '')
 
-// Where a branch is checked out, if anywhere. `up` has to ask before deriving a
-// path from `worktree_dir`, because the convention only describes worktrees
-// treehouse made: one created by hand, by another tool, or under a different
-// ticket id sits wherever that tool put it. Deriving instead sent provisioning
-// off to create a second worktree for a branch git already has checked out,
-// which git refuses (`already used by worktree at ...`) after a bootstrap has
-// run. The main checkout is included, because "the branch is on your desk, not
-// in a worktree" is an answer the caller needs to tell apart from "nowhere".
+// Where a branch is checked out, if anywhere. The main checkout is included so
+// the caller can tell "on your desk, not in a worktree" apart from "nowhere".
+// Why `up` must ask this before deriving a path: docs/worktree-lifecycle.md.
 export const findWorktreeForBranch = (
   root: string,
   branch: string,
 ): WorktreeListing | undefined =>
   listWorktrees(root).find((listing) => listing.branch === branch)
 
-// Paths meet here in several spellings (config roots, git listings, derived
-// paths); realpath levels symlinks like macOS /var vs /private/var, which git
-// resolves and a path built from a template does not. A path that does not
-// exist compares as written, which is what a not-yet-created worktree needs.
+// realpath levels symlinks like macOS /var vs /private/var, which git resolves
+// and a path built from a template does not. A path that does not exist
+// compares as written, which is what a not-yet-created worktree needs.
 export const samePath = (a: string, b: string): boolean => {
   const canonical = (path: string) => {
     try {
@@ -108,16 +96,12 @@ export const samePath = (a: string, b: string): boolean => {
   return canonical(a) === canonical(b)
 }
 
-// Which worktree, if any, sits at a path: the mirror of findWorktreeForBranch,
-// and the question `up` has to ask about the paths its convention derives.
-// Answering it from git rather than from `existsSync` is the point: two
-// branches under one ticket derive the same path, and the directory being there
-// says nothing about whose branch is checked out in it.
+// Which worktree, if any, sits at a path. Answered from git rather than
+// existsSync: the directory being there says nothing about whose branch is
+// checked out in it.
 export const findWorktreeAtPath = (root: string, path: string): WorktreeListing | undefined =>
   listWorktrees(root).find((listing) => samePath(listing.path, path))
 
-// How many linked worktrees the repo has; the value behind the sidebar's
-// worktree-count token.
 export const countLinkedWorktrees = (root: string): number =>
   listWorktrees(root).filter((listing) => !listing.isMain).length
 
@@ -132,9 +116,8 @@ export type WorktreeFacts = {
   behind?: number
 }
 
-// The listing facts about one worktree, in one call. Read-only and offline on
-// purpose: no fetch, so ahead/behind is against the base as last fetched, and
-// asking never mutates anything.
+// Read-only and offline on purpose: no fetch, so ahead/behind is against the
+// base as last fetched.
 export const worktreeFacts = (worktreePath: string, base: string): WorktreeFacts => {
   const status = git(worktreePath, ['status', '--porcelain'])
   const facts: WorktreeFacts = {
@@ -172,11 +155,10 @@ export type AddWorktreeRequest = {
   warn: (message: string) => void
 }
 
-// Create the worktree for `branch`. An existing branch is reused as-is; a new
-// one branches from `base`, fetching the remote side of a remote-tracking base
-// first so it does not fork from a stale fetch. Offline is survivable: warn and
-// branch from the local ref. --no-track, so a bare `git push` in the worktree
-// can never target the base branch.
+// An existing branch is reused as-is; a new one branches from `base`, fetching
+// the remote side of a remote-tracking base first so it does not fork from a
+// stale fetch (offline is survivable: warn and branch from the local ref).
+// --no-track, so a bare `git push` in the worktree can never target the base.
 export const addWorktree = (root: string, request: AddWorktreeRequest) => {
   if (branchExists(root, request.branch)) {
     git(root, ['worktree', 'add', request.path, request.branch])

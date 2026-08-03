@@ -1,10 +1,7 @@
 import type { Diagnostic } from './config.ts'
 
-// The severity decision of config validation: the validators return diagnostics
-// as data, and the resolvers in config.ts hand them here before returning.
-// Unknown keys are printed and the run continues; a wrong value shape stops it,
-// because the alternative is guessing (a quoted "false" that starts a dev
-// server, a string setup that runs one command per character).
+// The severity decision of config validation: warnings print and the run
+// continues, errors stop it (see docs/config.md for why).
 export const reportDiagnostics = (
   diagnostics: Diagnostic[],
   warn: (message: string) => void,

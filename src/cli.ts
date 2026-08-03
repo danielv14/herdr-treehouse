@@ -1,19 +1,9 @@
-// Each command declares its flags once, with help text attached; parsing and
-// `--help` are both derived from that declaration, so adding a flag is one edit
-// and the help can never drift from what is accepted.
-//
-// Deliberately not a flag framework: no subcommand trees, no type coercion, no
-// negation pairs. Three commands' worth of parsing is all this has to be.
+// Flag declaration, parsing and help rendering, all derived from one
+// declaration per command so help cannot drift. Deliberately not a framework.
 
 import type { EngineDeps } from './deps.ts'
 
-export type FlagKind =
-  // present or absent
-  | 'boolean'
-  // takes the next argv entry
-  | 'value'
-  // takes the next argv entry and appends; repeatable
-  | 'list'
+export type FlagKind = 'boolean' | 'value' | 'list'
 
 export type FlagSpec = {
   flag: string
@@ -31,7 +21,6 @@ export type FlagSpec = {
 
 export type CommandSpec = {
   name: string
-  // Usage lines shown at the top of the help output.
   usage: string[]
   summary: string
   flags: FlagSpec[]
@@ -39,11 +28,8 @@ export type CommandSpec = {
   notes?: string[]
 }
 
-// What the entrypoint runs once it has looked a command up by name. Type-only
-// dependency on the engine's deps, so nothing here is imported at runtime.
 export type CommandHandler = (argv: string[], deps: EngineDeps) => Promise<void>
 
-// A registry entry: the declaration plus the handler. Assembled in commands/registry.ts.
 export type Command = CommandSpec & { run: CommandHandler }
 
 export type ParsedFlags = {
@@ -94,16 +80,14 @@ export const parseFlags = (command: CommandSpec, argv: string[]): ParsedFlags =>
   }
 }
 
-// Whether this invocation runs in the interactive popup, derived from the
-// command's own flag declaration rather than a literal '--interactive' at the
-// call site. Tolerates malformed argv on purpose: the entrypoint needs the
-// answer on the error path too, where parseFlags would throw. Value flags
-// consume their argument, so a value that happens to equal the flag never
-// counts as it.
+// Whether this invocation runs in the interactive popup. Tolerates malformed
+// argv on purpose: the entrypoint needs the answer on the error path too, where
+// parseFlags would throw. Value flags consume their argument, so a value that
+// happens to equal the flag never counts as it.
 export const isInteractiveInvocation = (command: CommandSpec | undefined, argv: string[]): boolean => {
-  // An unknown command has no declarations to consult, and its popup is the one
-  // that most needs holding open: a stale linked manifest naming a renamed
-  // command would otherwise print the error and close before it can be read.
+  // An unknown command's popup is the one that most needs holding open: a stale
+  // linked manifest naming a renamed command would otherwise print the error
+  // and close before it can be read.
   if (!command) return argv.includes('--interactive')
   const spec = command.flags.find((flag) => flag.key === 'interactive')
   if (!spec) return false

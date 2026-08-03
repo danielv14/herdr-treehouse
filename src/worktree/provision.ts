@@ -4,33 +4,24 @@ import type { RepoConfig } from '../config/config.ts'
 import { addWorktree } from './git.ts'
 import type { WorktreePlan } from './plan.ts'
 
-// One implementation of "make this worktree exist and be usable", shared by
-// `treehouse up` and the worktree.created hook, so a repo configured with
-// setup = ["npm ci"] and no bootstrap is provisioned by both.
-//
-// This unifies invocation, not configuration: `setup` and `bootstrap` stay two
-// tiers with two meanings (see CLAUDE.md).
+// "Make this worktree exist and be usable", shared by `treehouse up` and the
+// worktree.created hook. This unifies invocation, not configuration: `setup`
+// and `bootstrap` stay two tiers with two meanings (see CLAUDE.md).
 
 export type ProvisionOptions = {
-  // 'just-created' means the caller knows the checkout was created moments ago
-  // by someone else (Herdr's native worktree flow, before the hook fires): there
-  // is nothing to create, but it is still a fresh worktree, so setup must run.
+  // 'just-created' means someone else made the checkout moments ago (Herdr's
+  // native flow): nothing to create, but setup must still run.
   worktreeState?: 'unknown' | 'just-created'
-  // Run `setup` even though the worktree already exists (`treehouse up --setup`).
-  // A worktree that exists is not the same as a worktree that was provisioned:
-  // it may have been created by hand, by another tool, or by Herdr's own flow in
-  // a repo treehouse only learned about afterwards. Whether the commands are
-  // worth re-running is the caller's call, not something the engine guesses from
-  // the state of the directory.
+  // Run `setup` even though the worktree already exists (`up --setup`). An
+  // existing worktree is not necessarily a provisioned one; whether the
+  // commands are worth re-running is the caller's call.
   setupExisting?: boolean
-  // No console default: what provisioning says is the caller's output.
   log: (message: string) => void
   warn: (message: string) => void
 }
 
 export type ProvisionResult = {
-  // True when this run (or the event it reacted to) produced the worktree, i.e.
-  // when it is fresh. False when it was already there.
+  // True when this run (or the event it reacted to) produced the worktree.
   created: boolean
   setupRan: boolean
 }
@@ -50,9 +41,9 @@ export const provisionWorktree = (
   const hasBootstrap = Boolean(repoConfig.bootstrap?.length)
 
   if (hasBootstrap) {
-    // A bootstrap replaces worktree creation entirely: it owns branching, env
-    // files and dependencies. It runs on the hook path too, where the checkout
-    // already exists, because the rest of what it does is still needed.
+    // A bootstrap replaces worktree creation entirely. It runs on the hook path
+    // too, where the checkout already exists: the rest of what it does is still
+    // needed.
     const argv = plan.expandArgv(repoConfig.bootstrap ?? [])
     log(`bootstrap: ${argv.join(' ')}`)
     const result = spawnSync(argv[0], argv.slice(1), { cwd: plan.root, stdio: 'inherit' })
@@ -74,8 +65,7 @@ export const provisionWorktree = (
   }
 
   // Setup belongs to a fresh worktree: re-running `up` on an existing one must
-  // not trigger another npm ci behind your back. `--setup` is how the caller says
-  // this particular worktree needs it anyway.
+  // not trigger another npm ci behind your back.
   const setup = repoConfig.setup ?? []
   if (existedBefore && !options.setupExisting) {
     if (setup.length > 0) {
@@ -94,12 +84,8 @@ const runSetup = (
   commands: string[],
   log: (message: string) => void,
 ) => {
-  // Expand the whole list before running any of it, for the same reason `up`
-  // expands pane commands before provisioning: a typo'd placeholder is broken
-  // config, and broken config must stop the run before the first command has
-  // changed anything. Expanding lazily meant a typo in the second command threw
-  // only after the first had spent 30 seconds on npm ci, leaving exactly the
-  // half-provisioned worktree that aborting is supposed to prevent.
+  // Expand the whole list before running any of it: a typo'd placeholder in the
+  // second command must stop the run before the first has changed the worktree.
   const expanded = commands.map((rawCommand) => plan.expand(rawCommand, 'setup'))
   for (const command of expanded) {
     log(`setup: ${command}`)

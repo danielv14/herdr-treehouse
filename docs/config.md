@@ -1,0 +1,79 @@
+# Config: resolution and validation policy
+
+Field-by-field reference lives in `config.example.toml`; the shape itself is
+declared once in `src/config/config.ts`. This file explains the policies around
+it.
+
+## Two homes, one layering
+
+A repo's config can live in the central `config.toml` (a `[repos.X]` block) or
+in `<repo>/.treehouse.toml` (same fields, no wrapper, no `root`). Resolution
+layers lowest to highest: `[defaults]` → `[repos.X]` → the local file. The
+local file works standalone, so a repo needs no central entry at all. Which
+home fits is a judgment call about the repo's ownership — that is why `onboard`
+only exposes `--local` and leaves the choice to the caller.
+
+A `[repos.X]` block is matched to a checkout by `root` (path identity), not by
+its key: the key is just a label. `onboard` refuses to add a block when either
+home already configures the repo, naming the file, because moving a repo
+between homes means removing the old entry — a decision only the reader can
+make.
+
+## Validation: warn on unknown, stop on wrong shape
+
+The TOML arrives untyped, so keys AND value shapes are declared once and
+checked in a single pass. The severity split is deliberate:
+
+- **Unknown keys warn** and are ignored — the config still works, but a typo'd
+  key means a feature silently never happens, so it must be said out loud.
+- **Wrong value shapes are errors** and stop the run, because guessing what was
+  meant has burned us: a string `setup` ran one command per character, and a
+  quoted `autostart = "false"` was truthy and started dev servers that must
+  not race.
+
+Validators return diagnostics as data (so tests assert on them); the resolvers
+report them before returning, so no call site can obtain a usable config while
+an unreported error sits in the data.
+
+### Blast-radius rules
+
+- A broken block in some *other* repo's config must not stop work in this one:
+  repo-scoped errors from other repos demote to warnings. The resolved repo
+  name passed to the demotion is the matched entry's key, falling back to the
+  checkout's directory name, so a block that broke its own `root` cannot demote
+  itself to "another repo's block" and slip through.
+- The multi-repo view (`ls`, `report`) demotes further: a repo whose own block
+  or local file is broken is skipped with a warning instead of stopping the
+  listing. Errors outside any repo block (a malformed `[defaults]`) break every
+  entry equally and still stop the run.
+- Multi-repo commands also require each `root` to be absolute: an empty or
+  relative root would resolve against the caller's cwd — the plugin root when a
+  hook runs — and list or report tokens for the wrong repo. Single-repo
+  resolution is guarded the same way (`realpathSync('')` resolves to the
+  process cwd, so an empty root would match whichever repo you ran from).
+- Repos known only by a local `.treehouse.toml` are invisible to multi-repo
+  commands by design: there is deliberately no registry of them.
+
+## TOML footguns encoded in the shape
+
+- `[defaults]` is a table rather than bare top-level keys on purpose: TOML bare
+  keys attach to whatever table precedes them, so an `agent = "..."` line
+  appended below a `[repos.X]` block would silently become that repo's setting.
+- `[repos.X.panes]` (single brackets) parses as one table where a list of
+  tables is expected; the validator emits a dedicated message telling you to
+  write `[[repos.X.panes]]`, because the generic "expected a list" says nothing
+  about the fix.
+- In a rendered block, scalar keys must stay above the `[[panes]]` table or
+  TOML reads them as pane keys.
+
+## The write side (onboard)
+
+`renderProposedBlock` lives next to the shape it must satisfy, and
+`config.test.ts` round-trips its output (commented examples included) through
+the validators, so the key names and advertised defaults cannot drift from what
+validation accepts. The defaults it advertises (`DEFAULT_BASE`,
+`DEFAULT_WORKTREE_DIR`, `PANE_DEFAULTS`) are the same constants the engine
+applies. TOML rendering detail: bare keys are letters, digits, dashes and
+underscores — anything else is quoted, and JSON string escapes are a subset of
+TOML basic string escapes, so `JSON.stringify` renders a valid TOML string
+either way.

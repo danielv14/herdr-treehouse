@@ -51,10 +51,9 @@ export const down = async (argv: string[], deps: EngineDeps) => {
     )
   }
 
-  // Closing the tab kills its PTYs, so anything still running (dev servers,
-  // busy agents) blocks teardown; the user shuts those down manually by
-  // design. Inspection failures abort rather than degrade: proceeding without
-  // the busy check could delete a worktree under a running dev server.
+  // Closing the tab kills its PTYs, so anything still running blocks teardown.
+  // Inspection failures abort rather than degrade: proceeding without the busy
+  // check could delete a worktree under a running dev server.
   let tabIds: string[] = []
   let workspaceId: string | undefined
   if (insideHerdr) {
@@ -86,9 +85,8 @@ export const down = async (argv: string[], deps: EngineDeps) => {
   log(`removed worktree: ${worktreeRoot}`)
   log('branch left in place (cleaned up via PR merge as usual)')
 
-  // Report the sidebar token before closing tabs: closing the caller's own tab
-  // ends this process, and the count already changed. Best-effort: a failed
-  // report never fails the teardown.
+  // Before closing tabs: closing the caller's own tab ends this process, and
+  // the count already changed. A failed report never fails the teardown.
   if (workspaceId) {
     try {
       tabs.reportWorktreeCount(workspaceId, countLinkedWorktrees(mainRepoRoot))

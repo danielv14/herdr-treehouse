@@ -4,15 +4,13 @@ import { DEFAULT_BASE, type RepoConfig } from '../config/config.ts'
 import { listWorktrees, samePath, worktreeFacts } from './git.ts'
 import { worktreePlacements, type WorktreePlacement } from './plan.ts'
 
-// One record per linked worktree of a configured repo, assembled from git facts
-// and the repo's config. Assembles and returns; rendering is the ls command's
-// job and nothing in the engine acts on the records. Herdr facts arrive as plain
-// data through attachTabFacts below, so this module never knows Herdr.
+// One record per linked worktree of a configured repo. Assembles and returns;
+// rendering is the ls command's job. Herdr facts arrive as plain data through
+// attachTabFacts below, so this module never knows Herdr.
 
 export type WorktreeTab = {
   tabId: string
-  // Herdr's agent detection for the worktree's panes; both absent when the tab
-  // has no registered agent.
+  // Both absent when the tab has no registered agent.
   agent?: string
   agentStatus?: string
 }
@@ -22,9 +20,7 @@ export type InventoryWorktree = {
   path: string
   // Undefined when detached.
   branch?: string
-  // Ticket parsed from the branch ('' when the branch has none) and the short
-  // name this worktree goes by: the ticket, the slug when a second branch of
-  // the same ticket made the ticket ambiguous, else the slug.
+  // Ticket parsed from the branch ('' when it has none).
   ticket: string
   id: string
   // Whether the path is one the repo's worktree_dir convention allows for this
@@ -66,10 +62,9 @@ export const collectRepoInventory = (
   // A broken worktree_dir template throws for every branch alike; one warning
   // says why the whole repo reads as unmanaged.
   let templateWarned = false
-  // Which of the branch's legal spots this worktree is standing on, if any.
-  // Asking for the whole set rather than one derived path is what keeps the
-  // slug path of a second branch under the same ticket from reading as an
-  // off-convention worktree, and it names the worktree the way `up` named it.
+  // Which of the branch's legal spots this worktree stands on, if any. Asking
+  // for the whole set keeps a disambiguated slug path reading as conventional,
+  // named the way `up` named it.
   const placementOf = (branch: string, path: string): WorktreePlacement | undefined => {
     try {
       return worktreePlacements({ repoName: name, branch, mainRepoRoot: root, repoConfig: config }).find(
@@ -89,9 +84,8 @@ export const collectRepoInventory = (
     .map((listing): InventoryWorktree => {
       const { path, branch } = listing
       const missing = !existsSync(path)
-      // A directory that exists but no longer answers as a checkout (.git file
-      // gone, unreadable, dubious ownership) degrades to a fact-less row; one
-      // broken worktree must not blank the whole listing.
+      // A directory that no longer answers as a checkout degrades to a
+      // fact-less row; one broken worktree must not blank the whole listing.
       let facts
       if (!missing) {
         try {
@@ -125,9 +119,7 @@ export type PaneFacts = {
   agentStatus?: string
 }
 
-// Pure merge of Herdr pane facts (fetched per workspace by the caller) into a
-// repo's records: a pane whose cwd sits in a worktree ties that worktree to its
-// tab, and the first agent-bearing pane names the agent. A worktree spanning
+// Pure merge of Herdr pane facts into a repo's records. A worktree spanning
 // several tabs shows the agent's tab (that is the one to go to), falling back
 // to the first pane's.
 export const attachTabFacts = (inventory: RepoInventory, panes: PaneFacts[]): RepoInventory => ({

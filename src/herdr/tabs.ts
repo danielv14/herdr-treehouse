@@ -2,17 +2,12 @@ import { expandHome } from '../config/config.ts'
 import type { Environment } from './context.ts'
 import type { HerdrInvoker } from './invoker.ts'
 
-// The one place that knows Herdr: subcommand names, response shapes and the
-// version-specific quirks. Responses are decoded into typed values here, so
-// `up` and `down` read fields instead of digging through `any`, and Herdr drift
-// lands in one implementation.
+// The one place that knows Herdr: subcommand names, response decoding, and the
+// version-specific quirks (documented in docs/herdr-quirks.md).
 
-// How the engine names itself to Herdr. Must equal the manifest's `id`;
-// manifest.test.ts pins the two together.
+// Must equal the manifest's `id`; manifest.test.ts pins the two together.
 export const PLUGIN_ID = 'treehouse'
 
-// Where the user's plugin config lives. Plugin-invoked processes get it handed
-// in HERDR_PLUGIN_CONFIG_DIR; a plain shell invocation asks Herdr itself.
 export const pluginConfigDir = (invoke: HerdrInvoker, env: Environment): string => {
   if (env.HERDR_PLUGIN_CONFIG_DIR) return env.HERDR_PLUGIN_CONFIG_DIR
   const reported = invoke(['plugin', 'config-dir', PLUGIN_ID])
@@ -36,7 +31,6 @@ export type OpenTabRequest = {
   label: string
   focus: boolean
   panes: PaneSpec[]
-  // Command that starts the coding agent in the main pane; undefined = no agent.
   agent?: string
   // Task handed to the agent once it reports idle. Ignored without an agent.
   prompt?: string
@@ -79,11 +73,7 @@ export type PaneSnapshot = {
 
 export type MetadataReport = {
   workspaceId: string
-  // Display-only token values for the user's sidebar rows; Herdr caps values at
-  // 80 chars and this plugin at most reports a handful.
   tokens: Record<string, string>
-  // Token names to remove: a cleared token disappears from the sidebar row,
-  // where a "0" value would render as noise.
   clearTokens?: string[]
 }
 
@@ -97,8 +87,7 @@ export type TabChoreography = {
   // Same lookup, creating the workspace when the repo has none.
   resolveWorkspace: (mainRepoRoot: string) => string
   openWorktreeTab: (request: OpenTabRequest) => Promise<OpenedTab>
-  // Every pane in the workspace, decoded once; a read-only snapshot with none
-  // of inspectWorktreeTab's busy-check waiting.
+  // Read-only pane snapshot, none of inspectWorktreeTab's busy-check waiting.
   listPanes: (workspaceId: string) => PaneSnapshot[]
   // Which tabs the worktree occupies, and which of its panes are genuinely busy.
   inspectWorktreeTab: (
@@ -111,7 +100,6 @@ export type TabChoreography = {
   closeTabs: (tabIds: string[], options?: CloseTabsOptions) => void
   openPluginPane: (request: PluginPaneRequest) => void
   reportWorkspaceMetadata: (report: MetadataReport) => void
-  // The worktree-count token, spelled once: callers hand over a number.
   reportWorktreeCount: (workspaceId: string, count: number) => void
 }
 
@@ -146,9 +134,8 @@ const readList = (value: unknown, ...path: string[]): unknown[] => {
 // Shells are always "running" in a pane; they are not what blocks a teardown.
 const SHELL_NAMES = new Set(['zsh', 'bash', 'fish', 'sh', '-zsh', '-bash'])
 
-// A registered agent that is idle or done is just waiting at its prompt, and
-// tearing it down with the tab is the whole point. Only agents mid-work (or
-// blocked on input) and non-agent processes count as busy.
+// An idle/done agent is just waiting at its prompt; tearing it down with the
+// tab is the point. Only agents mid-work or blocked count as busy.
 const IDLE_AGENT_STATUSES = new Set(['idle', 'done'])
 
 const defaultSleep = (ms: number) => new Promise((done) => setTimeout(done, ms))
@@ -160,16 +147,10 @@ const BUSY_RECHECK_MS = 750
 const AGENT_IDLE_TIMEOUT_MS = 60_000
 const AGENT_REGISTRATION_POLL_MS = 500
 
-// A freshly started agent can report idle while its TUI is still starting, and a
-// prompt submitted in that window is dropped on the floor (live-observed on
-// herdr 0.7.5: the tab opens, the task never arrives). `agent prompt --wait`
-// requires an observed state change, so it fails when the text was not picked
-// up, which is the signal to submit again.
-//
-// Longer than Herdr's own 5000ms change-detection window on purpose: at exactly
-// 5000 the two race, and a swallowed prompt comes back as `timeout` rather than
-// `agent_prompt_stalled` (live-observed). Which code arrives is therefore not
-// something to branch on - see submitPrompt.
+// Deliberately longer than Herdr's 5000ms change-detection window: at exactly
+// 5000 the two race, and a swallowed prompt comes back as `timeout` instead of
+// `agent_prompt_stalled` (live-observed on 0.7.5). Which code arrives is
+// therefore not something to branch on - see submitPrompt.
 const PROMPT_DELIVERY_TIMEOUT_MS = 10_000
 const PROMPT_RETRY_MS = 1000
 const PROMPT_ATTEMPTS = 3
@@ -181,11 +162,10 @@ export const createTabChoreography = (
   const sleep = options.sleep ?? defaultSleep
   const now = options.now ?? Date.now
 
-  // A repo with no open workspace is a normal answer, and Herdr reports it by
-  // leaving source_workspace_id out of a successful response. A thrown error is
-  // therefore a real failure and is NOT swallowed: `down` decides whether to
-  // tear a worktree down based on this, and degrading to "no workspace" would
-  // skip the busy-process check entirely.
+  // "No workspace" is a normal answer (source_workspace_id absent from a
+  // successful response). A thrown error is a real failure and is NOT
+  // swallowed: `down` bases its teardown decision on this, and degrading to
+  // "no workspace" would skip the busy-process check entirely.
   const findWorkspace = (mainRepoRoot: string): string | undefined =>
     readString(invoke(['worktree', 'list', '--cwd', mainRepoRoot]), 'source', 'source_workspace_id')
 
@@ -194,8 +174,8 @@ export const createTabChoreography = (
     try {
       existing = findWorkspace(mainRepoRoot)
     } catch {
-      // Opening a tab can recover from a failed lookup by creating the
-      // workspace; the worst case is one extra workspace, not a lost worktree.
+      // Recoverable here (unlike in `down`): creating the workspace below
+      // costs at most one extra workspace, not a lost worktree.
       existing = undefined
     }
     if (existing) return existing
@@ -225,9 +205,8 @@ export const createTabChoreography = (
     }
   }
 
-  // Herdr's status sequence for a pane, which advances every time the agent
-  // changes state. Comparing it across a submission answers "did anything happen
-  // at all" without trusting an error code.
+  // state_change_seq advances whenever the agent moves; comparing it across a
+  // submission answers "did anything happen" without trusting an error code.
   const agentStateSeq = (paneId: string): number | undefined => {
     try {
       const seq = asTable(asTable(invoke(['agent', 'get', paneId])).agent).state_change_seq
@@ -237,9 +216,10 @@ export const createTabChoreography = (
     }
   }
 
-  // Resubmits only when the agent demonstrably did not move, so a prompt that
-  // did land is never delivered twice and a tab never silently opens without
-  // its task.
+  // A freshly started agent can report idle while its TUI is still starting,
+  // silently swallowing a prompt submitted in that window (live-observed).
+  // Resubmit only when the agent demonstrably did not move, so a prompt that
+  // did land is never delivered twice.
   const submitPrompt = async (paneId: string, prompt: string) => {
     for (let attempt = 1; ; attempt += 1) {
       const before = agentStateSeq(paneId)
@@ -294,8 +274,6 @@ export const createTabChoreography = (
           invoke(['pane', 'run', paneId, pane.command])
           started = true
         } else {
-          // Pre-fill without Enter: verification is one keypress away, but two
-          // tabs never end up racing for the same docker containers/ports.
           invoke(['pane', 'send-text', paneId, pane.command])
         }
       }
@@ -304,8 +282,6 @@ export const createTabChoreography = (
     }
 
     if (request.agent) {
-      // The agent command is a free-form string from config, so it starts as a
-      // pane command; Herdr detects and registers the agent from there.
       invoke(['pane', 'run', mainPaneId, request.agent])
       if (request.prompt) {
         // `agent prompt` owns submission (herdr 0.7.5). Do not go back to
@@ -375,9 +351,8 @@ export const createTabChoreography = (
     }
   }
 
-  // Tokens are not persisted across a Herdr server restart, which is why the
-  // manifest's [[startup]] hook re-reports; the TTL (the maximum Herdr allows)
-  // is the backstop that ages values out if this plugin stops reporting.
+  // Tokens are not persisted across a Herdr server restart (the manifest's
+  // [[startup]] hook re-reports); the TTL ages values out if we stop reporting.
   const METADATA_TTL_MS = 86_400_000
 
   const reportWorkspaceMetadata = (report: MetadataReport) => {
@@ -389,8 +364,8 @@ export const createTabChoreography = (
       args.push('--clear-token', name)
     }
     // Wall-clock as seq: each report is its own short-lived process, so a
-    // counter would reset; milliseconds are monotonic enough across them. The
-    // TTL applies to set tokens only, so a pure clear does not send one.
+    // counter would reset. The TTL applies to set tokens only, so a pure clear
+    // does not send one.
     args.push('--seq', String(now()))
     if (Object.keys(report.tokens).length > 0) args.push('--ttl-ms', String(METADATA_TTL_MS))
     invoke(args)
