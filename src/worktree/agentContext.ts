@@ -16,7 +16,7 @@ const fileSafe = (name: string) => name.replace(/[^A-Za-z0-9._-]/g, '-')
 // a trail. Repo and {id} alone do not identify a worktree: two repos sharing a
 // basename (~/dev/api and ~/dev-personal/api) under one ticket would share the
 // file, and the window is minutes wide (written before provisioning, read
-// after the tab opens) — hence the worktree-path digest.
+// after the tab opens), hence the worktree-path digest.
 const contextFilePath = (plan: WorktreePlan): string => {
   const key = createHash('sha256').update(plan.worktree).digest('hex').slice(0, 8)
   return join(tmpdir(), CONTEXT_DIR, `${fileSafe(plan.repo)}-${fileSafe(plan.id)}-${key}.md`)
