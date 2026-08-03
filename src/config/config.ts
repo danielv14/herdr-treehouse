@@ -62,9 +62,14 @@ export const LOCAL_CONFIG_FILE = '.treehouse.toml'
 // Shape declaration
 // ---------------------------------------------------------------------------
 
+// A value constraint on a string, declared with the shape so a bad value
+// surfaces as a Diagnostic like every other config error, and a repo-scoped one
+// inherits demote-and-skip instead of needing its own warn-and-continue.
+type StringCheck = { expected: string; ok: (value: string) => boolean }
+
 // Keys AND value shapes are declared once here and checked in a single pass.
 type FieldSpec =
-  | { kind: 'string'; values?: readonly string[] }
+  | { kind: 'string'; values?: readonly string[]; check?: StringCheck }
   | { kind: 'number' }
   | { kind: 'boolean' }
   | { kind: 'string-list' }
@@ -83,8 +88,16 @@ const PANE_SHAPE: Shape = {
   autostart: { kind: 'boolean' },
 }
 
+const ABSOLUTE_ROOT: StringCheck = {
+  expected: 'an absolute path',
+  // ~ is expanded first, or root = "~/dev/foo" would fail wrongly. An empty or
+  // relative root resolves against the caller's cwd (the plugin dir when a hook
+  // runs) and would claim whichever repo the caller happens to stand in.
+  ok: (value) => isAbsolute(expandHome(value)),
+}
+
 const REPO_SHAPE: Shape = {
-  root: { kind: 'string' },
+  root: { kind: 'string', check: ABSOLUTE_ROOT },
   worktree_dir: { kind: 'string' },
   base: { kind: 'string' },
   bootstrap: { kind: 'string-list' },
@@ -101,8 +114,7 @@ const DEFAULTS_SHAPE: Shape = {
 
 const TOP_LEVEL_SHAPE: Shape = {
   defaults: { kind: 'table', shape: DEFAULTS_SHAPE },
-  // `root` is required: it is what matches a block to a checkout, and an empty
-  // root would resolve to the caller's cwd and claim whichever repo you ran from.
+  // `root` is required: it is what matches a block to a checkout.
   repos: { kind: 'table-map', shape: REPO_SHAPE, required: ['root'] },
 }
 
@@ -238,11 +250,11 @@ const validateField = (
   key: string,
   diagnostics: Diagnostic[],
 ): unknown => {
-  const reject = (found = describe(raw)) => {
+  const reject = (found = describe(raw), want = expected(spec)) => {
     diagnostics.push({
       severity: 'error',
       key: keyPath(scope, key),
-      message: `${keyLabel(scope, key)}: expected ${expected(spec)}, found ${found}`,
+      message: `${keyLabel(scope, key)}: expected ${want}, found ${found}`,
     })
     return undefined
   }
@@ -251,6 +263,9 @@ const validateField = (
     case 'string':
       if (typeof raw !== 'string') return reject()
       if (spec.values && !spec.values.includes(raw)) return reject(JSON.stringify(raw))
+      // The check names its own expectation: a wrong type still reads "expected
+      // a string", only a wrong value reads "expected an absolute path".
+      if (spec.check && !spec.check.ok(raw)) return reject(JSON.stringify(raw), spec.check.expected)
       return raw
     case 'number':
       return typeof raw === 'number' ? raw : reject()
@@ -415,9 +430,6 @@ export const loadConfig = async (
 }
 
 const sameDir = (a: string, b: string) => {
-  // realpathSync('') resolves to the process cwd, so an empty root would match
-  // whichever repo the caller happens to stand in.
-  if (a === '' || b === '') return false
   try {
     return realpathSync(a) === realpathSync(b)
   } catch {
@@ -431,7 +443,21 @@ export const findRepoEntry = (
   repos: Record<string, RepoConfig>,
   mainRepoRoot: string,
 ): [string, RepoConfig] | undefined =>
-  Object.entries(repos).find(([, repo]) => sameDir(expandHome(repo.root ?? ''), mainRepoRoot))
+  Object.entries(repos).find(([, repo]) => {
+    // ABSOLUTE_ROOT drops a root it rejects, so a block can arrive here without
+    // one at all: the single-repo path matches before it reports diagnostics.
+    // Nothing to compare, hence no match (realpathSync('') would be the cwd).
+    const root: string | undefined = repo.root
+    return root !== undefined && sameDir(expandHome(root), mainRepoRoot)
+  })
+
+// The `repos.<name>[.<field>]` key convention, read in one place. Three call
+// sites ask these two questions and want different answers from them.
+const isRepoScoped = (diagnostic: Diagnostic) => diagnostic.key?.startsWith('repos.') ?? false
+
+// The trailing dot matters: repos.foobar must not read as scoped to repos.foo.
+const isScopedToRepo = (diagnostic: Diagnostic, name: string) =>
+  diagnostic.key === `repos.${name}` || (diagnostic.key?.startsWith(`repos.${name}.`) ?? false)
 
 // Demotes other repos' errors to warnings: a typo in [repos.b] must not break
 // every command for repo a. Pass the matched entry's key (falling back to the
@@ -442,11 +468,8 @@ export const diagnosticsForRepo = (
   repoName: string | undefined,
 ): Diagnostic[] =>
   diagnostics.map((diagnostic) => {
-    if (diagnostic.severity !== 'error' || !diagnostic.key?.startsWith('repos.')) return diagnostic
-    const mine =
-      repoName !== undefined &&
-      (diagnostic.key === `repos.${repoName}` || diagnostic.key.startsWith(`repos.${repoName}.`))
-    if (mine) return diagnostic
+    if (diagnostic.severity !== 'error' || !isRepoScoped(diagnostic)) return diagnostic
+    if (repoName !== undefined && isScopedToRepo(diagnostic, repoName)) return diagnostic
     return {
       ...diagnostic,
       severity: 'warning',
@@ -499,7 +522,7 @@ export const resolveAllRepoConfigs = async (
   // run); errors outside any repo block break every entry equally and still stop.
   reportDiagnostics(
     diagnostics.map((diagnostic) =>
-      diagnostic.severity === 'error' && diagnostic.key?.startsWith('repos.')
+      diagnostic.severity === 'error' && isRepoScoped(diagnostic)
         ? { ...diagnostic, severity: 'warning' as const, message: `${diagnostic.message} (repo skipped here)` }
         : diagnostic,
     ),
@@ -508,21 +531,15 @@ export const resolveAllRepoConfigs = async (
 
   const brokenRepo = (name: string) =>
     diagnostics.some(
-      (diagnostic) =>
-        diagnostic.severity === 'error' &&
-        (diagnostic.key === `repos.${name}` || diagnostic.key?.startsWith(`repos.${name}.`)),
+      (diagnostic) => diagnostic.severity === 'error' && isScopedToRepo(diagnostic, name),
     )
 
   const resolved: Array<{ name: string; config: RepoConfig }> = []
   for (const [name, entry] of Object.entries(loaded.repos)) {
     if (brokenRepo(name)) continue
+    // Absolute by then: a root ABSOLUTE_ROOT rejected is an error under
+    // repos.<name>.root, which brokenRepo skipped above.
     const root = expandHome(entry.root)
-    // An empty or relative root would resolve against the caller's cwd (the
-    // plugin root when a hook runs), listing or reporting for the wrong repo.
-    if (root === '' || !isAbsolute(root)) {
-      warn(`warning: skipping ${name}: root must be an absolute path, got ${JSON.stringify(entry.root)}`)
-      continue
-    }
     const local = await loadLocalConfig(root)
     if (local.diagnostics.some((diagnostic) => diagnostic.severity === 'error')) {
       warn(`warning: skipping ${name}: its ${LOCAL_CONFIG_FILE} has errors (see treehouse up in that repo for details)`)

@@ -31,6 +31,13 @@ checked in a single pass. The severity split is deliberate:
   quoted `autostart = "false"` was truthy and started dev servers that must
   not race.
 
+A field can also constrain its *value*, not only its type: `root` must be an
+absolute path after `~` expansion. Such a check is declared with the shape and
+reports like any other error, keyed to the field (`repos.X.root`), so it
+inherits the blast-radius rules below instead of needing a check of its own at
+every call site. A wrong type still reads "expected a string"; only a wrong
+value reads "expected an absolute path".
+
 Validators return diagnostics as data (so tests assert on them); the resolvers
 report them before returning, so no call site can obtain a usable config while
 an unreported error sits in the data.
@@ -46,11 +53,15 @@ an unreported error sits in the data.
   or local file is broken is skipped with a warning instead of stopping the
   listing. Errors outside any repo block (a malformed `[defaults]`) break every
   entry equally and still stop the run.
-- Multi-repo commands also require each `root` to be absolute: an empty or
-  relative root would resolve against the caller's cwd — the plugin root when a
-  hook runs — and list or report tokens for the wrong repo. Single-repo
-  resolution is guarded the same way (`realpathSync('')` resolves to the
-  process cwd, so an empty root would match whichever repo you ran from).
+- A non-absolute `root` needs no rule of its own: it is a validation error under
+  `repos.X.root`, so both paths already handle it. Multi-repo commands skip that
+  repo with a warning; single-repo resolution reports it and demotes it when it
+  belongs to another repo. Why it must be caught at all: an empty or relative
+  root resolves against the caller's cwd (the plugin dir when a hook runs), so
+  it would list or report tokens for the wrong repo, and `realpathSync('')`
+  resolving to the process cwd would make the block match whichever repo you ran
+  from. Validation drops the value it rejects, which is also why matching a
+  block by `root` treats an absent root as "no match".
 - Repos known only by a local `.treehouse.toml` are invisible to multi-repo
   commands by design: there is deliberately no registry of them.
 
