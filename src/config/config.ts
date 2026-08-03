@@ -22,11 +22,8 @@ export type RepoConfig = {
   setup?: string[]
   panes?: PaneConfig[]
   agent?: string
-  // Standing instructions for the agent that starts in this repo's worktree
-  // tabs, placeholder-expanded and delivered through the agent command's
-  // {context_file}. The config owns the text, the `agent` line owns how it
-  // arrives. Layered like every other key: a repo's value replaces the default
-  // rather than appending to it.
+  // Standing agent instructions, delivered through the agent command's
+  // {context_file}. Layered like every other key: replaces, never appends.
   context?: string
 }
 

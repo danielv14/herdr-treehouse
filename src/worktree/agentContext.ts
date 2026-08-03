@@ -4,28 +4,19 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { agentCommandTakesContext, type WorktreePlan } from './plan.ts'
 
-// Standing instructions for the agent that lands in a worktree tab: which
-// branch and ticket it stands on, which targets the bootstrap populated, that
-// the dev command in the next pane is pre-filled and must not be started. The
-// config owns the text and the `agent` command owns how it arrives, so nothing
-// here is Claude-specific and the engine writes no instructions of its own.
-//
-// Its own module rather than more surface on plan.ts (pure, no fs) or
-// provision.ts (about making the worktree exist; this file is not part of the
-// worktree).
+// The repo's `context` rendered and put where the agent command can read it,
+// returning the command to run. Rationale in docs/worktree-lifecycle.md.
 
 const CONTEXT_DIR = 'treehouse-context'
 
 // Anything a repo name or an {id} can hold that a filename should not.
 const fileSafe = (name: string) => name.replace(/[^A-Za-z0-9._-]/g, '-')
 
-// Outside any repo, and deterministic per worktree: re-running `up` on the same
-// worktree overwrites its context instead of leaving a trail behind. The name
-// reads as repo and {id} for whoever opens it, and carries a digest of the
-// worktree path because those two do not identify a worktree on their own: two
-// repos sharing a basename (~/dev/api and ~/dev-personal/api) under one ticket
-// would otherwise share the file, and the window is minutes wide, since the
-// file is written before provisioning and read after the tab opens.
+// Deterministic per worktree, so re-running `up` overwrites instead of leaving
+// a trail. Repo and {id} alone do not identify a worktree: two repos sharing a
+// basename (~/dev/api and ~/dev-personal/api) under one ticket would share the
+// file, and the window is minutes wide (written before provisioning, read
+// after the tab opens) — hence the worktree-path digest.
 const contextFilePath = (plan: WorktreePlan): string => {
   const key = createHash('sha256').update(plan.worktree).digest('hex').slice(0, 8)
   return join(tmpdir(), CONTEXT_DIR, `${fileSafe(plan.repo)}-${fileSafe(plan.id)}-${key}.md`)
@@ -39,24 +30,15 @@ export type AgentCommandInput = {
   context?: string
 }
 
-// The agent command to run, with the context file written when the command asks
-// for one. A file rather than the text inlined into the command string, because
-// multi-line text through `pane run` sits badly with bracketed paste; the shell
-// reads it once at agent start and it is never touched again.
-//
-// Half-configured is an error rather than silence, the way a typo'd placeholder
-// is: context nothing reads and a command reading a file nothing wrote are both
-// bugs, and both are invisible until you notice the agent knows nothing.
+// Half-configured is an error rather than silence, the way a typo'd
+// placeholder is: context nothing reads and a command reading a file nothing
+// wrote are both invisible until you notice the agent knows nothing.
 export const prepareAgentCommand = (plan: WorktreePlan, input: AgentCommandInput): string => {
   const wantsContext = agentCommandTakesContext(input.command)
-  // Render before deciding anything: what matters is the text the agent would
-  // get, not what the config holds. `context = "{ticket}"` on a branch with no
-  // ticket is configured and still nothing to deliver, and expanding first also
-  // means a placeholder typo is reported as a typo even when the agent command
-  // is missing its {context_file}.
-  //
-  // Trimmed: a TOML """ block carries the newline right after the delimiter,
-  // and blank lines around a block of instructions are never meaningful.
+  // Render before deciding: `context = "{ticket}"` on a branch with no ticket
+  // is configured and still nothing to deliver, and expanding first reports a
+  // placeholder typo as a typo even when {context_file} is missing too.
+  // Trimmed because a TOML """ block carries the newline after the delimiter.
   const rendered =
     input.context === undefined ? '' : plan.expand(input.context, 'context').trim()
 
@@ -77,8 +59,7 @@ export const prepareAgentCommand = (plan: WorktreePlan, input: AgentCommandInput
     )
   }
 
-  // Expand before writing, for the same reason setup expands its whole command
-  // list before running any of it: a typo in the agent command must not leave a
+  // Expand before writing: a typo in the agent command must not leave a
   // rendered context behind for a worktree that is never created.
   const path = contextFilePath(plan)
   const command = plan.expandAgent(input.command, path)

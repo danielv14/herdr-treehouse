@@ -43,6 +43,14 @@ History: on herdr 0.7.4 submission was `pane run` plus an explicit
 `send-keys enter`, working around bracketed paste swallowing the trailing
 Enter. On 0.7.5 `agent prompt` owns submission; do not go back.
 
+## Context delivery through `pane run`
+
+`pane run <pane> <command>` hands the command to the pane's own shell, which
+evaluates it — so `claude --append-system-prompt "$(cat <file>)"` reads the
+context file and multi-line content arrives as one argument. That is the whole
+premise of writing `context` to a file, and it was checked in a scratch pane
+(herdr 0.7.5) before the feature was merged rather than assumed.
+
 ## Busy-pane detection
 
 - `pane process-info` must always get an explicit `--pane`: `--current`

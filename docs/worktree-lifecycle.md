@@ -114,6 +114,40 @@ base first so it does not fork from a stale fetch. Offline is survivable: warn
 and branch from the local ref. Always `--no-track`, so a bare `git push` in the
 worktree can never target the base branch.
 
+## Standing agent context (`context` + `{context_file}`)
+
+User-facing behaviour is documented in the README ("Standing context for the
+agent"); this is the engine-side reasoning behind `src/worktree/agentContext.ts`.
+
+- **The config owns the text, the `agent` line owns delivery.** Delivery as a
+  system prompt (`--append-system-prompt`) is agent-specific, so it lives in
+  the agent command through `{context_file}` — legal only there, the way
+  `{targets...}` is legal only in bootstrap argv. Nothing in the engine is
+  Claude-specific, and the engine writes no instructions of its own: with
+  `{branch}`, `{ticket}`, `{worktree}` and `{targets}` the user writes them,
+  and the engine gains no judgment.
+- **A file, not inlined text.** Multi-line text inside a `pane run` command
+  string sits badly with bracketed paste; the shell reads the file once at
+  agent start. A `treehouse context` subcommand was rejected because it could
+  not re-derive `--target`, which is an `up` invocation fact.
+- **The file name is deterministic per worktree** so re-running `up` overwrites
+  instead of accumulating, and carries a digest of the worktree path: repo name
+  plus `{id}` do not identify a worktree on their own (two repos sharing a
+  basename under one ticket), and the exposure window is minutes wide — the
+  file is written before provisioning and read after the tab opens.
+- **Half-configured is refused, not silent**: `context` with no
+  `{context_file}` to read it, and `{context_file}` with no context to put in
+  it (including a context that *expands* to nothing, like `{ticket}` on a
+  branch without one). Both are invisible bugs otherwise — you only notice when
+  the agent knows nothing. The context renders before anything is decided or
+  written, so a placeholder typo is reported as a typo, fails before the
+  worktree is provisioned, and never leaves a rendered file behind.
+- **It is its own module**: `plan.ts` is pure (no fs) and `provision.ts` is
+  about making the worktree exist, which the context file is not part of.
+- The `worktree.created` hook provisions only and never resolves an agent
+  command, so `{context_file}` never comes up there. One asymmetry follows: a
+  half-configured repo provisions fine through the hook and only fails on `up`.
+
 ## Teardown (`down`)
 
 - Never `--force`, never kills processes, leaves the branch (PR merge cleans it
