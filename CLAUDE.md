@@ -36,6 +36,7 @@ The commands are thin; everything reusable sits behind a module with one job. Ke
 src/main.ts        entrypoint: argv in, one command out (process wiring behind import.meta.main)
 src/cli.ts         flag declaration, parsing, help rendering
 src/deps.ts        the dependency seam (invoker, env, log/warn, ask)
+src/worktreeCount.ts   recount from git, report the sidebar token, warn on failure
 src/commands/      one file per treehouse subcommand + registry.ts, the one registry
 src/worktree/      the git/worktree domain: branch naming, plan, provision, git
 src/herdr/         everything that knows Herdr: invoker, tab choreography, env payloads
@@ -69,6 +70,7 @@ Tests stay next to what they test (`up.ts` / `up.test.ts`); the two that pin cod
 
 - `deps.ts` — the environment is a dependency, not a global reach: `EngineDeps.env` defaults to `process.env` in `resolveDeps` and is threaded to every env fact the engine reads (invocation context, clicked url, target path, caller pane/tab, event payload, plugin config dir, `HERDR_ENV`). `src` reads the global in exactly two places, the entrypoint and that default. Output works the same way: everything a command prints goes through the resolved `log`/`warn`, so no module keeps a console default of its own. Input too: `ask` is the seam for every interactive question (up's popup, down's confirm, the entrypoint's hold-open), with a readline adapter as the production default, so tests script answers and record what was asked and no command touches stdin directly.
 - `cli.ts` — each command declares its flags once with help text attached; parsing and `--help` both derive from the declaration, so help cannot drift.
+- `worktreeCount.ts` — the one "recount and re-report the sidebar token" step, shared by `up` and `down`. It sits at the shell level rather than in `worktree/` or `herdr/` because it needs both the git count and the Herdr report, and those two folders may not import each other. Warning instead of throwing is the module's own rule (a sidebar decoration must never fail a command); *when* each command reports is the call site's, and those comments stay there.
 
 ### `src/commands/` — the verbs
 

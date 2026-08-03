@@ -4,12 +4,12 @@ import { PANE_DEFAULTS, resolveRepoConfig, type RepoConfig } from '../config/con
 import { invocationTargetPath, isPluginInvocation, readInvocationContext } from '../herdr/context.ts'
 import { resolveDeps, type Ask, type EngineDeps } from '../deps.ts'
 import {
-  countLinkedWorktrees,
   findMainRepoRoot,
   findWorktreeAtPath,
   findWorktreeForBranch,
   samePath,
 } from '../worktree/git.ts'
+import { refreshWorktreeCount } from '../worktreeCount.ts'
 import {
   bootstrapTakesTargets,
   buildWorktreePlan,
@@ -223,12 +223,8 @@ export const up = async (argv: string[], deps: EngineDeps) => {
 
   // Before the tab choreography: the agent handshake ahead can take a minute
   // or throw, neither of which may leave the token stale (Herdr's worktree
-  // events do not see our git-side changes). A failed report never fails up.
-  try {
-    tabs.reportWorktreeCount(workspaceId, countLinkedWorktrees(mainRepoRoot))
-  } catch (error) {
-    warn(`warning: could not report the worktree count: ${error instanceof Error ? error.message : error}`)
-  }
+  // events do not see our git-side changes).
+  refreshWorktreeCount(tabs, workspaceId, mainRepoRoot, warn)
 
   const opened = await tabs.openWorktreeTab({
     workspaceId,

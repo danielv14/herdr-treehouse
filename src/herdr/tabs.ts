@@ -71,7 +71,7 @@ export type PaneSnapshot = {
   agentStatus?: string
 }
 
-export type MetadataReport = {
+type MetadataReport = {
   workspaceId: string
   tokens: Record<string, string>
   clearTokens?: string[]
@@ -99,7 +99,6 @@ export type TabChoreography = {
   // worktree tab dies with it, so everything else has to be done first.
   closeTabs: (tabIds: string[], options?: CloseTabsOptions) => void
   openPluginPane: (request: PluginPaneRequest) => void
-  reportWorkspaceMetadata: (report: MetadataReport) => void
   reportWorktreeCount: (workspaceId: string, count: number) => void
 }
 
@@ -402,7 +401,6 @@ export const createTabChoreography = (
     inspectWorktreeTab,
     closeTabs,
     openPluginPane,
-    reportWorkspaceMetadata,
     reportWorktreeCount,
   }
 }
