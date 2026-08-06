@@ -25,6 +25,10 @@ export type RepoConfig = {
   // Standing agent instructions, delivered through the agent command's
   // {context_file}. Layered like every other key: replaces, never appends.
   context?: string
+  // How this repo's agent spells a model, e.g. '--model {model}'. The engine
+  // holds no opinion about the flag; it only fills the {model_arg} slot the
+  // agent command declares, with what --model was given.
+  model_arg?: string
 }
 
 // A table rather than bare top-level keys on purpose: TOML bare keys attach to
@@ -33,6 +37,7 @@ export type RepoConfig = {
 export type DefaultsConfig = {
   agent?: string
   context?: string
+  model_arg?: string
 }
 
 export type TreehouseConfig = {
@@ -105,11 +110,13 @@ const REPO_SHAPE: Shape = {
   panes: { kind: 'table-list', shape: PANE_SHAPE },
   agent: { kind: 'string' },
   context: { kind: 'string' },
+  model_arg: { kind: 'string' },
 }
 
 const DEFAULTS_SHAPE: Shape = {
   agent: { kind: 'string' },
   context: { kind: 'string' },
+  model_arg: { kind: 'string' },
 }
 
 const TOP_LEVEL_SHAPE: Shape = {

@@ -1,6 +1,8 @@
 # treehouse repo config. Lives at: $(herdr plugin config-dir treehouse)/config.toml
 #
-# Placeholders available in worktree_dir, bootstrap, setup, and pane commands:
+# Placeholders available in worktree_dir, bootstrap, setup, pane commands,
+# `context` and the agent command (the last three entries say where they are
+# legal, which is narrower):
 #   {repo}        repo name (config key)
 #   {branch}      full branch name, e.g. ABC-1234/fix-thing
 #   {slug}        slugified branch, e.g. abc-1234-fix-thing
@@ -19,6 +21,9 @@
 #   {targets...}  expands to one argv entry per --target (bootstrap only, and
 #                 only as an argv entry of its own)
 #   {context_file} path of the rendered `context` file (agent command only)
+#   {model_arg}   the repo's `model_arg` rendered, empty when `treehouse up`
+#                 was given no --model (agent command only)
+#   {model}       the name passed to --model (inside model_arg only)
 #
 # A single-word brace that is not one of these is an error, not a literal: a
 # typo'd {wortkree} stops the run instead of reaching a shell command as text.
@@ -67,6 +72,18 @@
 # agent line too; keep the default text true everywhere or set both per repo.
 # context = "You are in a git worktree: {worktree}, branch {branch}."
 # agent = 'claude --dangerously-skip-permissions --append-system-prompt "$(cat {context_file})"'
+#
+# How this agent spells a model, so `treehouse up --model opus` can change it
+# for one tab without restating the whole agent command. Add a {model_arg} to
+# the agent line to say where it goes; it expands to nothing when no --model is
+# given, so the command reads as it always did the rest of the time:
+#   agent = 'claude --dangerously-skip-permissions {model_arg} --append-system-prompt "$(cat {context_file})"'
+# Deliberately no model name here. Put one in and you maintain it for every
+# release; leave it out and the agent picks the same model it would anywhere else.
+# This layers the way `context` does, so the two halves have to meet at the same
+# level: a repo whose own `agent` line replaces this one must carry the
+# {model_arg} slot too, or --model is refused there.
+# model_arg = '--model {model}'
 
 [repos.my-awesome-repo]
 root = "~/dev/my-awesome-repo"
@@ -94,7 +111,9 @@ Bootstrapped targets: {targets}. Dependencies are installed only there.
 Do not start the dev command. It is pre-filled in its own pane, and verification
 is serial: two tabs must never race for the same containers and ports.
 """
-agent = 'claude --append-system-prompt "$(cat {context_file})"'
+# The {model_arg} slot is carried here too: this line replaces [defaults].agent,
+# so without it `treehouse up --model ...` would be refused for this repo.
+agent = 'claude {model_arg} --append-system-prompt "$(cat {context_file})"'
 # Panes: each entry splits the PREVIOUS pane (the first splits the main/agent
 # pane). Layout below: agent | right column, right column halved.
 # Verification is serial (tab by tab), so the dev command is only pre-filled;

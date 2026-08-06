@@ -1,7 +1,12 @@
 import { describe, expect, test } from 'bun:test'
 import { homedir } from 'node:os'
 import { DEFAULT_BASE, type RepoConfig } from '../config/config.ts'
-import { buildWorktreePlan, worktreePlacements } from './plan.ts'
+import {
+  agentCommandTakesContext,
+  agentCommandTakesModel,
+  buildWorktreePlan,
+  worktreePlacements,
+} from './plan.ts'
 
 const MAIN = '/tmp/checkouts/my-repo'
 
@@ -172,7 +177,9 @@ describe('the agent command', () => {
 
   test('{context_file} expands to the path it is handed', () => {
     expect(
-      plan('ABC-1/x').expandAgent('claude --append-system-prompt "$(cat {context_file})"', '/tmp/ctx.md'),
+      plan('ABC-1/x').expandAgent('claude --append-system-prompt "$(cat {context_file})"', {
+        contextFile: '/tmp/ctx.md',
+      }),
     ).toBe('claude --append-system-prompt "$(cat /tmp/ctx.md)"')
   })
 
@@ -193,6 +200,72 @@ describe('the agent command', () => {
     expect(() => plan('ABC-1/x').expandAgent('claude --cwd {wortkree}')).toThrow(
       'unknown placeholder {wortkree} in the agent command',
     )
+  })
+
+  test('{model_arg} expands to the fragment it is handed', () => {
+    expect(
+      plan('ABC-1/x').expandAgent('claude {model_arg} --resume', { modelArg: '--model fable' }),
+    ).toBe('claude --model fable --resume')
+  })
+
+  test('an empty fragment leaves the command as it was', () => {
+    // No model asked for is a complete answer, not a missing one: the surviving
+    // double space is inert, and collapsing it would mean the one placeholder
+    // that also eats its neighbours.
+    expect(plan('ABC-1/x').expandAgent('claude {model_arg} --resume', { modelArg: '' })).toBe(
+      'claude  --resume',
+    )
+  })
+
+  test('{model_arg} is refused everywhere else, saying where it belongs', () => {
+    const result = plan('ABC-1/x')
+    expect(() => result.expand('echo {model_arg}', 'setup')).toThrow(
+      '{model_arg} only expands in the agent command, not in setup',
+    )
+    expect(() => result.expandArgv(['s.sh', '{model_arg}'])).toThrow(
+      '{model_arg} only expands in the agent command, not in bootstrap',
+    )
+  })
+
+  test('{model} in the agent command points at model_arg instead', () => {
+    // The mistake to expect: reaching for the value where only the slot works.
+    expect(() => plan('ABC-1/x').expandAgent('claude --model {model}', { modelArg: '' })).toThrow(
+      '{model} only expands in model_arg, not in the agent command',
+    )
+  })
+
+  test('a $-prefixed brace is a shell variable, not a slot', () => {
+    // The bug this pins: asking with a substring test made ${model_arg} read as
+    // a slot, so the "no slot" refusal missed and the shell dropped the model
+    // into an unset variable.
+    expect(agentCommandTakesModel('claude ${model_arg}')).toBe(false)
+    expect(agentCommandTakesModel('claude {model_arg}')).toBe(true)
+    expect(agentCommandTakesContext('cat ${context_file}')).toBe(false)
+    expect(agentCommandTakesContext('cat {context_file}')).toBe(true)
+  })
+})
+
+describe('model_arg', () => {
+  test('{model} expands to the model asked for', () => {
+    expect(plan('ABC-1/x').expandModelArg('--model {model}', 'fable')).toBe('--model fable')
+  })
+
+  test('ordinary placeholders work there too', () => {
+    expect(plan('ABC-1/x').expandModelArg('--model {model} --tag {ticket}', 'opus')).toBe(
+      '--model opus --tag abc-1',
+    )
+  })
+
+  test('a typo fails there like anywhere else', () => {
+    expect(() => plan('ABC-1/x').expandModelArg('--model {mdoel}', 'fable')).toThrow(
+      'unknown placeholder {mdoel} in model_arg',
+    )
+  })
+
+  test('the model is inserted literally, not expanded in turn', () => {
+    // The model is the one value that reaches a command from the command line
+    // rather than from config, so it is worth saying it gets no second pass.
+    expect(plan('ABC-1/x').expandModelArg('--model {model}', '{ticket}')).toBe('--model {ticket}')
   })
 })
 
