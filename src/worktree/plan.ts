@@ -36,18 +36,42 @@ const MODEL_ARG_PLACEHOLDER = '{model_arg}'
 // has a model to substitute.
 const MODEL_PLACEHOLDER = '{model}'
 
+// The placeholders only one expansion can supply a value for, and where each
+// says it belongs when it turns up somewhere else. Kept as data so the tiers
+// read as a list rather than as three near-identical branches.
+const SCOPED_PLACEHOLDERS: Record<string, { belongs: string; hint?: string }> = {
+  [CONTEXT_FILE_PLACEHOLDER.slice(1, -1)]: { belongs: 'the agent command' },
+  [MODEL_ARG_PLACEHOLDER.slice(1, -1)]: { belongs: 'the agent command' },
+  [MODEL_PLACEHOLDER.slice(1, -1)]: {
+    belongs: 'model_arg',
+    hint: `The agent command takes ${MODEL_ARG_PLACEHOLDER}, which model_arg fills in.`,
+  },
+}
+
+// The one rule for what counts as a placeholder, shared by the expansion below
+// and by every question asked about a template: a single word in braces, not
+// preceded by `$`. Asking with a plain substring test instead is how
+// `${model_arg}` came to read as a slot, which made the "no slot" refusal miss
+// and the shell drop the model into an unset variable.
+const PLACEHOLDER_PATTERN = /(?<!\$)\{(\w+)\}/g
+
+const usesPlaceholder = (template: string, placeholder: string): boolean =>
+  new RegExp(`(?<!\\$)\\{${placeholder.slice(1, -1)}\\}`).test(template)
+
 // Whether a repo's bootstrap consumes targets; the placeholder itself stays
-// private.
+// private. A plain match is right here: the dots in {targets...} are not \w, so
+// it is not a placeholder in the sense above and `$` cannot precede it in any
+// valid shell.
 export const bootstrapTakesTargets = (repoConfig: RepoConfig): boolean =>
   repoConfig.bootstrap?.includes(TARGETS_PLACEHOLDER) ?? false
 
 // Whether an agent command asks for the repo's rendered context.
 export const agentCommandTakesContext = (agentCommand: string): boolean =>
-  agentCommand.includes(CONTEXT_FILE_PLACEHOLDER)
+  usesPlaceholder(agentCommand, CONTEXT_FILE_PLACEHOLDER)
 
 // Whether an agent command has a slot for a model.
 export const agentCommandTakesModel = (agentCommand: string): boolean =>
-  agentCommand.includes(MODEL_ARG_PLACEHOLDER)
+  usesPlaceholder(agentCommand, MODEL_ARG_PLACEHOLDER)
 
 export type WorktreePlan = {
   repo: string
@@ -97,25 +121,20 @@ const expandWith = (
       `${TARGETS_PLACEHOLDER} only expands as a standalone bootstrap argv entry, not in ${where}: ${JSON.stringify(template)}`,
     )
   }
-  if (template.includes(CONTEXT_FILE_PLACEHOLDER) && values.context_file === undefined) {
-    throw new Error(
-      `${CONTEXT_FILE_PLACEHOLDER} only expands in the agent command, not in ${where}: ${JSON.stringify(template)}`,
-    )
-  }
-  if (template.includes(MODEL_ARG_PLACEHOLDER) && values.model_arg === undefined) {
-    throw new Error(
-      `${MODEL_ARG_PLACEHOLDER} only expands in the agent command, not in ${where}: ${JSON.stringify(template)}`,
-    )
-  }
-  if (template.includes(MODEL_PLACEHOLDER) && values.model === undefined) {
-    throw new Error(
-      `${MODEL_PLACEHOLDER} only expands inside model_arg, not in ${where}: ${JSON.stringify(template)}. ` +
-        `The agent command takes ${MODEL_ARG_PLACEHOLDER}, which model_arg fills in.`,
-    )
-  }
-  return template.replace(/(?<!\$)\{(\w+)\}/g, (_whole, key: string) => {
+  // The scope-restricted placeholders report where they belong from inside the
+  // expansion rather than from a pre-scan, so they answer to PLACEHOLDER_PATTERN
+  // like everything else and `${model}` in a setup command stays a shell
+  // variable instead of hard-erroring.
+  return template.replace(PLACEHOLDER_PATTERN, (_whole, key: string) => {
     const value = values[key]
     if (value !== undefined) return value
+    const scope = SCOPED_PLACEHOLDERS[key]
+    if (scope) {
+      throw new Error(
+        `{${key}} only expands in ${scope.belongs}, not in ${where}: ${JSON.stringify(template)}` +
+          (scope.hint ? `. ${scope.hint}` : ''),
+      )
+    }
     if ((PLACEHOLDERS as readonly string[]).includes(key)) {
       throw new Error(`{${key}} is not available in ${where}: ${JSON.stringify(template)}`)
     }
@@ -234,7 +253,7 @@ export const buildWorktreePlan = ({
     expandArgv: (argv) =>
       argv.flatMap((entry) => {
         if (entry === TARGETS_PLACEHOLDER) return targets
-        if (entry.includes(TARGETS_JOINED_PLACEHOLDER)) {
+        if (usesPlaceholder(entry, TARGETS_JOINED_PLACEHOLDER)) {
           throw new Error(
             `${TARGETS_JOINED_PLACEHOLDER} is the comma-separated form, for context and commands; bootstrap argv takes ${TARGETS_PLACEHOLDER} as an entry of its own: ${JSON.stringify(entry)}`,
           )

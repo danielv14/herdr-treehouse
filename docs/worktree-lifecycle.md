@@ -181,6 +181,17 @@ is the reasoning behind the shape.
   next to the agent command the user already writes, and the engine only fills
   a slot. Same split as `context`: the config owns the text, the `agent` line
   owns delivery.
+- **`--agent-args "--model opus"` was the cheaper shape, and engine-ignorance
+  is not what decides against it** — an appended opaque string teaches the
+  engine nothing either, so that argument settles nothing on its own. What it
+  cannot do is keep the agent's spelling out of the *caller*: a skill or a
+  keybinding would have to write the flag verbatim, which is the agent-CLI
+  knowledge the skills layer must not carry, and it would let a caller append
+  permission flags, which is the whole reason the posture decision lives at one
+  launch site. Appending also only works for an agent whose flags may come last;
+  anything with a subcommand or a positional (`codex exec "<prompt>"`) needs
+  placement. `model_arg` buys placement and one stable `--model` across agents
+  for one config line.
 - **No model name in the config.** A `model` key with a default would be
   maintenance every time a release lands, for a value that should follow
   whatever an ordinary session picks. The name is an invocation fact, so it
@@ -189,8 +200,13 @@ is the reasoning behind the shape.
 - **Empty is a complete answer.** No `--model` renders the fragment to nothing,
   and the command reads as it did before. That is why the refusals here fire
   only when `--model` is passed, unlike `context`: a `model_arg` nothing uses
-  and a `{model_arg}` with no key behind it lose nothing, while an empty
-  context file reaching the agent is never a state anyone wanted. What is
+  loses nothing, because nothing was asked for. The other half, a `{model_arg}`
+  with no key behind it, is the exact mirror of `{context_file}` with no
+  `context` — which *is* refused — and it passes for a different reason: the
+  mistake surfaces the moment it matters, because the next `--model` against
+  that repo is refused for having nowhere to go. An unread `context` never
+  surfaces at all; you find out when the agent turns out to know nothing. Keep
+  the two reasons apart, or a later `effort_arg` inherits the wrong rule. What is
   refused is a model that would be *dropped* — no `model_arg` to hold it, or an
   agent command with no slot — because the tab opens looking correct either
   way, and nothing about it shows which model answered.

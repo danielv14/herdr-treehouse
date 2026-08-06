@@ -1,6 +1,8 @@
 # treehouse repo config. Lives at: $(herdr plugin config-dir treehouse)/config.toml
 #
-# Placeholders available in worktree_dir, bootstrap, setup, and pane commands:
+# Placeholders available in worktree_dir, bootstrap, setup, pane commands,
+# `context` and the agent command (the last three entries say where they are
+# legal, which is narrower):
 #   {repo}        repo name (config key)
 #   {branch}      full branch name, e.g. ABC-1234/fix-thing
 #   {slug}        slugified branch, e.g. abc-1234-fix-thing
@@ -78,6 +80,9 @@
 #   agent = 'claude --dangerously-skip-permissions {model_arg} --append-system-prompt "$(cat {context_file})"'
 # Deliberately no model name here. Put one in and you maintain it for every
 # release; leave it out and the agent picks the same model it would anywhere else.
+# This layers the way `context` does, so the two halves have to meet at the same
+# level: a repo whose own `agent` line replaces this one must carry the
+# {model_arg} slot too, or --model is refused there.
 # model_arg = '--model {model}'
 
 [repos.my-awesome-repo]
@@ -106,7 +111,9 @@ Bootstrapped targets: {targets}. Dependencies are installed only there.
 Do not start the dev command. It is pre-filled in its own pane, and verification
 is serial: two tabs must never race for the same containers and ports.
 """
-agent = 'claude --append-system-prompt "$(cat {context_file})"'
+# The {model_arg} slot is carried here too: this line replaces [defaults].agent,
+# so without it `treehouse up --model ...` would be refused for this repo.
+agent = 'claude {model_arg} --append-system-prompt "$(cat {context_file})"'
 # Panes: each entry splits the PREVIOUS pane (the first splits the main/agent
 # pane). Layout below: agent | right column, right column halved.
 # Verification is serial (tab by tab), so the dev command is only pre-filled;

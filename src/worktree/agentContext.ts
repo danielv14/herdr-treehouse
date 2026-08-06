@@ -63,8 +63,8 @@ const renderModelArg = (plan: WorktreePlan, input: AgentCommandInput): string =>
 // placeholder is: context nothing reads and a command reading a file nothing
 // wrote are both invisible until you notice the agent knows nothing.
 export const prepareAgentCommand = (plan: WorktreePlan, input: AgentCommandInput): string => {
-  // Before the context work: --model is a command-line mistake, and reporting
-  // it takes neither a rendered context nor a file on disk.
+  // Before the context work, though either order is safe: a --model mistake is
+  // then not masked by a config problem the caller is not currently trying to fix.
   const modelArg = renderModelArg(plan, input)
   const wantsContext = agentCommandTakesContext(input.command)
   // Render before deciding: `context = "{ticket}"` on a branch with no ticket

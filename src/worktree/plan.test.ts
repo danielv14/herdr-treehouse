@@ -1,7 +1,12 @@
 import { describe, expect, test } from 'bun:test'
 import { homedir } from 'node:os'
 import { DEFAULT_BASE, type RepoConfig } from '../config/config.ts'
-import { buildWorktreePlan, worktreePlacements } from './plan.ts'
+import {
+  agentCommandTakesContext,
+  agentCommandTakesModel,
+  buildWorktreePlan,
+  worktreePlacements,
+} from './plan.ts'
 
 const MAIN = '/tmp/checkouts/my-repo'
 
@@ -225,8 +230,18 @@ describe('the agent command', () => {
   test('{model} in the agent command points at model_arg instead', () => {
     // The mistake to expect: reaching for the value where only the slot works.
     expect(() => plan('ABC-1/x').expandAgent('claude --model {model}', { modelArg: '' })).toThrow(
-      '{model} only expands inside model_arg, not in the agent command',
+      '{model} only expands in model_arg, not in the agent command',
     )
+  })
+
+  test('a $-prefixed brace is a shell variable, not a slot', () => {
+    // The bug this pins: asking with a substring test made ${model_arg} read as
+    // a slot, so the "no slot" refusal missed and the shell dropped the model
+    // into an unset variable.
+    expect(agentCommandTakesModel('claude ${model_arg}')).toBe(false)
+    expect(agentCommandTakesModel('claude {model_arg}')).toBe(true)
+    expect(agentCommandTakesContext('cat ${context_file}')).toBe(false)
+    expect(agentCommandTakesContext('cat {context_file}')).toBe(true)
   })
 })
 
@@ -245,6 +260,12 @@ describe('model_arg', () => {
     expect(() => plan('ABC-1/x').expandModelArg('--model {mdoel}', 'fable')).toThrow(
       'unknown placeholder {mdoel} in model_arg',
     )
+  })
+
+  test('the model is inserted literally, not expanded in turn', () => {
+    // The model is the one value that reaches a command from the command line
+    // rather than from config, so it is worth saying it gets no second pass.
+    expect(plan('ABC-1/x').expandModelArg('--model {model}', '{ticket}')).toBe('--model {ticket}')
   })
 })
 
