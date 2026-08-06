@@ -19,6 +19,9 @@
 #   {targets...}  expands to one argv entry per --target (bootstrap only, and
 #                 only as an argv entry of its own)
 #   {context_file} path of the rendered `context` file (agent command only)
+#   {model_arg}   the repo's `model_arg` rendered, empty when `treehouse up`
+#                 was given no --model (agent command only)
+#   {model}       the name passed to --model (inside model_arg only)
 #
 # A single-word brace that is not one of these is an error, not a literal: a
 # typo'd {wortkree} stops the run instead of reaching a shell command as text.
@@ -67,6 +70,15 @@
 # agent line too; keep the default text true everywhere or set both per repo.
 # context = "You are in a git worktree: {worktree}, branch {branch}."
 # agent = 'claude --dangerously-skip-permissions --append-system-prompt "$(cat {context_file})"'
+#
+# How this agent spells a model, so `treehouse up --model opus` can change it
+# for one tab without restating the whole agent command. Add a {model_arg} to
+# the agent line to say where it goes; it expands to nothing when no --model is
+# given, so the command reads as it always did the rest of the time:
+#   agent = 'claude --dangerously-skip-permissions {model_arg} --append-system-prompt "$(cat {context_file})"'
+# Deliberately no model name here. Put one in and you maintain it for every
+# release; leave it out and the agent picks the same model it would anywhere else.
+# model_arg = '--model {model}'
 
 [repos.my-awesome-repo]
 root = "~/dev/my-awesome-repo"

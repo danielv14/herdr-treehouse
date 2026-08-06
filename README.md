@@ -114,6 +114,8 @@ This repo carries its own `.treehouse.toml`: `setup = ["bun install"]` so a fres
 | `{targets}` | the `--target` list, comma-separated; empty when none were given |
 | `{targets...}` | one argv entry per `--target` — bootstrap argv only |
 | `{context_file}` | path of the rendered `context` file — agent command only |
+| `{model_arg}` | the repo's `model_arg` rendered, empty when no `--model` was given — agent command only |
+| `{model}` | the name passed to `--model` — `model_arg` only |
 
 A typo'd placeholder (`{wortkree}`) is an error that stops the run, not a literal that reaches a shell command. Any other brace passes through untouched, since config values are shell commands: `{{.Names}}`, `{print $1}` and `${HOME}` all survive.
 
@@ -128,6 +130,24 @@ The command that starts the agent in the main pane resolves in this order, first
 5. bare `claude`
 
 Left unset, a bare `claude` inherits your own Claude Code settings, so permission mode stays one decision in `~/.claude/settings.json`. Set `[defaults]` instead when you want flags in every worktree tab, including ones with no settings.json equivalent such as `--dangerously-skip-permissions`. A per-repo `agent` is for repos that genuinely deserve different treatment, not for restating something global.
+
+### A different model for one tab
+
+`--agent` replaces the whole command, so using it to change one word means restating the rest, permission flags included. `model_arg` gives a model its own slot instead:
+
+```toml
+[defaults]
+model_arg = '--model {model}'
+agent = 'claude --dangerously-skip-permissions {model_arg} --append-system-prompt "$(cat {context_file})"'
+```
+
+```bash
+treehouse up --branch ABC-1234/heavier-thing --model opus
+```
+
+Without `--model` the slot expands to nothing and the command is exactly what it was. The flag's spelling lives in `model_arg`, which is why treehouse can offer this without knowing anything about your agent's CLI: it fills a slot you declared. No model name belongs in the config, so nothing needs updating when a new release lands, and an alias your agent resolves itself (`opus`, `fable`) keeps working across them.
+
+Both refusals only apply when `--model` is actually passed: without a `model_arg` there is nowhere to put the value, and without a `{model_arg}` in the agent command the model would be dropped while the tab opened as if nothing were wrong. A `model_arg` nothing uses is fine, unlike a `context` nothing reads — no model was asked for, so nothing is lost.
 
 ### Standing context for the agent
 

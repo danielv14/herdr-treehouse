@@ -2,10 +2,11 @@ import { createHash } from 'node:crypto'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { agentCommandTakesContext, type WorktreePlan } from './plan.ts'
+import { agentCommandTakesContext, agentCommandTakesModel, type WorktreePlan } from './plan.ts'
 
-// The repo's `context` rendered and put where the agent command can read it,
-// returning the command to run. Rationale in docs/worktree-lifecycle.md.
+// The agent command assembled: the repo's `context` rendered and put where the
+// command can read it, and a requested model dropped into the slot the repo
+// declared for it. Rationale in docs/worktree-lifecycle.md.
 
 const CONTEXT_DIR = 'treehouse-context'
 
@@ -28,12 +29,43 @@ export type AgentCommandInput = {
   command: string
   // The repo's resolved `context`, unexpanded. Undefined when none is set.
   context?: string
+  // The repo's resolved `model_arg`, unexpanded: the fragment a model is
+  // spelled with, e.g. '--model {model}'.
+  modelArg?: string
+  // The model asked for with --model. Undefined is the normal case, and the
+  // reason the two halves below are only checked when it is set.
+  model?: string
+}
+
+// Nothing was asked for expands to nothing, which is why an unused `model_arg`
+// and a `{model_arg}` with no key behind it both pass: the command then reads
+// exactly as it did before the model existed as an option. That is the
+// asymmetry with `context`, where an empty file reaching the agent is never a
+// complete state.
+const renderModelArg = (plan: WorktreePlan, input: AgentCommandInput): string => {
+  if (input.model === undefined) return ''
+  if (input.modelArg === undefined) {
+    throw new Error(
+      `--model ${input.model} was asked for, but ${plan.repo} has no model_arg to put it in: treehouse does not know how ${JSON.stringify(input.command.split(' ')[0])} spells a model. ` +
+        "Add model_arg = '--model {model}' (in [defaults], the repo block or .treehouse.toml) and a {model_arg} to the agent command.",
+    )
+  }
+  if (!agentCommandTakesModel(input.command)) {
+    throw new Error(
+      `--model ${input.model} was asked for, but the agent command for ${plan.repo} has no {model_arg}, so the model would be dropped and the agent would start on its usual one: ${JSON.stringify(input.command)}. ` +
+        "Add the slot, e.g. agent = 'claude {model_arg}'.",
+    )
+  }
+  return plan.expandModelArg(input.modelArg, input.model)
 }
 
 // Half-configured is an error rather than silence, the way a typo'd
 // placeholder is: context nothing reads and a command reading a file nothing
 // wrote are both invisible until you notice the agent knows nothing.
 export const prepareAgentCommand = (plan: WorktreePlan, input: AgentCommandInput): string => {
+  // Before the context work: --model is a command-line mistake, and reporting
+  // it takes neither a rendered context nor a file on disk.
+  const modelArg = renderModelArg(plan, input)
   const wantsContext = agentCommandTakesContext(input.command)
   // Render before deciding: `context = "{ticket}"` on a branch with no ticket
   // is configured and still nothing to deliver, and expanding first reports a
@@ -49,7 +81,7 @@ export const prepareAgentCommand = (plan: WorktreePlan, input: AgentCommandInput
           'Add it, e.g. agent = \'claude --append-system-prompt "$(cat {context_file})"\', or drop context.',
       )
     }
-    return plan.expandAgent(input.command)
+    return plan.expandAgent(input.command, { modelArg }).trim()
   }
 
   if (rendered === '') {
@@ -62,7 +94,10 @@ export const prepareAgentCommand = (plan: WorktreePlan, input: AgentCommandInput
   // Expand before writing: a typo in the agent command must not leave a
   // rendered context behind for a worktree that is never created.
   const path = contextFilePath(plan)
-  const command = plan.expandAgent(input.command, path)
+  // Trimmed for the same reason the other branch is: a {model_arg} last in the
+  // command leaves a trailing space behind when no model was asked for, and
+  // that ends up in the reported agent line.
+  const command = plan.expandAgent(input.command, { contextFile: path, modelArg }).trim()
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 })
   writeFileSync(path, `${rendered}\n`, { mode: 0o600 })
   return command

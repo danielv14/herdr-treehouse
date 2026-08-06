@@ -162,6 +162,43 @@ agent"); this is the engine-side reasoning behind `src/worktree/agentContext.ts`
   command, so `{context_file}` never comes up there. One asymmetry follows: a
   half-configured repo provisions fine through the hook and only fails on `up`.
 
+## A model for one tab (`--model` + `model_arg`)
+
+User-facing behaviour is in the README ("A different model for one tab"); this
+is the reasoning behind the shape.
+
+- **The problem is `--agent`, not the missing flag.** `--agent` replaces the
+  resolved command, so changing one word means restating the rest. A repo with
+  `context` set makes that mandatory rather than merely tedious: an agent
+  command without `{context_file}` is refused, so a caller cannot pass a short
+  one. The copy that follows restates `--dangerously-skip-permissions` in
+  whatever generated it, which is the decision the README's agent-command
+  section keeps in exactly one place, and it drifts silently when `[defaults]`
+  changes.
+- **The engine still knows no flags.** An injected `--model` would have been
+  the first place it assumed anything about an agent's CLI; `--agent` is an
+  opaque string everywhere else. `model_arg` holds the spelling in the config,
+  next to the agent command the user already writes, and the engine only fills
+  a slot. Same split as `context`: the config owns the text, the `agent` line
+  owns delivery.
+- **No model name in the config.** A `model` key with a default would be
+  maintenance every time a release lands, for a value that should follow
+  whatever an ordinary session picks. The name is an invocation fact, so it
+  lives on the command line, and an alias the agent resolves itself survives
+  releases.
+- **Empty is a complete answer.** No `--model` renders the fragment to nothing,
+  and the command reads as it did before. That is why the refusals here fire
+  only when `--model` is passed, unlike `context`: a `model_arg` nothing uses
+  and a `{model_arg}` with no key behind it lose nothing, while an empty
+  context file reaching the agent is never a state anyone wanted. What is
+  refused is a model that would be *dropped* — no `model_arg` to hold it, or an
+  agent command with no slot — because the tab opens looking correct either
+  way, and nothing about it shows which model answered.
+- The assembled command is trimmed: a slot at the end of the command otherwise
+  leaves a trailing space in the reported agent line. Inner spacing is left
+  alone, so a slot in the middle collapses to a double space, which no shell
+  cares about and no rule has to except.
+
 ## Teardown (`down`)
 
 - Never `--force`, never kills processes, leaves the branch (PR merge cleans it

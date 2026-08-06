@@ -35,6 +35,7 @@ export const UP_COMMAND: CommandSpec = {
     { flag: '--label', kind: 'value', key: 'label', placeholder: '<text>', help: 'tab label (default: ticket id or branch slug, prefixed with a tree)' },
     { flag: '--prompt', kind: 'value', key: 'prompt', placeholder: '<text>', help: 'task to hand the agent once it is idle' },
     { flag: '--agent', kind: 'value', key: 'agent', placeholder: '<cmd>', help: 'agent command (default: repo config, [defaults], then claude)' },
+    { flag: '--model', kind: 'value', key: 'model', placeholder: '<name>', help: "model for this tab's agent, filled into the repo's model_arg (default: the agent's own)" },
     { flag: '--no-agent', kind: 'boolean', key: 'noAgent', help: 'skip starting an agent in the main pane' },
     { flag: '--no-dev', kind: 'boolean', key: 'noDev', help: 'skip the extra panes from repo config' },
     { flag: '--setup', kind: 'boolean', key: 'setup', help: 'run the repo setup commands even if the worktree already exists' },
@@ -51,6 +52,7 @@ type UpOptions = {
   label?: string
   prompt?: string
   agent?: string
+  model?: string
   noAgent: boolean
   noDev: boolean
   setup: boolean
@@ -68,6 +70,7 @@ const readOptions = (argv: string[]): UpOptions => {
     label: flags.value('label'),
     prompt: flags.value('prompt'),
     agent: flags.value('agent'),
+    model: flags.value('model'),
     noAgent: flags.flag('noAgent'),
     noDev: flags.flag('noDev'),
     setup: flags.flag('setup'),
@@ -171,6 +174,9 @@ export const up = async (argv: string[], deps: EngineDeps) => {
   if (options.prompt && options.noAgent) {
     throw new Error('--prompt needs an agent to hand the task to (drop --no-agent, or drop --prompt)')
   }
+  if (options.model && options.noAgent) {
+    throw new Error('--model needs an agent to apply to (drop --no-agent, or drop --model)')
+  }
 
   // Git decides where an existing worktree is, not `worktree_dir`: the naming
   // convention only describes the ones treehouse created.
@@ -214,6 +220,8 @@ export const up = async (argv: string[], deps: EngineDeps) => {
     : prepareAgentCommand(plan, {
         command: options.agent ?? repoConfig.agent ?? 'claude',
         context: repoConfig.context,
+        modelArg: repoConfig.model_arg,
+        model: options.model,
       })
 
   provisionWorktree(plan, repoConfig, { setupExisting: options.setup, log, warn })

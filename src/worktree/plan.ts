@@ -27,6 +27,15 @@ const TARGETS_JOINED_PLACEHOLDER = '{targets}'
 // expandAgent below can supply a value for it.
 const CONTEXT_FILE_PLACEHOLDER = '{context_file}'
 
+// The slot a caller's --model lands in, also agent-command-only. Its value is
+// the repo's `model_arg`, which is where the agent's flag spelling lives, so
+// the engine never learns that a model is asked for with --model.
+const MODEL_ARG_PLACEHOLDER = '{model_arg}'
+
+// Legal inside a model_arg value and nowhere else: it is the one expansion that
+// has a model to substitute.
+const MODEL_PLACEHOLDER = '{model}'
+
 // Whether a repo's bootstrap consumes targets; the placeholder itself stays
 // private.
 export const bootstrapTakesTargets = (repoConfig: RepoConfig): boolean =>
@@ -35,6 +44,10 @@ export const bootstrapTakesTargets = (repoConfig: RepoConfig): boolean =>
 // Whether an agent command asks for the repo's rendered context.
 export const agentCommandTakesContext = (agentCommand: string): boolean =>
   agentCommand.includes(CONTEXT_FILE_PLACEHOLDER)
+
+// Whether an agent command has a slot for a model.
+export const agentCommandTakesModel = (agentCommand: string): boolean =>
+  agentCommand.includes(MODEL_ARG_PLACEHOLDER)
 
 export type WorktreePlan = {
   repo: string
@@ -51,10 +64,19 @@ export type WorktreePlan = {
   // Expand a bootstrap argv: `{targets...}` becomes one entry per target, every
   // other entry gets normal placeholder expansion plus ~ expansion.
   expandArgv: (argv: string[]) => string[]
-  // Expand an agent command, where `{context_file}` is legal. The path arrives
-  // as an argument: only the caller that renders the context knows whether
-  // there is a file at all.
-  expandAgent: (command: string, contextFile?: string) => string
+  // Expand an agent command, where `{context_file}` and `{model_arg}` are
+  // legal. Both arrive as arguments: only the caller that renders them knows
+  // whether there is a file, and whether a model was asked for at all.
+  expandAgent: (command: string, values?: AgentValues) => string
+  // Expand a `model_arg` value, the one place `{model}` resolves.
+  expandModelArg: (template: string, model: string) => string
+}
+
+export type AgentValues = {
+  contextFile?: string
+  // The rendered model fragment, empty when no model was asked for. Empty is a
+  // complete answer, not a missing one: the command then reads as it always has.
+  modelArg?: string
 }
 
 // An unknown placeholder is an error, not a pass-through: a typo used to become
@@ -80,6 +102,17 @@ const expandWith = (
       `${CONTEXT_FILE_PLACEHOLDER} only expands in the agent command, not in ${where}: ${JSON.stringify(template)}`,
     )
   }
+  if (template.includes(MODEL_ARG_PLACEHOLDER) && values.model_arg === undefined) {
+    throw new Error(
+      `${MODEL_ARG_PLACEHOLDER} only expands in the agent command, not in ${where}: ${JSON.stringify(template)}`,
+    )
+  }
+  if (template.includes(MODEL_PLACEHOLDER) && values.model === undefined) {
+    throw new Error(
+      `${MODEL_PLACEHOLDER} only expands inside model_arg, not in ${where}: ${JSON.stringify(template)}. ` +
+        `The agent command takes ${MODEL_ARG_PLACEHOLDER}, which model_arg fills in.`,
+    )
+  }
   return template.replace(/(?<!\$)\{(\w+)\}/g, (_whole, key: string) => {
     const value = values[key]
     if (value !== undefined) return value
@@ -89,7 +122,7 @@ const expandWith = (
     throw new Error(
       `unknown placeholder {${key}} in ${where}: ${JSON.stringify(template)}. Known placeholders: ${PLACEHOLDERS.map(
         (name) => `{${name}}`,
-      ).join(', ')}, plus ${TARGETS_PLACEHOLDER} in bootstrap argv and ${CONTEXT_FILE_PLACEHOLDER} in the agent command`,
+      ).join(', ')}, plus ${TARGETS_PLACEHOLDER} in bootstrap argv, ${CONTEXT_FILE_PLACEHOLDER} and ${MODEL_ARG_PLACEHOLDER} in the agent command, and ${MODEL_PLACEHOLDER} in model_arg`,
     )
   })
 }
@@ -208,12 +241,13 @@ export const buildWorktreePlan = ({
         }
         return [expandHome(expand(entry, 'bootstrap'))]
       }),
-    expandAgent: (command, contextFile) =>
-      expandWith(
-        command,
-        contextFile === undefined ? values : { ...values, context_file: contextFile },
-        'the agent command',
-      ),
+    expandAgent: (command, { contextFile, modelArg } = {}) => {
+      const scope = { ...values }
+      if (contextFile !== undefined) scope.context_file = contextFile
+      if (modelArg !== undefined) scope.model_arg = modelArg
+      return expandWith(command, scope, 'the agent command')
+    },
+    expandModelArg: (template, model) => expandWith(template, { ...values, model }, 'model_arg'),
   }
 }
 
