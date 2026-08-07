@@ -59,10 +59,22 @@ const renderModelArg = (plan: WorktreePlan, input: AgentCommandInput): string =>
   return plan.expandModelArg(input.modelArg, input.model)
 }
 
+export type PreparedAgentCommand = {
+  // What the pane is handed, fully expanded.
+  command: string
+  // The file the rendered context went to, absent when the repo has none. The
+  // caller reports it, and a test asserts against it instead of guessing the
+  // name the module chose.
+  contextFile?: string
+}
+
 // Half-configured is an error rather than silence, the way a typo'd
 // placeholder is: context nothing reads and a command reading a file nothing
 // wrote are both invisible until you notice the agent knows nothing.
-export const prepareAgentCommand = (plan: WorktreePlan, input: AgentCommandInput): string => {
+export const prepareAgentCommand = (
+  plan: WorktreePlan,
+  input: AgentCommandInput,
+): PreparedAgentCommand => {
   // Before the context work, though either order is safe: a --model mistake is
   // then not masked by a config problem the caller is not currently trying to fix.
   const modelArg = renderModelArg(plan, input)
@@ -81,7 +93,7 @@ export const prepareAgentCommand = (plan: WorktreePlan, input: AgentCommandInput
           'Add it, e.g. agent = \'claude --append-system-prompt "$(cat {context_file})"\', or drop context.',
       )
     }
-    return plan.expandAgent(input.command, { modelArg }).trim()
+    return { command: plan.expandAgent(input.command, { modelArg }).trim() }
   }
 
   if (rendered === '') {
@@ -100,5 +112,5 @@ export const prepareAgentCommand = (plan: WorktreePlan, input: AgentCommandInput
   const command = plan.expandAgent(input.command, { contextFile: path, modelArg }).trim()
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 })
   writeFileSync(path, `${rendered}\n`, { mode: 0o600 })
-  return command
+  return { command, contextFile: path }
 }
