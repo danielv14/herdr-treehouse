@@ -28,26 +28,20 @@ export type Shape = Record<string, FieldSpec>
 // table holds. A `values` list narrows to its literals; the table kinds recurse.
 // Declaring a shape with `as const satisfies Shape` is what keeps the literal
 // types this needs while still checking the declaration against Shape.
-type FieldValue<S extends FieldSpec> = S extends {
-  kind: 'string'
-  values: readonly (infer V extends string)[]
-}
-  ? V
-  : S extends { kind: 'string' }
-    ? string
-    : S extends { kind: 'number' }
-      ? number
-      : S extends { kind: 'boolean' }
-        ? boolean
-        : S extends { kind: 'string-list' }
-          ? string[]
-          : S extends { kind: 'table'; shape: infer T extends Shape }
-            ? Declared<T>
-            : S extends { kind: 'table-list'; shape: infer T extends Shape }
-              ? Declared<T>[]
-              : S extends { kind: 'table-map'; shape: infer T extends Shape }
-                ? Record<string, Declared<T>>
-                : never
+// A lookup on the discriminant rather than a chain of conditionals: rows cannot
+// be order-sensitive (a chain that tested bare `kind: 'string'` before the
+// values row would silently widen every enum string), and a kind added to
+// FieldSpec without a row fails to compile right here instead of falling
+// through to never somewhere downstream.
+type FieldValue<S extends FieldSpec> = {
+  string: S extends { values: readonly (infer V extends string)[] } ? V : string
+  number: number
+  boolean: boolean
+  'string-list': string[]
+  table: S extends { shape: infer T extends Shape } ? Declared<T> : never
+  'table-list': S extends { shape: infer T extends Shape } ? Declared<T>[] : never
+  'table-map': S extends { shape: infer T extends Shape } ? Record<string, Declared<T>> : never
+}[S['kind']]
 
 // What validating against a shape returns. Every key optional: `required` keys
 // are enforced as diagnostics, not types, because the caller decides what a
