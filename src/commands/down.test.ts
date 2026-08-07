@@ -213,11 +213,15 @@ describe('down', () => {
   test('a plugin invocation with no target refuses instead of falling back to cwd', async () => {
     // cwd is the plugin's own root for an action, so teardown used to reach the
     // main-checkout refusal by luck and blame the wrong path. Same rule as up's.
+    const fake = createFakeHerdr({})
     await expectRejection(
-      down([], deps(createFakeHerdr({}), { HERDR_PLUGIN_CONTEXT_JSON: JSON.stringify({ invocation_source: 'keybinding' }) })),
+      down([], deps(fake, { HERDR_PLUGIN_CONTEXT_JSON: JSON.stringify({ invocation_source: 'keybinding' }) })),
       'plugin invocation: could not derive the target repo',
     )
-    expect(existsSync(worktree)).toBe(true)
+    // Before any git or Herdr work: the fake would throw on an unscripted call,
+    // so an empty call list is the proof it refused first.
+    expect(fake.calls).toHaveLength(0)
+    expect(logged).toHaveLength(0)
   })
 
   test('a repo with no open workspace still removes the worktree', async () => {

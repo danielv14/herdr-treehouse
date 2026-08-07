@@ -1,5 +1,14 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
-import { chmodSync, existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import { join } from 'node:path'
 import type { RepoConfig } from '../config/config.ts'
 import { buildWorktreePlan } from './plan.ts'
@@ -113,7 +122,7 @@ describe('a stray path where the worktree should go', () => {
     writeFileSync(join(stray, 'leftover.txt'), 'from a half-deleted worktree')
 
     expect(() => provision({ setup: ['echo ran > ran.txt'] })).toThrow(
-      `${stray} already holds files, but git has no worktree there`,
+      `${stray} is occupied by something git has no worktree for`,
     )
     expect(existsSync(join(stray, 'ran.txt'))).toBe(false)
     expect(repo.git('worktree', 'list', '--porcelain')).not.toContain(stray)
@@ -122,7 +131,46 @@ describe('a stray path where the worktree should go', () => {
 
   test('a plain file at the path lands in the same refusal', () => {
     writeFileSync(strayPath(), 'not a checkout')
-    expect(() => provision({})).toThrow('already holds files, but git has no worktree there')
+    expect(() => provision({})).toThrow('is occupied by something git has no worktree for')
+  })
+
+  test('a dangling symlink lands there too, though existsSync reads it as absent', () => {
+    // git refuses a dangling link ("already exists"), so the guard lstats rather
+    // than trusting existsSync, which follows the link and answers false.
+    symlinkSync(join(repo.parent, 'nowhere'), strayPath())
+    expect(existsSync(strayPath())).toBe(false)
+    expect(() => provision({})).toThrow('is occupied by something git has no worktree for')
+  })
+
+  test('a bootstrap is exempt: it owns creation and may be handed the directory', () => {
+    // The deliberate limit of the refusal above. A monorepo bootstrap is written
+    // to tolerate a directory that is already there, so second-guessing it here
+    // would break exactly the repos that need it.
+    const stray = strayPath()
+    mkdirSync(stray, { recursive: true })
+    writeFileSync(join(stray, 'leftover.txt'), 'the script deals with this')
+    const script = writeBootstrap(
+      'bootstrap.sh',
+      '[ -d "$2" ] || git worktree add "$2" -b "$3" --no-track master\necho handled >> "$2/bootstrap.txt"',
+    )
+
+    const { result } = provision({ bootstrap: [script, '--dir', '{worktree}', '{branch}'] })
+    expect(readFileSync(join(stray, 'bootstrap.txt'), 'utf8').trim()).toBe('handled')
+    expect(result.created).toBe(true)
+  })
+
+  test('a worktree git lists but whose directory is gone says which command clears it', () => {
+    // git keeps listing a worktree removed by hand (`ls` renders it as missing).
+    // Answering "already exists" and then "missing after creation" was two false
+    // statements and no way forward.
+    const stray = strayPath()
+    repo.git('worktree', 'add', stray, '-b', 'ABC-1/fix', '--no-track', 'master')
+    rmSync(stray, { recursive: true, force: true })
+
+    const failure = expect(() => provision({}))
+    failure.toThrow(`git still lists a worktree at ${stray}, but the directory is gone`)
+    failure.toThrow('git worktree prune')
+    expect(logged.join('\n')).not.toContain('worktree already exists')
   })
 
   test('an empty leftover directory is still taken over by git', () => {

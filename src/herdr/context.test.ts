@@ -164,6 +164,15 @@ describe('requireInvocationTarget', () => {
     )
   })
 
+  test('a real click keeps the link label, payload and all', () => {
+    // What a ctrl+click actually sends: clicked_url inside the context payload.
+    // Asking isPluginInvocation first labelled every click a plugin invocation,
+    // so the specific case has to win.
+    expect(() => target(contextEnv({ clicked_url: 'https://example.atlassian.net/browse/ABC-1' }))).toThrow(
+      /^link invocation: could not derive the target repo/,
+    )
+  })
+
   test('an explicit path is still honoured for a plugin invocation', () => {
     expect(target(contextEnv({ invocation_source: 'keybinding' }), '/dev/explicit')).toBe('/dev/explicit')
   })

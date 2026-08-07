@@ -208,7 +208,7 @@ command = "npm run dev"
     const fake = createFakeHerdr(RESPONSES)
     await expectRejection(
       up(['--repo', repo.root, '--branch', 'ABC-1/fix', '--no-agent'], deps(fake)),
-      /already holds files, but git has no worktree there/,
+      /is occupied by something git has no worktree for/,
     )
     expect(fake.calls).toHaveLength(0)
     expect(existsSync(join(stray, 'ran.txt'))).toBe(false)

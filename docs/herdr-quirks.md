@@ -120,11 +120,15 @@ premise of writing `context` to a file, and it was checked in a scratch pane
   of the caller: a hand-run command may have it, an action, a popup pane and a
   clicked link may not. `up` carried both refusals and `down` carried neither,
   which is why teardown from an action used to reach "not a linked worktree" and
-  blame the wrong path. A clicked link is checked separately from the context
-  payload because the url can arrive through `HERDR_PLUGIN_CLICKED_URL` alone,
-  with no payload to read a cwd from — the case the plugin check misses.
-  `cwd` is a parameter rather than a `process.cwd()` call inside the module, the
-  way `env` is a dependency everywhere else in `src/`.
+  blame the wrong path. `cwd` is a parameter rather than a `process.cwd()` call
+  inside the module, the way `env` is a dependency everywhere else in `src/`.
+- **Which of the two refusals a click gets**: the clicked url is checked *before*
+  `isPluginInvocation`, so a click keeps the `link invocation` label. A real
+  ctrl+click carries a context payload as well (`clicked_url` lives inside it),
+  so asking `isPluginInvocation` first labelled every click a plugin invocation
+  and left the link label reachable only through `HERDR_PLUGIN_CLICKED_URL` with
+  no payload — which is a shape that exists, hence both checks, but it is the
+  rare one. The specific case has to win.
 - **What #58 deliberately did NOT build**: a module resolving an invocation all
   the way to `{mainRepoRoot, configDir, repoConfig}`. Only `up` wants all three:
   `down` wants a worktree path and no config, the `worktree.created` hook starts

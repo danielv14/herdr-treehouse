@@ -171,12 +171,33 @@ CLAUDE.md).
   reach, since a path git does not know is exactly what it hands over as free.
   So provisioning asks `findWorktreeAtPath` itself rather than taking the answer
   from the plan: the hook path has no placement at all, and a module that must
-  work without one cannot depend on it. What is refused is a path with files in
-  it. An *empty* directory is not: `git worktree add` checks out into one
-  happily, and refusing there would turn a harmless leftover into an error.
+  work without one cannot depend on it. (The hook never reaches the question
+  either way — `just-created` answers it first, so it costs the hook no git
+  call.)
+
+  What is refused is what `git worktree add` refuses, which is the rule worth
+  keeping straight because it is narrower than "the path exists": a directory
+  with files in it, a plain file, a dangling symlink, anything unreadable. An
+  *empty* directory is not refused, because git checks out into one happily, and
+  a symlink to one is fine for the same reason. That is why the check `lstat`s
+  rather than trusting `existsSync`, which follows a link and reads a dangling
+  one as absent. On macOS a leftover directory Finder has visited holds a
+  `.DS_Store`, so it counts as occupied — correct, since git refuses it too.
+
+  The state that needs its own answer is a worktree git still *lists* while its
+  directory is gone (`ls` renders it as `missing`, and `rm -rf` instead of
+  `treehouse down` is how you get there). "Already exists" is false, and so is
+  the "missing after creation" that followed it, so it is refused by naming the
+  two commands that clear it, `git worktree prune` and `git worktree remove`.
+  Before this it was git's own "missing but already registered worktree" error,
+  which was at least actionable; a change here must not make it less so.
+
   Exempt for the same reason as always: `just-created`, where Herdr made the
   checkout moments ago, and a `bootstrap`, which owns creation and may be handed
-  a directory that is already there on purpose.
+  a directory that is already there on purpose. The bootstrap exemption has a
+  test of its own, because hoisting the check above the branch chain is a
+  natural-looking simplification that would silently break every monorepo whose
+  script tolerates an existing directory.
 - `worktreeState: 'just-created'` is how the hook says Herdr already made the
   checkout but it is still fresh, so setup must run.
 

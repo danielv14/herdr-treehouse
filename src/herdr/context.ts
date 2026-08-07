@@ -104,23 +104,21 @@ export type RequiredTargetInput = TargetPathInput & {
   cwd: string
 }
 
-// The path an invocation is about, cwd included, or a refusal.
-//
-// cwd is only an answer for a command someone typed. A plugin action, its popup
-// pane and a clicked link all run with cwd = the plugin's own root, so falling
-// back there would name treehouse itself: `up` would bootstrap a worktree of the
-// plugin, and `down` would inspect it. Which of the two refusals applies is a
-// property of the invocation, not of the caller, so it is decided here rather
-// than in each command.
+// The path an invocation is about, cwd included, or a refusal. cwd is only an
+// answer for a command someone typed: plugin-invoked processes run with
+// cwd = plugin root, so falling back there names treehouse itself.
+// Reasoning: docs/herdr-quirks.md.
 export const requireInvocationTarget = (input: RequiredTargetInput): string => {
   const target = invocationTargetPath(input)
   if (target) return target
-  // A clicked link is checked separately from the context payload: the url can
-  // arrive through its own variable, with no payload to read a cwd from.
-  const source = isPluginInvocation(input.env)
-    ? 'plugin invocation'
-    : readInvocationContext(input.env).clickedUrl
-      ? 'link invocation'
+  // The clicked url comes first because a real click carries a context payload
+  // too, so asking isPluginInvocation first labelled every click a plugin
+  // invocation. Its own variable is checked as well: the url can arrive with no
+  // payload to read a cwd from.
+  const source = readInvocationContext(input.env).clickedUrl
+    ? 'link invocation'
+    : isPluginInvocation(input.env)
+      ? 'plugin invocation'
       : undefined
   if (source) {
     throw new Error(
