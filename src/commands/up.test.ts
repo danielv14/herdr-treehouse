@@ -199,6 +199,21 @@ command = "npm run dev"
     expect(fake.calls).toHaveLength(0)
   })
 
+  test('a stray directory at the worktree path is refused instead of opened as a tab', async () => {
+    writeLocalConfig('base = "master"\nsetup = ["echo ran > ran.txt"]\n')
+    const stray = join(repo.parent, 'my-repo-abc-1')
+    mkdirSync(stray, { recursive: true })
+    writeFileSync(join(stray, 'leftover.txt'), 'from a half-deleted worktree')
+
+    const fake = createFakeHerdr(RESPONSES)
+    await expectRejection(
+      up(['--repo', repo.root, '--branch', 'ABC-1/fix', '--no-agent'], deps(fake)),
+      /is occupied by something git has no worktree for/,
+    )
+    expect(fake.calls).toHaveLength(0)
+    expect(existsSync(join(stray, 'ran.txt'))).toBe(false)
+  })
+
   test('--setup runs the setup commands in a worktree that already exists', async () => {
     writeLocalConfig('base = "master"\nsetup = ["echo ran >> ran.txt"]\n')
     await up(['--repo', repo.root, '--branch', 'ABC-1/fix', '--no-agent'], deps(createFakeHerdr(RESPONSES)))
@@ -520,7 +535,18 @@ describe('invocation context', () => {
   test('a plugin invocation with no cwd in the context refuses instead of targeting the plugin repo', async () => {
     await expectRejection(
       up(['--branch', 'ABC-1/fix'], deps(createFakeHerdr({}), context({ invocation_source: 'keybinding' }))),
-      'refusing to fall back to the plugin repo',
+      "plugin invocation: could not derive the target repo from the plugin context (refusing to fall back to cwd, which is the plugin's own repo)",
+    )
+  })
+
+  test('a clicked link with no cwd anywhere refuses as a link invocation', async () => {
+    // The url can arrive through its own variable with no context payload to read
+    // a cwd from, which is the case the plugin-invocation check alone misses.
+    await expectRejection(
+      up(['--from-link'], deps(createFakeHerdr({}), {
+        HERDR_PLUGIN_CLICKED_URL: 'https://example.atlassian.net/browse/ABC-42',
+      })),
+      'link invocation: could not derive the target repo',
     )
   })
 

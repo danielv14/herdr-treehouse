@@ -1,7 +1,7 @@
 import { branchFromUrl } from '../worktree/branch.ts'
 import { parseFlags, type CommandSpec } from '../cli.ts'
 import { resolveRepoConfig, type RepoConfig } from '../config/config.ts'
-import { invocationTargetPath, isPluginInvocation, readInvocationContext } from '../herdr/context.ts'
+import { readInvocationContext, requireInvocationTarget } from '../herdr/context.ts'
 import { resolveDeps, type Ask, type EngineDeps } from '../deps.ts'
 import { findMainRepoRoot } from '../worktree/git.ts'
 import { refreshWorktreeCount } from '../worktreeCount.ts'
@@ -111,16 +111,9 @@ export const up = async (argv: string[], deps: EngineDeps) => {
   }
   if (!insideHerdr) throw new Error('not inside a Herdr session (HERDR_ENV != 1)')
 
-  const target = invocationTargetPath({ explicit: options.repo, prefer: 'pane', env })
-  if (!target && options.fromLink) {
-    throw new Error('link invocation: could not derive the target repo from the plugin context')
-  }
-  // Falling back to cwd for a plugin-invoked run would target the plugin repo
-  // itself, so refuse rather than bootstrap a worktree of treehouse.
-  if (!target && isPluginInvocation(env)) {
-    throw new Error('plugin invocation: could not derive the target repo from the plugin context (refusing to fall back to the plugin repo)')
-  }
-  const mainRepoRoot = findMainRepoRoot(target ?? process.cwd())
+  const mainRepoRoot = findMainRepoRoot(
+    requireInvocationTarget({ explicit: options.repo, prefer: 'pane', env, cwd: process.cwd() }),
+  )
   // One resolution for both readers: the config is looked up in it, and the plan
   // hands it to {config_dir}, so they cannot disagree about where it is.
   const configDir = pluginConfigDir()

@@ -1,6 +1,6 @@
 import { resolve } from 'node:path'
 import { parseFlags, type CommandSpec } from '../cli.ts'
-import { callerPaneId, callerTabId, invocationTargetPath } from '../herdr/context.ts'
+import { callerPaneId, callerTabId, requireInvocationTarget } from '../herdr/context.ts'
 import { resolveDeps, type Ask, type EngineDeps } from '../deps.ts'
 import { inspectCheckout, removeWorktree } from '../worktree/git.ts'
 import { refreshWorktreeCount } from '../worktreeCount.ts'
@@ -25,7 +25,7 @@ export const down = async (argv: string[], deps: EngineDeps) => {
   const { tabs, env, insideHerdr, log, warn, ask } = resolveDeps(deps)
   const flags = parseFlags(DOWN_COMMAND, argv)
   const worktreePath = resolve(
-    invocationTargetPath({ explicit: flags.value('path'), prefer: 'pane', env }) ?? process.cwd(),
+    requireInvocationTarget({ explicit: flags.value('path'), prefer: 'pane', env, cwd: process.cwd() }),
   )
 
   const checkout = inspectCheckout(worktreePath)

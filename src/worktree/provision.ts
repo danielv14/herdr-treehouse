@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { existsSync, lstatSync, readdirSync, statSync } from 'node:fs'
 import type { RepoConfig } from '../config/config.ts'
-import { addWorktree } from './git.ts'
+import { addWorktree, findWorktreeAtPath } from './git.ts'
 import type { WorktreePlan } from './plan.ts'
 
 // "Make this worktree exist and be usable", shared by `treehouse up` and the
@@ -33,7 +33,12 @@ export const provisionWorktree = (
 ): ProvisionResult => {
   const { log, warn } = options
   const justCreated = options.worktreeState === 'just-created'
-  const existedBefore = justCreated ? false : existsSync(plan.worktree)
+  // git's question, not existsSync's: a directory git knows nothing about is not
+  // a worktree to reopen. 'just-created' answers it first, so the hook never
+  // asks git at all. Reasoning: docs/worktree-lifecycle.md.
+  const existedBefore = justCreated
+    ? false
+    : findWorktreeAtPath(plan.root, plan.worktree) !== undefined
 
   // `?.length`, not just presence: `bootstrap = []` is a truthy empty argv, and
   // spawning argv[0] === undefined crashes with a Node type error instead of
@@ -55,8 +60,23 @@ export const provisionWorktree = (
   } else if (justCreated) {
     // Herdr already created the checkout; nothing to create here.
   } else if (existedBefore) {
+    // git keeps listing a worktree whose directory was deleted by hand, which
+    // `ls` renders as "missing". Reopening it is not possible and creating over
+    // it is what git refuses, so say which of the two commands clears it.
+    if (!existsSync(plan.worktree)) {
+      throw new Error(
+        `git still lists a worktree at ${plan.worktree}, but the directory is gone. ` +
+          `Run \`git worktree prune\` in ${plan.root}, or \`git worktree remove ${plan.worktree}\`, then try again.`,
+      )
+    }
     log(`worktree already exists: ${plan.worktree}`)
   } else {
+    if (pathInTheWay(plan.worktree)) {
+      throw new Error(
+        `${plan.worktree} is occupied by something git has no worktree for: nothing to reopen, and nothing to create into. ` +
+          'Move it aside or remove it, or give worktree_dir a path of its own.',
+      )
+    }
     addWorktree(plan.root, { path: plan.worktree, branch: plan.branch, base: plan.base, warn })
   }
 
@@ -79,6 +99,24 @@ export const provisionWorktree = (
   }
   runSetup(plan, setup, log)
   return { created: !existedBefore, setupRan: setup.length > 0 }
+}
+
+// Whether something at the path stops git from checking a worktree out into it,
+// answered the way git answers it: an EMPTY directory is taken over happily, a
+// dangling symlink is not (and `existsSync` reads one as absent, which is why
+// this lstats first). Anything unreadable counts as in the way, since git will
+// fail on it too.
+const pathInTheWay = (path: string): boolean => {
+  try {
+    lstatSync(path)
+  } catch {
+    return false
+  }
+  try {
+    return !statSync(path).isDirectory() || readdirSync(path).length > 0
+  } catch {
+    return true
+  }
 }
 
 // A half-provisioned worktree is worse than none at all, so a failing setup

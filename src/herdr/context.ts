@@ -97,6 +97,37 @@ export const invocationTargetPath = ({
     : (context.focusedPaneCwd ?? context.workspaceCwd)
 }
 
+export type RequiredTargetInput = TargetPathInput & {
+  // The caller's cwd, passed in rather than read here: it is a legitimate answer
+  // only for a hand-run command, and this module reads the environment, not the
+  // process.
+  cwd: string
+}
+
+// The path an invocation is about, cwd included, or a refusal. cwd is only an
+// answer for a command someone typed: plugin-invoked processes run with
+// cwd = plugin root, so falling back there names treehouse itself.
+// Reasoning: docs/herdr-quirks.md.
+export const requireInvocationTarget = (input: RequiredTargetInput): string => {
+  const target = invocationTargetPath(input)
+  if (target) return target
+  // The clicked url comes first because a real click carries a context payload
+  // too, so asking isPluginInvocation first labelled every click a plugin
+  // invocation. Its own variable is checked as well: the url can arrive with no
+  // payload to read a cwd from.
+  const source = readInvocationContext(input.env).clickedUrl
+    ? 'link invocation'
+    : isPluginInvocation(input.env)
+      ? 'plugin invocation'
+      : undefined
+  if (source) {
+    throw new Error(
+      `${source}: could not derive the target repo from the plugin context (refusing to fall back to cwd, which is the plugin's own repo)`,
+    )
+  }
+  return input.cwd
+}
+
 // The caller's own pane/tab: teardown skips itself in the busy check and
 // closes its own tab last.
 export const callerPaneId = (env: Environment) => env.HERDR_PANE_ID
