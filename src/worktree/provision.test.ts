@@ -11,10 +11,12 @@ import {
 } from 'node:fs'
 import { join } from 'node:path'
 import type { RepoConfig } from '../config/config.ts'
-import { buildWorktreePlan } from './plan.ts'
-import { provisionWorktree, type ProvisionOptions } from './provision.ts'
+import { spawnProcess, type ProcessRunner } from '../processRunner.ts'
+import { createFakeProcessRunner } from '../testing/fakeProcessRunner.ts'
 import { resolvedRepoConfig } from '../testing/repoConfig.ts'
 import { createTempRepo, type TempRepo } from '../testing/tempRepo.ts'
+import { buildWorktreePlan } from './plan.ts'
+import { provisionWorktree, type ProvisionOptions } from './provision.ts'
 
 let repo: TempRepo
 let logged: string[]
@@ -33,9 +35,12 @@ afterEach(() => {
 // Everything but the sinks: log and warn are required, so taking them here too
 // would make every call site repeat them, and spreading `extra` last would let a
 // test quietly replace the recording sinks while still asserting on `logged`.
-type ProvisionExtras = Omit<ProvisionOptions, 'log' | 'warn'>
+// `run` defaults to the real spawn: most of what is asserted below is what a
+// bootstrap script or a setup command did, and the fake is opt-in per test.
+type ProvisionExtras = Omit<ProvisionOptions, 'log' | 'warn' | 'run'> & { run?: ProcessRunner }
 
-const options = (extra: ProvisionExtras = {}): ProvisionOptions => ({
+const options = ({ run = spawnProcess, ...extra }: ProvisionExtras = {}): ProvisionOptions => ({
+  run,
   log: (message) => logged.push(message),
   warn: (message) => warned.push(message),
   ...extra,
@@ -251,9 +256,13 @@ describe('setup', () => {
   test('a typo\'d placeholder stops the run before any command has run', () => {
     // The half-provisioned worktree that setup's abort rule exists to prevent is
     // exactly what a lazily expanded list produced: command 1 ran, command 2 threw.
-    expect(() => provision({ setup: ['echo first > ran.txt', 'cp {wortkree}/.env .env'] })).toThrow(
-      /unknown placeholder \{wortkree\} in setup/,
-    )
+    // Asserted at the seam: nothing was handed to the runner at all, rather than
+    // "the file the first command would have written is not there".
+    const runner = createFakeProcessRunner()
+    expect(() =>
+      provision({ setup: ['echo first > ran.txt', 'cp {wortkree}/.env .env'] }, { run: runner.run }),
+    ).toThrow(/unknown placeholder \{wortkree\} in setup/)
+    expect(runner.runs).toEqual([])
     expect(existsSync(join(repo.parent, 'my-repo-abc-1', 'ran.txt'))).toBe(false)
   })
 })
@@ -380,6 +389,65 @@ describe('the worktree.created path', () => {
     )
     expect(result.created).toBe(true)
     expect(existsSync(join(worktree, 'bootstrapped.txt'))).toBe(true)
+  })
+})
+
+describe('the process seam', () => {
+  // What the runner dependency buys: argv, cwd and call order are assertable
+  // without a script on disk and without a command that changes the worktree to
+  // prove it ran. The tests above still spawn for real, so the fake stays
+  // anchored to what a real spawn does.
+
+  test('setup commands reach the runner expanded, in order, and in the worktree', () => {
+    const runner = createFakeProcessRunner()
+    const { plan } = provision({ setup: ['npm ci', 'cp {root}/.env .env'] }, { run: runner.run })
+    expect(runner.commands()).toEqual(['bash -lc npm ci', `bash -lc cp ${repo.root}/.env .env`])
+    // Structurally too, not only as a line: a command split across argv entries
+    // would read the same joined up, and is the one change that breaks bash -lc.
+    expect(runner.runs[0]).toEqual({ command: 'bash', args: ['-lc', 'npm ci'], cwd: plan.worktree })
+    expect(runner.runsIn(plan.worktree)).toHaveLength(2)
+  })
+
+  test('a failing setup command aborts the run, leaving the rest unrun', () => {
+    const runner = createFakeProcessRunner({ 'bash -lc npm ci': 1 })
+    expect(() =>
+      provision({ setup: ['echo first', 'npm ci', 'echo third'] }, { run: runner.run }),
+    ).toThrow('setup command failed (exit 1): npm ci')
+    expect(runner.commands()).toEqual(['bash -lc echo first', 'bash -lc npm ci'])
+  })
+
+  test('the bootstrap argv reaches the runner whole, and runs in the main checkout', () => {
+    // The function outcome stands in for the script's side effect: a bootstrap
+    // owns creation, so one that creates nothing fails the check after it.
+    const runner = createFakeProcessRunner({
+      '/opt/bootstraps/up.sh': (run) => {
+        repo.git('worktree', 'add', run.args[1], '-b', 'ABC-1/fix', '--no-track', 'master')
+      },
+    })
+    const { plan } = provision(
+      { bootstrap: ['/opt/bootstraps/up.sh', '--dir', '{worktree}', '{branch}'] },
+      { run: runner.run },
+    )
+    expect(runner.runs).toEqual([
+      {
+        command: '/opt/bootstraps/up.sh',
+        args: ['--dir', plan.worktree, 'ABC-1/fix'],
+        cwd: repo.root,
+      },
+    ])
+  })
+
+  test('a bootstrap that never spawned is reported by name and reason', () => {
+    // The same failure the real ENOENT test above pins, scripted: no status to
+    // read, so the reason has to come out of the error.
+    const runner = createFakeProcessRunner({
+      '/opt/bootstraps/up.sh': { error: 'spawn /opt/bootstraps/up.sh ENOENT' },
+    })
+    const failure = expect(() =>
+      provision({ bootstrap: ['/opt/bootstraps/up.sh', '{worktree}'] }, { run: runner.run }),
+    )
+    failure.toThrow('bootstrap failed to run /opt/bootstraps/up.sh')
+    failure.toThrow('ENOENT')
   })
 })
 

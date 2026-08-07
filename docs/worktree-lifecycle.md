@@ -147,6 +147,14 @@ CLAUDE.md).
 - `bootstrap = []` is a truthy empty argv; provisioning checks `?.length`, not
   presence, because spawning `argv[0] === undefined` crashes with a Node type
   error instead of doing the obvious thing.
+- The two processes provisioning starts, the bootstrap argv and
+  `bash -lc <setup command>`, go through `EngineDeps.run` (`processRunner.ts`)
+  rather than a `spawnSync` import: the spawning adapter is the production
+  default and `testing/fakeProcessRunner.ts` records argv, cwd and order, which
+  is what makes the eager-expansion rule above assertable directly (nothing
+  reached the runner) instead of by side effect. `git.ts` is deliberately not a
+  caller — git's own behaviour is what `git.test.ts` pins — and
+  `provision.test.ts` keeps real spawns so the fake stays anchored to one.
 - A bootstrap that never started (a typo'd or moved `argv[0]`, a script without
   its exec bit) has no exit status, and `spawnSync` puts the reason in `error`
   instead. Reading `status` first reported `bootstrap failed (exit undefined)`

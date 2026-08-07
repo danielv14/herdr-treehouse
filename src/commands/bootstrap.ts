@@ -28,7 +28,7 @@ export const bootstrap = async (argv: string[], deps: EngineDeps) => {
 // payload is logged on every run so a shape change shows up before the fields
 // silently read as absent.
 export const bootstrapFromEvent = async (deps: EngineDeps) => {
-  const { env, warn: log, pluginConfigDir } = resolveDeps(deps)
+  const { env, warn: log, run, pluginConfigDir } = resolveDeps(deps)
   const { raw, path: worktreePath, branch } = readWorktreeCreatedEvent(env)
   if (!raw) {
     log('no HERDR_PLUGIN_EVENT_JSON in environment, nothing to do')
@@ -61,5 +61,5 @@ export const bootstrapFromEvent = async (deps: EngineDeps) => {
     // Herdr created the checkout; its path is a given, not a worktree_dir question.
     worktree: worktreePath,
   })
-  provisionWorktree(plan, repoConfig, { worktreeState: 'just-created', log, warn: log })
+  provisionWorktree(plan, repoConfig, { worktreeState: 'just-created', run, log, warn: log })
 }

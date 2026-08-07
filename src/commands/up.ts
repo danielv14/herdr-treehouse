@@ -98,7 +98,7 @@ const paneSpecs = (repoConfig: RepoConfig, expand: (template: string, where?: st
   }))
 
 export const up = async (argv: string[], deps: EngineDeps) => {
-  const { tabs, env, insideHerdr, log, warn, ask, pluginConfigDir } = resolveDeps(deps)
+  const { tabs, env, insideHerdr, log, warn, ask, run, pluginConfigDir } = resolveDeps(deps)
   const options = readOptions(argv)
   // A clicked link means "take me there", so it focuses the tab that a bare
   // --branch leaves in the background; the interactive popup does the same.
@@ -172,7 +172,7 @@ export const up = async (argv: string[], deps: EngineDeps) => {
         model: options.model,
       })
 
-  provisionWorktree(plan, repoConfig, { setupExisting: options.setup, log, warn })
+  provisionWorktree(plan, repoConfig, { setupExisting: options.setup, run, log, warn })
   // An explicit --label is the caller's to spell, tree prefix included.
   const label = options.label ?? `🌳 ${plan.id}`
   const workspaceId = tabs.resolveWorkspace(mainRepoRoot)
