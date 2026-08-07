@@ -12,11 +12,11 @@ import {
 import { join } from 'node:path'
 import type { RepoConfig } from '../config/config.ts'
 import { spawnProcess, type ProcessRunner } from '../processRunner.ts'
-import { buildWorktreePlan } from './plan.ts'
-import { provisionWorktree, type ProvisionOptions } from './provision.ts'
 import { createFakeProcessRunner } from '../testing/fakeProcessRunner.ts'
 import { resolvedRepoConfig } from '../testing/repoConfig.ts'
 import { createTempRepo, type TempRepo } from '../testing/tempRepo.ts'
+import { buildWorktreePlan } from './plan.ts'
+import { provisionWorktree, type ProvisionOptions } from './provision.ts'
 
 let repo: TempRepo
 let logged: string[]
@@ -402,6 +402,9 @@ describe('the process seam', () => {
     const runner = createFakeProcessRunner()
     const { plan } = provision({ setup: ['npm ci', 'cp {root}/.env .env'] }, { run: runner.run })
     expect(runner.commands()).toEqual(['bash -lc npm ci', `bash -lc cp ${repo.root}/.env .env`])
+    // Structurally too, not only as a line: a command split across argv entries
+    // would read the same joined up, and is the one change that breaks bash -lc.
+    expect(runner.runs[0]).toEqual({ command: 'bash', args: ['-lc', 'npm ci'], cwd: plan.worktree })
     expect(runner.runsIn(plan.worktree)).toHaveLength(2)
   })
 

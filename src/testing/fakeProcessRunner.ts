@@ -13,6 +13,10 @@ import type { ProcessRun, ProcessRunner } from '../processRunner.ts'
 // An unmatched run exits 0. Unlike the Herdr fake, an unscripted call is not a
 // test passing by accident: the assertions here are on what was run, not on
 // what came back.
+//
+// What it cannot prove, and what provision.test.ts therefore keeps real spawns
+// for: a relative argv[0] resolved against cwd, a script without its exec bit,
+// and a cwd that is not a directory.
 export type FakeOutcome = number | { error: string }
 export type FakeOutcomes = Record<string, FakeOutcome | ((run: ProcessRun) => FakeOutcome | void)>
 
@@ -35,6 +39,12 @@ export const createFakeProcessRunner = (outcomes: FakeOutcomes = {}): FakeProces
   const keys = Object.keys(outcomes)
 
   const run: ProcessRunner = (request) => {
+    // spawnSync throws a TypeError on an empty or missing argv[0] rather than
+    // running anything, so answering exit 0 would let the fake pass exactly the
+    // regression (`bootstrap = []`) the length guard in provision.ts exists for.
+    if (!request.command) {
+      throw new Error(`fake process runner: no command to run (args: ${request.args.join(' ')})`)
+    }
     runs.push({ ...request, args: [...request.args] })
     const key = matchKey(commandLine(request), keys)
     const scripted = key === undefined ? 0 : outcomes[key]

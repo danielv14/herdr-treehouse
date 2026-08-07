@@ -4,8 +4,10 @@ import { join } from 'node:path'
 import { bootstrapFromEvent } from './bootstrap.ts'
 import type { Environment } from '../herdr/context.ts'
 import type { EngineDeps } from '../deps.ts'
+import type { ProcessRunner } from '../processRunner.ts'
 import { expectRejection } from '../testing/expectRejection.ts'
 import { createFakeHerdr } from '../testing/fakeHerdr.ts'
+import { createFakeProcessRunner } from '../testing/fakeProcessRunner.ts'
 import { createTempRepo, type TempRepo } from '../testing/tempRepo.ts'
 
 // The hook is the only path in the engine that runs unattended, driven by a
@@ -28,14 +30,17 @@ const payload = (worktreePath: unknown, branch: unknown) =>
     },
   })
 
-const deps = (env: Environment): EngineDeps => ({
+// `run` left out is the real spawn, which is what most of these tests assert
+// through (a setup command that writes a file).
+const deps = (env: Environment, run?: ProcessRunner): EngineDeps => ({
   invoke: createFakeHerdr({}).invoke,
   env: { HERDR_PLUGIN_CONFIG_DIR: configDir, ...env },
+  run,
   warn: (message) => logged.push(message),
 })
 
-const runHook = (eventJson: string | undefined) =>
-  bootstrapFromEvent(deps(eventJson === undefined ? {} : { HERDR_PLUGIN_EVENT_JSON: eventJson }))
+const runHook = (eventJson: string | undefined, run?: ProcessRunner) =>
+  bootstrapFromEvent(deps(eventJson === undefined ? {} : { HERDR_PLUGIN_EVENT_JSON: eventJson }, run))
 
 // Herdr's native worktree flow creates the checkout before the hook fires.
 const createWorktreeLikeHerdrDoes = () => {
@@ -65,6 +70,20 @@ describe('a well-formed payload', () => {
 
     expect(existsSync(join(worktree, 'ran.txt'))).toBe(true)
     expect(logged.join('\n')).toContain('setup: echo ran > ran.txt')
+  })
+
+  test('the setup commands go to the runner from deps, in the worktree Herdr made', async () => {
+    // The hook is the unattended path, so the seam it provisions through gets
+    // the same guard `up` has: a spawnSync import sneaking back into this call
+    // site would leave every other test in this file green.
+    writeFileSync(join(repo.root, '.treehouse.toml'), 'setup = ["npm ci"]\n')
+    createWorktreeLikeHerdrDoes()
+    const runner = createFakeProcessRunner()
+
+    await runHook(payload(worktree, 'ABC-1/fix'), runner.run)
+
+    expect(runner.commands()).toEqual(['bash -lc npm ci'])
+    expect(runner.runsIn(worktree)).toHaveLength(1)
   })
 
   test('logs the raw payload, so the plugin log shows what Herdr sent', async () => {
