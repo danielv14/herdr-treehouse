@@ -6,16 +6,19 @@ file keeps the longer reasoning that used to live as code comments.
 ## One module answers where a branch's worktree goes
 
 `placement.ts` owns the whole rule: given a repo, a branch, the main checkout
-root and the repo's config, it answers which path the branch gets, which short
-name that path goes by, and whether a worktree is already there — and it raises
-both refusals (the branch sits in the main checkout, every legal path belongs to
-another branch). `plan.ts` keeps the pure half, `worktreePlacements()`, and
-placement is the half that may ask git, the way provisioning does.
+root and the repo's config, it asks git whether a worktree is already there and
+answers which path the branch gets and which short name that path goes by — and
+it raises both refusals (the branch sits in the main checkout, every legal path
+belongs to another branch). `plan.ts` keeps the pure half,
+`worktreePlacements()`, and placement is the half that may ask git, the way
+provisioning does.
 
 `up` asks once, between resolving the config and building the plan, and hands
-the answer to `buildWorktreePlan` as its explicit `worktree` and `id`. `ls` asks
-the same module which placement a worktree stands on, so both read one rule
-rather than each assembling it from the pure half plus git.
+the answer to `buildWorktreePlan` as its explicit `worktree` and `id`. `ls`,
+through `inventory.ts`, asks the same module which placement a worktree stands
+on, so both read one rule rather than each assembling it from the pure half plus
+git. `unplaceable()` is the answer for a worktree with no placement to read a
+name off, so the two callers cannot drift on what such a worktree is called.
 
 ## Git owns where an existing worktree is
 
@@ -71,9 +74,11 @@ disambiguated slug path reads as managed rather than off-convention. The managed
 check is a path comparison against the *current* branch name, so a branch
 renamed after creation trips the `*` marker as well — the worktree no longer
 stands where the convention would put that name. A `worktree_dir` too broken to
-derive anything throws there as it does in `up`; `ls` catches it, warns once and
-falls back to the branch's plain short name, because one broken template must
-not blank a whole listing.
+derive anything throws there as it does in `up`; the inventory catches it, warns
+once and takes the `unplaceable()` answer, because one broken template must not
+blank a whole listing. That the throw means "refuse" for `up` and "render the
+row anyway" for `ls` is why the catch stays at the call site: it is a policy
+difference between callers, not part of the rule.
 
 ## Sibling layout
 

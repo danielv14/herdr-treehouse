@@ -37,7 +37,6 @@ describe('a branch with nowhere to be yet', () => {
     expect(resolveWorktreePlacement(request('ABC-1/fix-thing'))).toEqual({
       id: 'abc-1',
       worktree: sibling('my-repo-abc-1'),
-      exists: false,
       managed: true,
     })
   })
@@ -46,7 +45,6 @@ describe('a branch with nowhere to be yet', () => {
     expect(resolveWorktreePlacement(request('experiment/try-something'))).toMatchObject({
       id: 'experiment-try-something',
       worktree: sibling('my-repo-experiment-try-something'),
-      exists: false,
     })
   })
 })
@@ -62,7 +60,6 @@ describe('two branches under one ticket', () => {
     expect(resolveWorktreePlacement(request(stateMachine))).toEqual({
       id: 'abc-1-state-machine-approach',
       worktree: sibling('my-repo-abc-1-state-machine-approach'),
-      exists: false,
       managed: true,
     })
   })
@@ -82,7 +79,6 @@ describe('two branches under one ticket', () => {
     expect(resolveWorktreePlacement(request(stateMachine))).toEqual({
       id: 'abc-1-state-machine-approach',
       worktree: second,
-      exists: true,
       managed: true,
     })
   })
@@ -93,7 +89,6 @@ describe('two branches under one ticket', () => {
     expect(resolveWorktreePlacement(request(reducer))).toMatchObject({
       id: 'abc-1',
       worktree: first,
-      exists: true,
     })
   })
 
@@ -118,7 +113,6 @@ describe('a worktree outside the convention', () => {
     expect(resolveWorktreePlacement(request(branch))).toEqual({
       id: 'ui-upgrade-to-ui-in-konto',
       worktree: elsewhere,
-      exists: true,
       managed: false,
     })
   })
@@ -136,7 +130,6 @@ describe('a worktree outside the convention', () => {
     expect(placementOfWorktree(request('ABC-1/state-machine'), path)).toEqual({
       id: 'abc-1-state-machine',
       worktree: path,
-      exists: true,
       managed: true,
     })
   })

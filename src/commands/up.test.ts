@@ -172,7 +172,9 @@ command = "npm run dev"
       up(['--repo', repo.root, '--branch', 'master', '--no-agent'], deps(fake)),
       /master is checked out in the main checkout \(.*\), not in a worktree/,
     )
-    expect(fake.callsMatching('tab create')).toHaveLength(0)
+    // A placement refusal lands before any Herdr work at all, not just before
+    // the tab: it is the one integration proof for both refusals.
+    expect(fake.calls).toHaveLength(0)
   })
 
   test('--setup runs the setup commands in a worktree that already exists', async () => {
