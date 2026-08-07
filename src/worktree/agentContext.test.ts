@@ -1,8 +1,13 @@
 import { afterEach, describe, expect, test } from 'bun:test'
-import { existsSync, readFileSync, rmSync, statSync } from 'node:fs'
+import { chmodSync, existsSync, readFileSync, rmSync, statSync } from 'node:fs'
 import { dirname } from 'node:path'
 import type { RepoConfig } from '../config/config.ts'
-import { prepareAgentCommand, type AgentCommandInput } from './agentContext.ts'
+import { resolvedRepoConfig } from '../testing/repoConfig.ts'
+import {
+  prepareAgentCommand,
+  type AgentCommandInput,
+  type PreparedAgentCommand,
+} from './agentContext.ts'
 import { buildWorktreePlan, type WorktreePlan } from './plan.ts'
 
 // The rules around `context` and `--model` in one place. No git and no Herdr:
@@ -19,7 +24,7 @@ const planFor = (branch: string, repoConfig: Partial<RepoConfig> = {}, targets: 
     repoName: 'ctx-repo',
     branch,
     mainRepoRoot: MAIN,
-    repoConfig: { root: MAIN, ...repoConfig },
+    repoConfig: resolvedRepoConfig({ root: MAIN, ...repoConfig }),
     configDir: CONFIG_DIR,
     targets,
   })
@@ -37,14 +42,21 @@ afterEach(() => {
   for (const path of written.splice(0)) rmSync(path, { force: true })
 })
 
+// A real narrowing, so a regression fails on this line instead of inside
+// readFileSync with an ERR_INVALID_ARG_TYPE.
+const contextFileOf = (prepared: PreparedAgentCommand): string => {
+  if (prepared.contextFile === undefined) throw new Error('no context file was written')
+  return prepared.contextFile
+}
+
 // What the file would be called for this plan, learned from a run that works.
 // The refusal tests assert against that name rather than against an empty
-// directory, so nothing here goes looking for a filename prefix.
+// directory, so nothing here goes looking for a filename prefix. No `force` on
+// the delete: a path reported but never written should fail loudly.
 const reserveContextFile = (plan: WorktreePlan): string => {
-  const path = prepare(plan, { command: APPEND, context: 'a context that renders' }).contextFile
-  expect(path).toBeDefined()
-  rmSync(path as string)
-  return path as string
+  const path = contextFileOf(prepare(plan, { command: APPEND, context: 'a context that renders' }))
+  rmSync(path)
+  return path
 }
 
 describe('context delivery', () => {
@@ -55,18 +67,35 @@ describe('context delivery', () => {
       context: '\nYou are in a worktree of {repo}: {worktree}, branch {branch}, ticket {ticket}.\nTargets: {targets}.\n',
     })
 
-    expect(prepared.contextFile).toBeDefined()
-    expect(prepared.command).toBe(`claude --append-system-prompt "$(cat ${prepared.contextFile})"`)
-    expect(readFileSync(prepared.contextFile as string, 'utf8')).toBe(
+    const contextFile = contextFileOf(prepared)
+    expect(prepared.command).toBe(`claude --append-system-prompt "$(cat ${contextFile})"`)
+    expect(readFileSync(contextFile, 'utf8')).toBe(
       `You are in a worktree of ctx-repo: ${plan.worktree}, branch ABC-1/fix-thing, ticket abc-1.\n` +
         'Targets: services/a, packages/b.\n',
     )
   })
 
   test('a repo with no context leaves the command as it was and writes nothing', () => {
-    const prepared = prepare(planFor('ABC-2/fix'), { command: 'claude --resume' })
+    const plan = planFor('ABC-2/fix')
+    const path = reserveContextFile(plan)
+    const prepared = prepare(plan, { command: 'claude --resume' })
     expect(prepared.command).toBe('claude --resume')
     expect(prepared.contextFile).toBeUndefined()
+    expect(existsSync(path)).toBe(false)
+  })
+
+  test('the path is the worktree\'s, not the command\'s or the text\'s', () => {
+    // What the refusal tests lean on: a path learned from one working run is the
+    // path any other input for this plan would have used.
+    const plan = planFor('ABC-80/fix')
+    const first = prepare(plan, { command: APPEND, context: 'one' })
+    const second = prepare(plan, {
+      command: 'codex --context {context_file} {model_arg}',
+      context: 'two',
+      modelArg: '--model {model}',
+      model: 'opus',
+    })
+    expect(second.contextFile).toBe(first.contextFile)
   })
 
   test('braces that are not placeholders pass through the agent command', () => {
@@ -82,7 +111,7 @@ describe('context delivery', () => {
     const second = prepare(plan, { command: APPEND, context: 'second' })
 
     expect(second.contextFile).toBe(first.contextFile)
-    expect(readFileSync(first.contextFile as string, 'utf8')).toBe('second\n')
+    expect(readFileSync(contextFileOf(first), 'utf8')).toBe('second\n')
   })
 
   test('two worktrees sharing a repo and an id get a file each', () => {
@@ -95,13 +124,26 @@ describe('context delivery', () => {
     })
 
     expect(elsewhere.contextFile).not.toBe(here.contextFile)
-    expect(readFileSync(here.contextFile as string, 'utf8')).toBe('here\n')
+    expect(readFileSync(contextFileOf(here), 'utf8')).toBe('here\n')
   })
 
   test('the file is readable by its owner only, and so is the directory', () => {
-    const prepared = prepare(planFor('ABC-79/fix'), { command: APPEND, context: 'private' })
-    expect(statSync(prepared.contextFile as string).mode & 0o777).toBe(0o600)
-    expect(statSync(dirname(prepared.contextFile as string)).mode & 0o777).toBe(0o700)
+    const contextFile = contextFileOf(
+      prepare(planFor('ABC-79/fix'), { command: APPEND, context: 'private' }),
+    )
+    expect(statSync(contextFile).mode & 0o777).toBe(0o600)
+    expect(statSync(dirname(contextFile)).mode & 0o777).toBe(0o700)
+  })
+
+  test('a file that was left readable is narrowed again on the next run', () => {
+    // The name is deterministic and the file outlives the run, so a mode set
+    // once is not the same as a mode kept.
+    const plan = planFor('ABC-81/fix')
+    const contextFile = contextFileOf(prepare(plan, { command: APPEND, context: 'private' }))
+    chmodSync(contextFile, 0o644)
+
+    prepare(plan, { command: APPEND, context: 'private, again' })
+    expect(statSync(contextFile).mode & 0o777).toBe(0o600)
   })
 })
 

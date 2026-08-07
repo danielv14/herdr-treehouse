@@ -212,7 +212,5 @@ export const up = async (argv: string[], deps: EngineDeps) => {
     log(`pane:      ${pane.paneId}${name}: ${state}`)
   }
   if (agent && opened.agentStarted) log(`agent:     ${agent.command} in ${opened.mainPaneId}`)
-  // Reported whenever one was written, agent or not: it is a file on disk, and
-  // the summary is the only place its name is ever spelled out.
   if (agent?.contextFile) log(`context:   ${agent.contextFile}`)
 }

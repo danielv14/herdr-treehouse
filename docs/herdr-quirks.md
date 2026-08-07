@@ -1,9 +1,28 @@
 # Herdr integration: behaviours and quirks
 
 Everything the engine knows about Herdr lives in `src/herdr/tabs.ts` (subcommand
-names, response decoding) and `src/herdr/context.ts` (env payloads). This file
+names, response decoding), `src/herdr/invoker.ts` (spawning and the response
+envelope) and `src/herdr/context.ts` (env payloads). This file
 collects the version-specific behaviours those modules code around, all
 live-observed on herdr 0.7.5 unless noted.
+
+## The response envelope
+
+Most calls answer on stdout with a JSON envelope whose `result` is the payload;
+a few (`plugin config-dir`) answer with a bare line, which is the value itself.
+`unpackHerdrResponse` in `src/herdr/invoker.ts` is that one rule: strip the
+envelope, fall back to the trimmed body when stdout is not JSON, and turn a
+non-zero exit into an error carrying stderr (or stdout when stderr is empty). A
+spawn that never started is its own error, and both streams are null there, so
+that check comes first. The result stays `unknown`: decoding it is `tabs.ts`'s
+job, and an envelope without a `result` reads as "no answer" there rather than
+as a failure here.
+
+The seam has two adapters, the spawning one above and the recording fake in
+`src/testing/fakeHerdr.ts`, and `src/herdr/invoker.test.ts` drives `tabs.ts`
+over the real unpacking so the two agree on the shapes it covers. That catches
+drift between our own adapters, not drift in Herdr: a changed envelope only
+shows up in a live session.
 
 ## Workspace lookup
 

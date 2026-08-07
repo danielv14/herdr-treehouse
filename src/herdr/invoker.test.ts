@@ -59,18 +59,22 @@ describe('unpacking a response', () => {
 
   test('a spawn that never started names the binary it tried', () => {
     // The teardown refusal leans on this path: no herdr on PATH must reach the
-    // caller as an error, not as "nothing is running here".
+    // caller as an error, not as "nothing is running here". Spelled out rather
+    // than built from the helper, because null streams are the whole point.
     expect(() =>
-      unpackHerdrResponse(
-        '/opt/herdr/bin/herdr',
-        ['pane', 'process-info'],
-        spawned({ status: null, error: new Error('spawnSync /opt/herdr/bin/herdr ENOENT') }),
-      ),
+      unpackHerdrResponse('/opt/herdr/bin/herdr', ['pane', 'process-info'], {
+        status: null,
+        stdout: null,
+        stderr: null,
+        error: new Error('spawnSync /opt/herdr/bin/herdr ENOENT'),
+      }),
     ).toThrow('failed to spawn /opt/herdr/bin/herdr: spawnSync /opt/herdr/bin/herdr ENOENT')
   })
 
   test('a spawn error wins over the exit status', () => {
-    expect(() => unpack({ status: null, error: new Error('EACCES') })).toThrow('failed to spawn herdr')
+    expect(() =>
+      unpack({ status: null, stdout: null, stderr: null, error: new Error('EACCES') }),
+    ).toThrow('failed to spawn herdr')
   })
 })
 
@@ -93,18 +97,62 @@ describe('the shape tabs.ts decodes against', () => {
     expect(createTabChoreography(invoke).findWorkspace('/dev/repo')).toBe('wA')
   })
 
-  test('a tab and its root pane read off a real envelope', async () => {
+  test('a workspace created for a repo that had none', () => {
+    const invoke = invokerOverStdout({
+      'worktree list': '{"result":{"source":{}}}\n',
+      'workspace create': '{"result":{"workspace":{"workspace_id":"wB"}}}\n',
+    })
+    expect(createTabChoreography(invoke).resolveWorkspace('/dev/repo')).toBe('wB')
+  })
+
+  test('a tab, its root pane and a split pane read off real envelopes', async () => {
     const invoke = invokerOverStdout({
       'tab create': '{"result":{"tab":{"tab_id":"wA:t7"},"root_pane":{"pane_id":"wA:p9"}}}\n',
+      'pane split': '{"result":{"pane":{"pane_id":"wA:pA"}}}\n',
+      'pane rename': '{"result":{}}\n',
+      'pane send-text': '{"result":{}}\n',
     })
     const opened = await createTabChoreography(invoke).openWorktreeTab({
       workspaceId: 'wA',
       cwd: '/dev/repo-abc-1',
       label: '🌳 abc-1',
       focus: false,
-      panes: [],
+      panes: [{ split: 'down', ratio: 0.3, label: 'dev', command: 'npm run dev', autostart: false }],
     })
-    expect(opened).toMatchObject({ tabId: 'wA:t7', mainPaneId: 'wA:p9', agentStarted: false })
+    expect(opened).toMatchObject({
+      tabId: 'wA:t7',
+      mainPaneId: 'wA:p9',
+      agentStarted: false,
+      panes: [{ paneId: 'wA:pA', label: 'dev', command: 'npm run dev', started: false }],
+    })
+  })
+
+  test('a pane snapshot read off a real envelope', () => {
+    const invoke = invokerOverStdout({
+      'pane list':
+        '{"result":{"panes":[{"pane_id":"wA:p5","tab_id":"wA:t7","cwd":"/dev/repo-abc-1","agent":"claude","agent_status":"idle"}]}}\n',
+    })
+    expect(createTabChoreography(invoke).listPanes('wA')).toEqual([
+      { paneId: 'wA:p5', tabId: 'wA:t7', cwd: '/dev/repo-abc-1', agent: 'claude', agentStatus: 'idle' },
+    ])
+  })
+
+  test('a busy pane read off a real envelope', async () => {
+    // The two shapes `down` refuses on, and the reason #57 exists: its own test
+    // provokes the failure through the fake, so nothing else pins these.
+    const invoke = invokerOverStdout({
+      'pane list': '{"result":{"panes":[{"pane_id":"wA:p5","tab_id":"wA:t7","cwd":"/dev/repo-abc-1"}]}}\n',
+      'pane process-info':
+        '{"result":{"process_info":{"foreground_processes":[{"name":"node","cmdline":"npm run dev"}]}}}\n',
+    })
+    const inspected = await createTabChoreography(invoke, { sleep: async () => {} }).inspectWorktreeTab(
+      'wA',
+      '/dev/repo-abc-1',
+    )
+    expect(inspected).toEqual({
+      tabIds: ['wA:t7'],
+      busyPanes: [{ paneId: 'wA:p5', command: 'npm run dev' }],
+    })
   })
 
   test('a bare body is what the config dir lookup expects', () => {

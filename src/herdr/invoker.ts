@@ -6,28 +6,27 @@ import type { Environment } from './context.ts'
 // decoding happens once, at the seam in tabs.ts.
 export type HerdrInvoker = (args: string[]) => unknown
 
-// The fields of spawnSync's result the unpacking reads. Named so unpacking is a
-// pure function of a finished spawn: the fake proves the call sequence, this
-// proves the response shape tabs.ts decodes against. Neither sees drift in
-// Herdr itself, which only a live session shows.
+// The fields of spawnSync's result the unpacking reads, so unpacking is a pure
+// function of a finished spawn. Both streams are null when the spawn never
+// started, which is why `error` is checked first. Envelope shapes and what the
+// two adapters do and do not prove: docs/herdr-quirks.md.
 export type HerdrSpawn = {
   status: number | null
-  stdout: string
-  stderr: string
+  stdout: string | null
+  stderr: string | null
   error?: Error
 }
 
 export const unpackHerdrResponse = (bin: string, args: string[], spawned: HerdrSpawn): unknown => {
   if (spawned.error) throw new Error(`failed to spawn ${bin}: ${spawned.error.message}`)
+  const stdout = spawned.stdout ?? ''
   if (spawned.status !== 0) {
-    throw new Error(`herdr ${args.join(' ')} failed: ${(spawned.stderr || spawned.stdout).trim()}`)
+    throw new Error(`herdr ${args.join(' ')} failed: ${(spawned.stderr || stdout).trim()}`)
   }
-  // Most calls answer with a JSON envelope whose `result` is the payload; a few
-  // (`plugin config-dir`) answer with a bare line, which is the value itself.
   try {
-    return JSON.parse(spawned.stdout).result
+    return JSON.parse(stdout).result
   } catch {
-    return spawned.stdout.trim()
+    return stdout.trim()
   }
 }
 

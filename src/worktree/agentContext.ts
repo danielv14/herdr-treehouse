@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { agentCommandTakesContext, agentCommandTakesModel, type WorktreePlan } from './plan.ts'
@@ -112,5 +112,9 @@ export const prepareAgentCommand = (
   const command = plan.expandAgent(input.command, { contextFile: path, modelArg }).trim()
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 })
   writeFileSync(path, `${rendered}\n`, { mode: 0o600 })
+  // `mode` applies at creation only, and the name is deterministic, so a file
+  // that once ended up readable by anyone else would stay that way through
+  // every later `up`.
+  chmodSync(path, 0o600)
   return { command, contextFile: path }
 }

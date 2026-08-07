@@ -192,7 +192,8 @@ agent"); this is the engine-side reasoning behind `src/worktree/agentContext.ts`
   plus `{id}` do not identify a worktree on their own (two repos sharing a
   basename under one ticket), and the exposure window is minutes wide — the
   file is written before provisioning and read after the tab opens.
-- **The path is a return value, not a secret.** `prepareAgentCommand` hands
+- **The path is a return value, not something the caller re-derives.**
+  `prepareAgentCommand` hands
   back the command and, when it wrote one, the context file, so `up` can name
   it in its summary and a test can assert against it. Deriving it a second time
   at the call site would put the naming rule in two places, and reading it out
