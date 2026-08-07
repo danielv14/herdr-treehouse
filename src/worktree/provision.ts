@@ -47,7 +47,11 @@ export const provisionWorktree = (
     const argv = plan.expandArgv(repoConfig.bootstrap ?? [])
     log(`bootstrap: ${argv.join(' ')}`)
     const result = spawnSync(argv[0], argv.slice(1), { cwd: plan.root, stdio: 'inherit' })
-    if (result.status !== 0) throw new Error(`bootstrap failed (exit ${result.status})`)
+    // A spawn that never reached the script (argv[0] missing, or without its exec
+    // bit) leaves status undefined and the reason in `error`, so reading status
+    // first reported "exit undefined" and named neither the file nor the reason.
+    if (result.error) throw new Error(`bootstrap failed to run ${argv[0]}: ${result.error.message}`)
+    if (result.status !== 0) throw new Error(`bootstrap failed (exit ${result.status}): ${argv[0]}`)
   } else if (justCreated) {
     // Herdr already created the checkout; nothing to create here.
   } else if (existedBefore) {
@@ -90,6 +94,12 @@ const runSetup = (
   for (const command of expanded) {
     log(`setup: ${command}`)
     const result = spawnSync('bash', ['-lc', command], { cwd: plan.worktree, stdio: 'inherit' })
+    // bash existing covers argv[0], but not the cwd: a bootstrap that leaves a
+    // plain file at the worktree path passes the existsSync check above, and the
+    // spawn then fails with no status to report.
+    if (result.error) {
+      throw new Error(`setup command failed to run in ${plan.worktree}: ${result.error.message}`)
+    }
     if (result.status !== 0) throw new Error(`setup command failed (exit ${result.status}): ${command}`)
   }
 }

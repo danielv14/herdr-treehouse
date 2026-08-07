@@ -14,6 +14,7 @@ const PLACEHOLDERS = [
   'worktree',
   'root',
   'base',
+  'config_dir',
   'targets',
 ] as const
 
@@ -151,6 +152,10 @@ export type PlanInput = {
   branch: string
   mainRepoRoot: string
   repoConfig: RepoConfig
+  // Where the config that a bootstrap or setup command belongs to lives, so
+  // {config_dir} can name a script next to it. Resolving it is Herdr's answer;
+  // the plan only carries the value.
+  configDir: string
   targets?: string[]
   // Path of a worktree that already exists, when the caller knows it (Herdr's
   // native flow, or a placement picked from worktreePlacements below).
@@ -216,6 +221,7 @@ export const buildWorktreePlan = ({
   branch,
   mainRepoRoot,
   repoConfig,
+  configDir,
   targets = [],
   worktree,
   id: chosenId,
@@ -230,9 +236,13 @@ export const buildWorktreePlan = ({
   const worktreePath = worktree ?? resolveWorktreePath(repoConfig, mainRepoRoot, withoutWorktree)
   // {targets} is the prose form of the list {targets...} spreads into bootstrap
   // argv: one string to drop into a sentence, empty when nothing was asked for.
+  //
+  // config_dir joins here, not in placeholderValues, so worktree_dir cannot use
+  // it. See docs/worktree-lifecycle.md.
   const values: Record<string, string> = {
     ...withoutWorktree,
     worktree: worktreePath,
+    config_dir: configDir,
     targets: targets.join(', '),
   }
 

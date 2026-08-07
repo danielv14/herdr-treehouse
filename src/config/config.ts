@@ -164,7 +164,11 @@ export const renderProposedBlock = (proposal: RepoProposal, home: 'central' | 'l
     ...head,
     `# worktree_dir = "${DEFAULT_WORKTREE_DIR.replace('{repo}', proposal.name)}"  # this is the default; set it only for a different layout`,
     `# base = "${DEFAULT_BASE}"`,
-    `# bootstrap = ["path/to/bootstrap.sh", "--dir", "{worktree}", "{branch}", "{targets...}"]`,
+    // argv[0] needs a path that does not depend on cwd, so each home is shown
+    // the anchor it has: the config dir centrally, the repo itself locally.
+    home === 'local'
+      ? `# bootstrap = ["{root}/scripts/worktree-up.sh", "--dir", "{worktree}", "{branch}", "{targets...}"]`
+      : `# bootstrap = ["{config_dir}/bootstraps/${proposal.name}.sh", "--dir", "{worktree}", "{branch}", "{targets...}"]`,
     proposal.installCommand
       ? `setup = [${JSON.stringify(proposal.installCommand)}]`
       : `# setup = ["npm ci"]  # commands run in a freshly created worktree`,

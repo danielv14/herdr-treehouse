@@ -105,6 +105,7 @@ Layering is `[defaults]` → `[repos.X]` → `.treehouse.toml`, last one wins, s
 | `{worktree}` | resolved worktree path |
 | `{root}` | main checkout path |
 | `{base}` | base ref (default `origin/master`) |
+| `{config_dir}` | the plugin config dir, i.e. where `config.toml` and your `bootstraps/` live; not legal in `worktree_dir` |
 | `{targets}` | the `--target` list, comma-separated; empty when none were given |
 | `{targets...}` | one argv entry per `--target` — bootstrap argv only |
 | `{context_file}` | path of the rendered `context` file — agent command only |
@@ -112,6 +113,8 @@ Layering is `[defaults]` → `[repos.X]` → `.treehouse.toml`, last one wins, s
 | `{model}` | the name passed to `--model` — `model_arg` only |
 
 A typo'd placeholder (`{wortkree}`) is an error that stops the run, not a literal that reaches a shell command. Any other brace passes through untouched, since config values are shell commands: `{{.Names}}`, `{print $1}` and `${HOME}` all survive.
+
+`{config_dir}` names a `bootstrap` script kept next to your config without writing Herdr's plugin config path into every entry: `bootstrap = ["{config_dir}/bootstraps/my-repo.sh", ...]`. Why a relative `argv[0]` is not the shorthand it looks like, and which anchor `onboard` proposes for each config home, is in [`docs/worktree-lifecycle.md`](docs/worktree-lifecycle.md).
 
 ### Agent command
 
