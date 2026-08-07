@@ -94,6 +94,12 @@ const runSetup = (
   for (const command of expanded) {
     log(`setup: ${command}`)
     const result = spawnSync('bash', ['-lc', command], { cwd: plan.worktree, stdio: 'inherit' })
+    // bash existing covers argv[0], but not the cwd: a bootstrap that leaves a
+    // plain file at the worktree path passes the existsSync check above, and the
+    // spawn then fails with no status to report.
+    if (result.error) {
+      throw new Error(`setup command failed to run in ${plan.worktree}: ${result.error.message}`)
+    }
     if (result.status !== 0) throw new Error(`setup command failed (exit ${result.status}): ${command}`)
   }
 }

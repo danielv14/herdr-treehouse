@@ -150,6 +150,15 @@ describe('setup', () => {
     expect(logged).toContain('setup: pwd > where.txt')
   })
 
+  test('a setup command that cannot run at all names the worktree, not an exit status', () => {
+    // A bootstrap that leaves a plain file where the worktree should be passes the
+    // existsSync check, and bash then has nothing to chdir into: no exit status.
+    const script = writeBootstrap('makes-a-file.sh', 'echo not-a-worktree > "$2"')
+    expect(() =>
+      provision({ bootstrap: [script, '--dir', '{worktree}'], setup: ['true'] }),
+    ).toThrow('setup command failed to run in')
+  })
+
   test('a failing setup command stops the run and names the command', () => {
     expect(() => provision({ setup: ['exit 3'] })).toThrow('setup command failed (exit 3): exit 3')
   })

@@ -187,7 +187,7 @@ describe('{config_dir}', () => {
     )
   })
 
-  test('is refused in worktree_dir, which is resolved without asking Herdr', () => {
+  test('is refused in worktree_dir, where a worktree never belongs', () => {
     expect(() => plan('ABC-1/x', { worktree_dir: '{config_dir}/trees/{id}' })).toThrow(
       '{config_dir} is not available in worktree_dir',
     )

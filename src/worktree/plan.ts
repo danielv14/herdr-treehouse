@@ -237,10 +237,8 @@ export const buildWorktreePlan = ({
   // {targets} is the prose form of the list {targets...} spreads into bootstrap
   // argv: one string to drop into a sentence, empty when nothing was asked for.
   //
-  // config_dir joins here rather than in placeholderValues, which keeps it out
-  // of worktree_dir: a worktree never belongs in the config dir, and the path is
-  // resolved by asking Herdr, which worktreePlacements (pure, and called by
-  // inventory) cannot do. See docs/worktree-lifecycle.md.
+  // config_dir joins here, not in placeholderValues, so worktree_dir cannot use
+  // it. See docs/worktree-lifecycle.md.
   const values: Record<string, string> = {
     ...withoutWorktree,
     worktree: worktreePath,

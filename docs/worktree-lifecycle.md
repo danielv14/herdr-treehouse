@@ -83,23 +83,26 @@ untouched.
 
 `{config_dir}` is the plugin config dir as a placeholder, and it exists because a
 bootstrap's `argv[0]` needs an absolute path, which meant every config wrote out
-Herdr's plugin config layout — a path `herdr plugin config-dir` decides, not us,
+Herdr's plugin config layout: a path `herdr plugin config-dir` decides, not us,
 and Herdr is pre-1.0 and has moved CLI surfaces before. The relative form is not
 the shorthand it looks like: `spawnSync` resolves a relative `argv[0]` against
 `cwd`, which provisioning sets to the main checkout, so `bootstraps/up.sh` looks
 inside the repo. Anchoring relative bootstrap paths at the config dir instead was
 rejected: it would silently change what an existing relative path means, and it
 reads ambiguously for a repo configured by a local `.treehouse.toml`, where the
-repo is the natural anchor — which is also why `{config_dir}` only ever needs to
-mean the plugin config dir, since a repo-local config's script belongs in the
-repo and today's anchor already finds it.
+repo is the natural anchor. That is also why `{config_dir}` only ever needs to
+mean the plugin config dir: a repo-local config's script belongs in the repo, and
+today's anchor already finds it.
 
 It is legal wherever ordinary placeholders are, not scoped to bootstrap (a setup
 command may well copy a template from there), with one exception: `worktree_dir`,
 where it is refused the way `{worktree}` is. A worktree never belongs in the
-config dir, and the path is Herdr's answer to a CLI call, while `worktree_dir` is
-resolved by `worktreePlacements()` — pure, and called by `inventory.ts`, which
-may not reach the Herdr layer at all.
+config dir, so a `worktree_dir` naming it is broken config and refusing it costs
+nothing. That is a choice rather than a constraint: the value travels as a plain
+string, so it *could* be threaded into `worktreePlacements()` the way it is into
+`buildWorktreePlan()`, but `inventory.ts` and `report.ts` would both have to
+carry it to reach the placement set, and paying that for a path nobody should
+write is not worth it.
 
 Expansion is eager everywhere it matters: `up` expands pane commands before
 provisioning, and setup expands its whole command list before running any of
@@ -125,10 +128,12 @@ CLAUDE.md).
 - A bootstrap that never started (a typo'd or moved `argv[0]`, a script without
   its exec bit) has no exit status, and `spawnSync` puts the reason in `error`
   instead. Reading `status` first reported `bootstrap failed (exit undefined)`
-  and named neither the file nor the reason, so `error` is checked first — the
-  same order `git.ts` and the Herdr invoker use. `runSetup` needs no such check:
-  it spawns `bash`, so a missing script inside a setup command is an ordinary
-  exit 127.
+  and named neither the file nor the reason, so `error` is checked first, the
+  same order `git.ts` and the Herdr invoker use. `runSetup` spawns `bash`, so a
+  missing script inside a setup command is an ordinary exit 127, but its cwd is
+  the worktree: a bootstrap that leaves a plain file at that path satisfies the
+  `existsSync` check and the spawn then fails with no status either, so it checks
+  `error` too.
 - Setup belongs to a fresh worktree: re-running `up` on an existing one must
   not trigger another `npm ci` behind your back. `--setup` is the caller saying
   this particular worktree needs it anyway — a worktree that *exists* is not a

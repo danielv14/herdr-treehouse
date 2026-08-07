@@ -111,7 +111,7 @@ This repo carries its own `.treehouse.toml`: `setup = ["bun install"]` so a fres
 | `{worktree}` | resolved worktree path |
 | `{root}` | main checkout path |
 | `{base}` | base ref (default `origin/master`) |
-| `{config_dir}` | the plugin config dir, i.e. where `config.toml` and your `bootstraps/` live — not in `worktree_dir` |
+| `{config_dir}` | the plugin config dir, i.e. where `config.toml` and your `bootstraps/` live; not legal in `worktree_dir` |
 | `{targets}` | the `--target` list, comma-separated; empty when none were given |
 | `{targets...}` | one argv entry per `--target` — bootstrap argv only |
 | `{context_file}` | path of the rendered `context` file — agent command only |
@@ -120,7 +120,7 @@ This repo carries its own `.treehouse.toml`: `setup = ["bun install"]` so a fres
 
 A typo'd placeholder (`{wortkree}`) is an error that stops the run, not a literal that reaches a shell command. Any other brace passes through untouched, since config values are shell commands: `{{.Names}}`, `{print $1}` and `${HOME}` all survive.
 
-`{config_dir}` is how a `bootstrap` script that lives next to your config gets named without writing Herdr's plugin config path into every entry: `bootstrap = ["{config_dir}/bootstraps/my-repo.sh", ...]`. A relative `argv[0]` is not the shorthand it looks like — a bootstrap runs with the main checkout as cwd, so `bootstraps/foo.sh` is looked for inside the repo.
+`{config_dir}` is how a `bootstrap` script that lives next to your config gets named without writing Herdr's plugin config path into every entry: `bootstrap = ["{config_dir}/bootstraps/my-repo.sh", ...]`. A relative `argv[0]` is not the shorthand it looks like: a bootstrap runs with the main checkout as cwd, so `bootstraps/foo.sh` is looked for inside the repo, and a bare `up.sh` is searched for on your PATH. `treehouse onboard` proposes the right anchor for the home you pick, `{config_dir}` centrally and `{root}` for a repo-local `.treehouse.toml`.
 
 ### Agent command
 

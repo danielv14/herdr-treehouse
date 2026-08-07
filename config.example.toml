@@ -44,9 +44,10 @@
 #   bootstrap = ["path/to/script.sh", ...]     # replaces worktree creation entirely;
 #                                              # for repos needing real logic (monorepos)
 #
-# A bootstrap's argv[0] needs an absolute path: it runs with the main checkout as
-# cwd, so a relative "bootstraps/up.sh" is looked for inside the repo. Use
-# {config_dir}/bootstraps/up.sh for a script kept next to this file.
+# A bootstrap's argv[0] needs a path that does not depend on cwd: it runs with the
+# main checkout as cwd, so a relative "bootstraps/up.sh" is looked for inside the
+# repo. Use {config_dir}/bootstraps/up.sh for a script kept next to this file, or
+# {root}/scripts/up.sh for one that lives in the repo.
 #
 # Reopening a worktree that already exists skips setup: `treehouse up` on it just
 # opens the tab. `treehouse up --setup` runs the setup commands there anyway, for
