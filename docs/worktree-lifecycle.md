@@ -87,7 +87,9 @@ Herdr's plugin config layout: a path `herdr plugin config-dir` decides, not us,
 and Herdr is pre-1.0 and has moved CLI surfaces before. The relative form is not
 the shorthand it looks like: `spawnSync` resolves a relative `argv[0]` against
 `cwd`, which provisioning sets to the main checkout, so `bootstraps/up.sh` looks
-inside the repo. Anchoring relative bootstrap paths at the config dir instead was
+inside the repo, and a bare `up.sh` is searched for on `PATH` instead. `onboard`
+proposes the anchor each config home has, `{config_dir}` centrally and `{root}`
+in a repo-local file. Anchoring relative bootstrap paths at the config dir was
 rejected: it would silently change what an existing relative path means, and it
 reads ambiguously for a repo configured by a local `.treehouse.toml`, where the
 repo is the natural anchor. That is also why `{config_dir}` only ever needs to
