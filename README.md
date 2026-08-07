@@ -156,7 +156,7 @@ Do not start the dev command. It is pre-filled in its own pane and verification 
 agent = 'claude --append-system-prompt "$(cat {context_file})"'
 ```
 
-`context` is legal in `[defaults]`, in a `[repos.X]` block and in a repo-local `.treehouse.toml`, layered like every other key, and it arrives as the **system prompt** rather than a first conversation turn. `{context_file}` works only in the agent command: treehouse renders the text to a throwaway file outside any repo, and the shell reads it once at agent start. Configure both halves or neither; one without the other is refused before the worktree is provisioned. Treehouse adds no instructions of its own, and the placeholders are there so you can write them. The reasoning, including how the two halves layer across `[defaults]` and a repo, is in [`docs/worktree-lifecycle.md`](docs/worktree-lifecycle.md).
+`context` is legal in `[defaults]`, in a `[repos.X]` block and in a repo-local `.treehouse.toml`, layered like every other key, and it arrives as the **system prompt** rather than a first conversation turn. `{context_file}` works only in the agent command: treehouse renders the text to a throwaway file outside any repo, and the shell reads it once at agent start. `up` prints the path of that file in its summary. Configure both halves or neither; one without the other is refused before the worktree is provisioned. Treehouse adds no instructions of its own, and the placeholders are there so you can write them. The reasoning, including how the two halves layer across `[defaults]` and a repo, is in [`docs/worktree-lifecycle.md`](docs/worktree-lifecycle.md).
 
 ### Sidebar token
 

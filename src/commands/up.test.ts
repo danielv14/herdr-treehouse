@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Environment } from '../herdr/context.ts'
 import type { EngineDeps } from '../deps.ts'
@@ -345,27 +344,27 @@ describe('two branches under one ticket', () => {
 })
 
 describe('agent context', () => {
-  // The context file lives outside every repo, under a name that starts with
-  // the repo and the {id}. These tests look it up by that prefix rather than
-  // spelling the whole name, so the naming rule stays the engine's business.
-  const contextDir = join(tmpdir(), 'treehouse-context')
-  const contextFiles = (prefix: string) =>
-    existsSync(contextDir)
-      ? readdirSync(contextDir).filter((name) => name.startsWith(`my-repo-${prefix}`))
-      : []
-  const contextFile = (id: string) => {
-    const found = contextFiles(`${id}-`)
-    expect(found).toHaveLength(1)
-    return join(contextDir, found[0])
-  }
-
+  // Integration only: the rules themselves live in worktree/agentContext.test.ts.
+  // What is up's to prove is the wiring - config and flags in, one expanded
+  // command to Herdr, the file named in the summary - and that a refusal lands
+  // before anything is provisioned.
   const APPEND = 'agent = \'claude --append-system-prompt "$(cat {context_file})"\''
 
+  // The path from the summary, which is also how a caller learns it. Nothing
+  // here goes looking for the filename in the temp dir.
+  const reportedContextFile = () => {
+    const line = logged.find((message) => message.startsWith('context:'))
+    expect(line).toBeDefined()
+    return (line as string).slice('context:'.length).trim()
+  }
+
   afterEach(() => {
-    for (const name of contextFiles('')) rmSync(join(contextDir, name), { force: true })
+    for (const line of logged.filter((message) => message.startsWith('context:'))) {
+      rmSync(line.slice('context:'.length).trim(), { force: true })
+    }
   })
 
-  test('the agent command carries the file, and the file the expanded text', async () => {
+  test('the summary, the Herdr command and the file all name the same path', async () => {
     writeLocalConfig(`
 base = "master"
 ${APPEND}
@@ -382,24 +381,15 @@ Do not start the dev command.
     )
 
     const worktree = join(repo.parent, 'my-repo-abc-1')
+    const contextFile = reportedContextFile()
     expect(fake.commands()).toContain(
-      `pane run wA:p5 claude --append-system-prompt "$(cat ${contextFile('abc-1')})"`,
+      `pane run wA:p5 claude --append-system-prompt "$(cat ${contextFile})"`,
     )
-    expect(readFileSync(contextFile('abc-1'), 'utf8')).toBe(
+    expect(readFileSync(contextFile, 'utf8')).toBe(
       `You are in a worktree of my-repo: ${worktree}, branch ABC-1/fix-thing, ticket abc-1.\n` +
         'Bootstrapped targets: services/a, packages/b.\n' +
         'Do not start the dev command.\n',
     )
-  })
-
-  test('re-running up overwrites the file instead of accumulating', async () => {
-    writeLocalConfig(`base = "master"\n${APPEND}\ncontext = "first"\n`)
-    await up(['--repo', repo.root, '--branch', 'ABC-77/fix'], deps(createFakeHerdr(RESPONSES)))
-    writeLocalConfig(`base = "master"\n${APPEND}\ncontext = "second"\n`)
-    await up(['--repo', repo.root, '--branch', 'ABC-77/fix'], deps(createFakeHerdr(RESPONSES)))
-
-    expect(contextFiles('abc-77')).toHaveLength(1)
-    expect(readFileSync(contextFile('abc-77'), 'utf8')).toBe('second\n')
   })
 
   test('--agent is expanded like a configured one', async () => {
@@ -410,62 +400,8 @@ Do not start the dev command.
       deps(fake),
     )
     expect(fake.commands()).toContain(
-      `pane run wA:p5 codex --cwd ${join(repo.parent, 'my-repo-abc-1')} --context ${contextFile('abc-1')}`,
+      `pane run wA:p5 codex --cwd ${join(repo.parent, 'my-repo-abc-1')} --context ${reportedContextFile()}`,
     )
-  })
-
-  test('context the agent command never reads is refused, not silently dropped', async () => {
-    writeLocalConfig('base = "master"\nagent = "claude --resume"\ncontext = "standing instructions"\n')
-    const fake = createFakeHerdr(RESPONSES)
-    await expectRejection(
-      up(['--repo', repo.root, '--branch', 'ABC-1/fix'], deps(fake)),
-      /context is configured for my-repo but the agent command has no \{context_file\}/,
-    )
-    expect(fake.calls).toHaveLength(0)
-  })
-
-  test('{context_file} with no context to put in it is refused', async () => {
-    writeLocalConfig(`base = "master"\n${APPEND}\n`)
-    const fake = createFakeHerdr(RESPONSES)
-    await expectRejection(
-      up(['--repo', repo.root, '--branch', 'ABC-1/fix'], deps(fake)),
-      /uses \{context_file\} but the context is empty/,
-    )
-    expect(fake.calls).toHaveLength(0)
-  })
-
-  test('--no-agent needs neither and writes no file', async () => {
-    writeLocalConfig('base = "master"\nagent = "claude --resume"\ncontext = "standing instructions"\n')
-    const fake = createFakeHerdr(RESPONSES)
-    await up(['--repo', repo.root, '--branch', 'ABC-88/fix', '--no-agent'], deps(fake))
-    expect(fake.callsMatching('pane run')).toHaveLength(0)
-    expect(contextFiles('abc-88')).toEqual([])
-  })
-
-  test('a placeholder typo in the context fails before the worktree is provisioned', async () => {
-    writeLocalConfig(`base = "master"\n${APPEND}\ncontext = "branch {brnach}"\n`)
-    await expectRejection(
-      up(['--repo', repo.root, '--branch', 'ABC-1/fix'], deps(createFakeHerdr(RESPONSES))),
-      'unknown placeholder {brnach} in context',
-    )
-    expect(existsSync(join(repo.parent, 'my-repo-abc-1'))).toBe(false)
-  })
-
-  test('a placeholder typo in the agent command fails before the worktree is provisioned', async () => {
-    writeLocalConfig('base = "master"\nagent = "claude --cwd {wortkree}"\n')
-    await expectRejection(
-      up(['--repo', repo.root, '--branch', 'ABC-1/fix'], deps(createFakeHerdr(RESPONSES))),
-      'unknown placeholder {wortkree} in the agent command',
-    )
-    expect(existsSync(join(repo.parent, 'my-repo-abc-1'))).toBe(false)
-  })
-
-  test('a repo with no context is untouched', async () => {
-    writeLocalConfig('base = "master"\n')
-    const fake = createFakeHerdr(RESPONSES)
-    await up(['--repo', repo.root, '--branch', 'ABC-99/fix'], deps(fake))
-    expect(fake.commands()).toContain('pane run wA:p5 claude')
-    expect(contextFiles('abc-99')).toEqual([])
   })
 
   test('both halves in [defaults] reach a repo that only overrides the text', async () => {
@@ -480,140 +416,38 @@ Do not start the dev command.
     const fake = createFakeHerdr(RESPONSES)
     await up(['--repo', repo.root, '--branch', 'ABC-2/fix'], deps(fake))
 
+    const contextFile = reportedContextFile()
     expect(fake.commands()).toContain(
-      `pane run wA:p5 claude --append-system-prompt "$(cat ${contextFile('abc-2')})"`,
+      `pane run wA:p5 claude --append-system-prompt "$(cat ${contextFile})"`,
     )
-    expect(readFileSync(contextFile('abc-2'), 'utf8')).toBe('specific, from the repo block\n')
+    expect(readFileSync(contextFile, 'utf8')).toBe('specific, from the repo block\n')
   })
 
-  test('a context that expands to nothing is refused, not written as an empty file', async () => {
-    // Configured and still nothing to deliver: {ticket} is empty on a branch
-    // without one, and an empty --append-system-prompt is the state the other
-    // refusal exists to prevent, reached from the other side.
-    writeLocalConfig(`base = "master"\n${APPEND}\ncontext = "{ticket}"\n`)
+  test('a repo with no context reports none and starts a bare agent', async () => {
+    writeLocalConfig('base = "master"\n')
     const fake = createFakeHerdr(RESPONSES)
-    await expectRejection(
-      up(['--repo', repo.root, '--branch', 'fix/no-ticket-here'], deps(fake)),
-      /uses \{context_file\} but the context is empty/,
-    )
-    expect(fake.calls).toHaveLength(0)
-    expect(contextFiles('fix-no-ticket')).toEqual([])
-  })
-
-  test('a typo in the agent command leaves no context file behind', async () => {
-    writeLocalConfig(
-      `base = "master"\ncontext = "standing instructions"\n` +
-        `agent = 'claude --cwd {wortkree} --append-system-prompt "$(cat {context_file})"'\n`,
-    )
-    await expectRejection(
-      up(['--repo', repo.root, '--branch', 'ABC-3/fix'], deps(createFakeHerdr(RESPONSES))),
-      'unknown placeholder {wortkree} in the agent command',
-    )
-    expect(contextFiles('abc-3')).toEqual([])
-  })
-
-  test('--model lands in the slot, alongside the context the repo already had', async () => {
-    writeLocalConfig(
-      `base = "master"\ncontext = "standing instructions"\nmodel_arg = '--model {model}'\n` +
-        `agent = 'claude --dangerously-skip-permissions {model_arg} --append-system-prompt "$(cat {context_file})"'\n`,
-    )
-    const fake = createFakeHerdr(RESPONSES)
-    await up(['--repo', repo.root, '--branch', 'ABC-5/fix', '--model', 'fable'], deps(fake))
-    expect(fake.commands()).toContain(
-      'pane run wA:p5 claude --dangerously-skip-permissions --model fable ' +
-        `--append-system-prompt "$(cat ${contextFile('abc-5')})"`,
-    )
-  })
-
-  test('without --model the slot disappears and the command is what it always was', async () => {
-    writeLocalConfig(
-      `base = "master"\nmodel_arg = '--model {model}'\nagent = 'claude --resume {model_arg}'\n`,
-    )
-    const fake = createFakeHerdr(RESPONSES)
-    await up(['--repo', repo.root, '--branch', 'ABC-6/fix'], deps(fake))
-    expect(fake.commands()).toContain('pane run wA:p5 claude --resume')
-  })
-
-  test('--model with no model_arg configured is refused', async () => {
-    writeLocalConfig('base = "master"\nagent = "claude --resume"\n')
-    const fake = createFakeHerdr(RESPONSES)
-    await expectRejection(
-      up(['--repo', repo.root, '--branch', 'ABC-7/fix', '--model', 'fable'], deps(fake)),
-      /--model fable was asked for, but my-repo has no model_arg to put it in/,
-    )
-    expect(fake.calls).toHaveLength(0)
-  })
-
-  test('--model with a slotless agent command is refused before the worktree exists', async () => {
-    // The failure worth catching: the tab opens, the agent runs, and only the
-    // model is missing, which nothing about the tab would show you. Setup here
-    // is what must not have run by the time the refusal lands.
-    writeLocalConfig(
-      `base = "master"\nsetup = ["touch setup-ran"]\n` +
-        `model_arg = '--model {model}'\nagent = "claude --resume"\n`,
-    )
-    const fake = createFakeHerdr(RESPONSES)
-    await expectRejection(
-      up(['--repo', repo.root, '--branch', 'ABC-8/fix', '--model', 'fable'], deps(fake)),
-      /the agent command for my-repo has no \{model_arg\}, so the model would be dropped/,
-    )
-    expect(existsSync(join(repo.parent, 'my-repo-abc-8'))).toBe(false)
-    expect(fake.calls).toHaveLength(0)
-  })
-
-  test('a $-prefixed brace is not a slot, so the model is refused rather than dropped', async () => {
-    // ${model_arg} is a shell variable the agent's shell expands to nothing.
-    // Reading it as a slot let the refusal miss and the model vanish.
-    writeLocalConfig(
-      `base = "master"\nmodel_arg = '--model {model}'\nagent = 'claude \${model_arg}'\n`,
-    )
-    const fake = createFakeHerdr(RESPONSES)
-    await expectRejection(
-      up(['--repo', repo.root, '--branch', 'ABC-12/fix', '--model', 'fable'], deps(fake)),
-      /has no \{model_arg\}, so the model would be dropped/,
-    )
-    expect(fake.calls).toHaveLength(0)
-  })
-
-  test('$-prefixed braces in setup and pane commands still pass through', async () => {
-    // The names that collide with the scope-restricted placeholders are exactly
-    // the ones a substring guard broke; ${HOST} never could.
-    writeLocalConfig(
-      `base = "master"\nsetup = ["echo \${model} \${model_arg} \${context_file}"]\n`,
-    )
-    const fake = createFakeHerdr(RESPONSES)
-    await up(['--repo', repo.root, '--branch', 'ABC-13/fix'], deps(fake))
+    await up(['--repo', repo.root, '--branch', 'ABC-99/fix'], deps(fake))
     expect(fake.commands()).toContain('pane run wA:p5 claude')
+    expect(logged.filter((message) => message.startsWith('context:'))).toEqual([])
   })
 
-  test('--model fills the slot of an ad-hoc --agent too', async () => {
-    // The pair --model exists to make unnecessary, so it had better compose:
-    // model_arg comes from the config, the command from the flag.
-    writeLocalConfig(`base = "master"\nmodel_arg = '--model {model}'\n`)
+  test('--no-agent needs neither half and writes no file', async () => {
+    writeLocalConfig('base = "master"\nagent = "claude --resume"\ncontext = "standing instructions"\n')
     const fake = createFakeHerdr(RESPONSES)
-    await up(
-      ['--repo', repo.root, '--branch', 'ABC-14/fix', '--agent', 'codex {model_arg} exec', '--model', 'opus'],
-      deps(fake),
-    )
-    expect(fake.commands()).toContain('pane run wA:p5 codex --model opus exec')
+    await up(['--repo', repo.root, '--branch', 'ABC-88/fix', '--no-agent'], deps(fake))
+    expect(fake.callsMatching('pane run')).toHaveLength(0)
+    expect(logged.filter((message) => message.startsWith('context:'))).toEqual([])
   })
 
-  test('a model refusal leaves no context file behind', async () => {
-    writeLocalConfig(`base = "master"\n${APPEND}\ncontext = "standing instructions"\n`)
+  test('a half-configured context is refused before the worktree is provisioned', async () => {
+    writeLocalConfig('base = "master"\nagent = "claude --resume"\ncontext = "standing instructions"\n')
     const fake = createFakeHerdr(RESPONSES)
     await expectRejection(
-      up(['--repo', repo.root, '--branch', 'ABC-15/fix', '--model', 'fable'], deps(fake)),
-      /has no model_arg to put it in/,
+      up(['--repo', repo.root, '--branch', 'ABC-1/fix'], deps(fake)),
+      /context is configured for my-repo but the agent command has no \{context_file\}/,
     )
-    expect(contextFiles('abc-15')).toEqual([])
-  })
-
-  test('a model_arg nothing asks for is left alone', async () => {
-    // Unlike a context nothing reads: no model was requested, so nothing is lost.
-    writeLocalConfig(`base = "master"\nmodel_arg = '--model {model}'\nagent = "claude --resume"\n`)
-    const fake = createFakeHerdr(RESPONSES)
-    await up(['--repo', repo.root, '--branch', 'ABC-9/fix'], deps(fake))
-    expect(fake.commands()).toContain('pane run wA:p5 claude --resume')
+    expect(existsSync(join(repo.parent, 'my-repo-abc-1'))).toBe(false)
+    expect(fake.calls).toHaveLength(0)
   })
 
   test('--model and --no-agent together are refused', async () => {
@@ -637,13 +471,44 @@ Do not start the dev command.
     expect(fake.commands()).toContain('pane run wA:p5 claude --model opus')
   })
 
-  test('braces that are not placeholders still pass through the agent command', async () => {
-    // The agent command is expanded now, which it was not before, so the same
-    // shell-braces guarantee the other expansions have applies here too.
-    writeLocalConfig('base = "master"\nagent = "docker exec ${HOST} claude --fmt \'{{.Names}}\'"\n')
+  test('--model fills the slot of an ad-hoc --agent too', async () => {
+    // The pair --model exists to make unnecessary, so it had better compose:
+    // model_arg comes from the config, the command from the flag.
+    writeLocalConfig(`base = "master"\nmodel_arg = '--model {model}'\n`)
     const fake = createFakeHerdr(RESPONSES)
-    await up(['--repo', repo.root, '--branch', 'ABC-4/fix'], deps(fake))
-    expect(fake.commands()).toContain("pane run wA:p5 docker exec ${HOST} claude --fmt '{{.Names}}'")
+    await up(
+      ['--repo', repo.root, '--branch', 'ABC-14/fix', '--agent', 'codex {model_arg} exec', '--model', 'opus'],
+      deps(fake),
+    )
+    expect(fake.commands()).toContain('pane run wA:p5 codex --model opus exec')
+  })
+
+  test('--model with a slotless agent command is refused before setup runs', async () => {
+    // The failure worth catching: the tab opens, the agent runs, and only the
+    // model is missing, which nothing about the tab would show you. Setup here
+    // is what must not have run by the time the refusal lands.
+    writeLocalConfig(
+      `base = "master"\nsetup = ["touch setup-ran"]\n` +
+        `model_arg = '--model {model}'\nagent = "claude --resume"\n`,
+    )
+    const fake = createFakeHerdr(RESPONSES)
+    await expectRejection(
+      up(['--repo', repo.root, '--branch', 'ABC-8/fix', '--model', 'fable'], deps(fake)),
+      /the agent command for my-repo has no \{model_arg\}, so the model would be dropped/,
+    )
+    expect(existsSync(join(repo.parent, 'my-repo-abc-8'))).toBe(false)
+    expect(fake.calls).toHaveLength(0)
+  })
+
+  test('$-prefixed braces in setup and pane commands still pass through', async () => {
+    // The names that collide with the scope-restricted placeholders are exactly
+    // the ones a substring guard broke; ${HOST} never could.
+    writeLocalConfig(
+      `base = "master"\nsetup = ["echo \${model} \${model_arg} \${context_file}"]\n`,
+    )
+    const fake = createFakeHerdr(RESPONSES)
+    await up(['--repo', repo.root, '--branch', 'ABC-13/fix'], deps(fake))
+    expect(fake.commands()).toContain('pane run wA:p5 claude')
   })
 })
 
