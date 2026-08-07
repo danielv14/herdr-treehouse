@@ -1,8 +1,8 @@
 # treehouse repo config. Lives at: $(herdr plugin config-dir treehouse)/config.toml
 #
 # Placeholders available in worktree_dir, bootstrap, setup, pane commands,
-# `context` and the agent command (the last three entries say where they are
-# legal, which is narrower):
+# `context` and the agent command (the entries that name a place are legal only
+# there, which is narrower):
 #   {repo}        repo name (config key)
 #   {branch}      full branch name, e.g. ABC-1234/fix-thing
 #   {slug}        slugified branch, e.g. abc-1234-fix-thing
@@ -15,6 +15,8 @@
 #   {root}        main checkout path
 #   {base}        base ref (default origin/master); only used by the built-in
 #                 worktree creation - a custom bootstrap owns its own base
+#   {config_dir}  the dir this file lives in, for naming a bootstrap script or a
+#                 template kept next to it (not legal in worktree_dir)
 #   {targets}     the --target list, comma-separated ("services/a, packages/b"),
 #                 empty when none were given. Not for bootstrap argv - that
 #                 takes the spread form below
@@ -41,6 +43,10 @@
 #                                              # cp {root}/.env .env
 #   bootstrap = ["path/to/script.sh", ...]     # replaces worktree creation entirely;
 #                                              # for repos needing real logic (monorepos)
+#
+# A bootstrap's argv[0] needs an absolute path: it runs with the main checkout as
+# cwd, so a relative "bootstraps/up.sh" is looked for inside the repo. Use
+# {config_dir}/bootstraps/up.sh for a script kept next to this file.
 #
 # Reopening a worktree that already exists skips setup: `treehouse up` on it just
 # opens the tab. `treehouse up --setup` runs the setup commands there anyway, for

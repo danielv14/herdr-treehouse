@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
-import { chmodSync, existsSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { RepoConfig } from '../config/config.ts'
 import { buildWorktreePlan } from './plan.ts'
@@ -38,6 +38,7 @@ const provision = (repoConfig: Partial<RepoConfig>, extra: ProvisionExtras = {},
     branch,
     mainRepoRoot: repo.root,
     repoConfig: config,
+    configDir: join(repo.parent, 'config'),
     targets: [],
     worktree: extra.worktreeState === 'just-created' ? join(repo.parent, 'my-repo-abc-1') : undefined,
   })
@@ -188,9 +189,40 @@ describe('bootstrap path', () => {
     )
   })
 
-  test('a failing bootstrap fails the run', () => {
+  test('a failing bootstrap fails the run, naming the script', () => {
     const script = writeBootstrap('boom.sh', 'exit 4')
-    expect(() => provision({ bootstrap: [script] })).toThrow('bootstrap failed (exit 4)')
+    expect(() => provision({ bootstrap: [script] })).toThrow(`bootstrap failed (exit 4): ${script}`)
+  })
+
+  test('a bootstrap that never started names the file and the reason', () => {
+    // The spawn never reached a script, so there is no exit status: reading
+    // status first reported "exit undefined" and named nothing.
+    const missing = join(repo.parent, 'not-here.sh')
+    const failure = expect(() => provision({ bootstrap: [missing] }))
+    failure.toThrow(`bootstrap failed to run ${missing}`)
+    failure.toThrow('ENOENT')
+  })
+
+  test('a bootstrap that lost its exec bit lands in the same message', () => {
+    const script = writeBootstrap('not-executable.sh', 'true')
+    chmodSync(script, 0o644)
+    expect(() => provision({ bootstrap: [script] })).toThrow(`bootstrap failed to run ${script}`)
+  })
+
+  test('argv[0] may name a script through {config_dir}', () => {
+    // The point of the placeholder: the script lives next to the config, and no
+    // config has to spell out where Herdr keeps that.
+    mkdirSync(join(repo.parent, 'config', 'bootstraps'), { recursive: true })
+    const script = writeBootstrap(
+      'config/bootstraps/up.sh',
+      'git worktree add "$2" -b "$3" --no-track master',
+    )
+    const { plan, result } = provision({
+      bootstrap: ['{config_dir}/bootstraps/up.sh', '--dir', '{worktree}', '{branch}'],
+    })
+    expect(existsSync(plan.worktree)).toBe(true)
+    expect(result.created).toBe(true)
+    expect(logged[0]).toContain(`bootstrap: ${script} --dir ${plan.worktree} ABC-1/fix`)
   })
 
   test('the bootstrap runs first, then setup when --setup asks for it', () => {

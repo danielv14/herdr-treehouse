@@ -9,6 +9,7 @@ import {
 } from './plan.ts'
 
 const MAIN = '/tmp/checkouts/my-repo'
+const CONFIG_DIR = '/tmp/herdr/plugins/config/treehouse'
 
 const plan = (branch: string, repoConfig: Partial<RepoConfig> = {}, targets: string[] = []) =>
   buildWorktreePlan({
@@ -16,6 +17,7 @@ const plan = (branch: string, repoConfig: Partial<RepoConfig> = {}, targets: str
     branch,
     mainRepoRoot: MAIN,
     repoConfig: { root: MAIN, ...repoConfig },
+    configDir: CONFIG_DIR,
     targets,
   })
 
@@ -71,6 +73,7 @@ describe('worktree path', () => {
       branch: 'ABC-1/x',
       mainRepoRoot: MAIN,
       repoConfig: { root: MAIN, worktree_dir: '../ignored-{id}' },
+      configDir: CONFIG_DIR,
       worktree: '/somewhere/herdr-made-this',
     })
     expect(result.worktree).toBe('/somewhere/herdr-made-this')
@@ -130,6 +133,7 @@ describe('placements', () => {
       branch: 'ABC-1/state-machine',
       mainRepoRoot: MAIN,
       repoConfig: { root: MAIN },
+      configDir: CONFIG_DIR,
       worktree: '/tmp/checkouts/my-repo-abc-1-state-machine',
       id: 'abc-1-state-machine',
     })
@@ -142,8 +146,10 @@ describe('placements', () => {
 describe('placeholder expansion', () => {
   test('expands every known placeholder', () => {
     const result = plan('ABC-1/x', { base: 'origin/main' })
-    expect(result.expand('{repo} {branch} {slug} {ticket} {id} {root} {base} {worktree}')).toBe(
-      `my-repo ABC-1/x abc-1-x abc-1 abc-1 ${MAIN} origin/main /tmp/checkouts/my-repo-abc-1`,
+    expect(
+      result.expand('{repo} {branch} {slug} {ticket} {id} {root} {base} {worktree} {config_dir}'),
+    ).toBe(
+      `my-repo ABC-1/x abc-1-x abc-1 abc-1 ${MAIN} origin/main /tmp/checkouts/my-repo-abc-1 ${CONFIG_DIR}`,
     )
   })
 
@@ -165,6 +171,26 @@ describe('placeholder expansion', () => {
 
   test('{targets} with no targets is an empty string, so the text can say so itself', () => {
     expect(plan('ABC-1/x').expand('deps: [{targets}]')).toBe('deps: []')
+  })
+})
+
+describe('{config_dir}', () => {
+  test('names a script next to the config, in bootstrap argv and in setup alike', () => {
+    const result = plan('ABC-1/x')
+    expect(result.expandArgv(['{config_dir}/bootstraps/up.sh', '--dir', '{worktree}'])).toEqual([
+      `${CONFIG_DIR}/bootstraps/up.sh`,
+      '--dir',
+      '/tmp/checkouts/my-repo-abc-1',
+    ])
+    expect(result.expand('cp {config_dir}/templates/.env .env', 'setup')).toBe(
+      `cp ${CONFIG_DIR}/templates/.env .env`,
+    )
+  })
+
+  test('is refused in worktree_dir, which is resolved without asking Herdr', () => {
+    expect(() => plan('ABC-1/x', { worktree_dir: '{config_dir}/trees/{id}' })).toThrow(
+      '{config_dir} is not available in worktree_dir',
+    )
   })
 })
 

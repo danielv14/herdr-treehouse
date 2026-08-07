@@ -161,7 +161,10 @@ export const up = async (argv: string[], deps: EngineDeps) => {
     throw new Error('plugin invocation: could not derive the target repo from the plugin context (refusing to fall back to the plugin repo)')
   }
   const mainRepoRoot = findMainRepoRoot(target ?? process.cwd())
-  const { name: repoName, config: repoConfig } = await resolveRepoConfig(mainRepoRoot, pluginConfigDir(), warn)
+  // Resolved once: it may cost a `herdr plugin config-dir` call, and the config
+  // and the plan (through {config_dir}) must agree on the answer.
+  const configDir = pluginConfigDir()
+  const { name: repoName, config: repoConfig } = await resolveRepoConfig(mainRepoRoot, configDir, warn)
 
   if (options.interactive) {
     const answers = await askInteractively(repoConfig, repoName, { log, ask })
@@ -202,6 +205,7 @@ export const up = async (argv: string[], deps: EngineDeps) => {
     branch: options.branch,
     mainRepoRoot,
     repoConfig,
+    configDir,
     targets: options.targets,
     worktree: placement.worktree,
     id: placement.id,

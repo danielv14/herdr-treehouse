@@ -45,7 +45,8 @@ export const bootstrapFromEvent = async (deps: EngineDeps) => {
   // well-formed payload exits non-zero so the plugin log shows a failed run
   // instead of a silently unprovisioned worktree.
   const mainRepoRoot = findMainRepoRoot(worktreePath)
-  const { name: repoName, config: repoConfig } = await resolveRepoConfig(mainRepoRoot, pluginConfigDir(), log)
+  const configDir = pluginConfigDir()
+  const { name: repoName, config: repoConfig } = await resolveRepoConfig(mainRepoRoot, configDir, log)
   if (!repoConfig.bootstrap?.length && !repoConfig.setup?.length) {
     log(`no bootstrap or setup configured for ${repoName}, skipping`)
     return
@@ -56,6 +57,7 @@ export const bootstrapFromEvent = async (deps: EngineDeps) => {
     branch,
     mainRepoRoot,
     repoConfig,
+    configDir,
     // Herdr created the checkout; its path is a given, not a worktree_dir question.
     worktree: worktreePath,
   })
