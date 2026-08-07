@@ -164,8 +164,8 @@ agent"); this is the engine-side reasoning behind `src/worktree/agentContext.ts`
 
 ## A model for one tab (`--model` + `model_arg`)
 
-User-facing behaviour is in the README ("A different model for one tab"); this
-is the reasoning behind the shape.
+User-facing behaviour is in the README ("Agent command"); this is the reasoning
+behind the shape.
 
 - **The problem is `--agent`, not the missing flag.** `--agent` replaces the
   resolved command, so changing one word means restating the rest. A repo with
