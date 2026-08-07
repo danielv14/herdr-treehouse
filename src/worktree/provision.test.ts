@@ -101,6 +101,42 @@ describe('existing worktree', () => {
   })
 })
 
+describe('a stray path where the worktree should go', () => {
+  // git answers whether a worktree is already there, not existsSync: a leftover
+  // directory used to read as "already exists", which skipped setup and opened a
+  // tab on something that is not a checkout of the branch.
+  const strayPath = () => join(repo.parent, 'my-repo-abc-1')
+
+  test('a directory with files in it is refused, and setup does not run', () => {
+    const stray = strayPath()
+    mkdirSync(stray, { recursive: true })
+    writeFileSync(join(stray, 'leftover.txt'), 'from a half-deleted worktree')
+
+    expect(() => provision({ setup: ['echo ran > ran.txt'] })).toThrow(
+      `${stray} already holds files, but git has no worktree there`,
+    )
+    expect(existsSync(join(stray, 'ran.txt'))).toBe(false)
+    expect(repo.git('worktree', 'list', '--porcelain')).not.toContain(stray)
+    expect(logged.join('\n')).not.toContain('worktree already exists')
+  })
+
+  test('a plain file at the path lands in the same refusal', () => {
+    writeFileSync(strayPath(), 'not a checkout')
+    expect(() => provision({})).toThrow('already holds files, but git has no worktree there')
+  })
+
+  test('an empty leftover directory is still taken over by git', () => {
+    // `git worktree add` checks a worktree out into an empty directory, so
+    // refusing on mere existence would break something that works today.
+    const stray = strayPath()
+    mkdirSync(stray, { recursive: true })
+    const { plan, result } = provision({ setup: ['echo ran > ran.txt'] })
+    expect(plan.worktree).toBe(stray)
+    expect(result).toEqual({ created: true, setupRan: true })
+    expect(existsSync(join(stray, 'ran.txt'))).toBe(true)
+  })
+})
+
 describe('setupExisting', () => {
   // A worktree that exists is not the same as a worktree that was provisioned:
   // this is how `up --setup` says "run them here anyway".

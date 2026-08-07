@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { existsSync, readdirSync } from 'node:fs'
 import type { RepoConfig } from '../config/config.ts'
-import { addWorktree } from './git.ts'
+import { addWorktree, findWorktreeAtPath } from './git.ts'
 import type { WorktreePlan } from './plan.ts'
 
 // "Make this worktree exist and be usable", shared by `treehouse up` and the
@@ -33,7 +33,14 @@ export const provisionWorktree = (
 ): ProvisionResult => {
   const { log, warn } = options
   const justCreated = options.worktreeState === 'just-created'
-  const existedBefore = justCreated ? false : existsSync(plan.worktree)
+  // Whether a worktree is already here is git's question, the way it is in
+  // placement.ts: a directory git knows nothing about is not a worktree to
+  // reopen, and answering with existsSync opened a tab on it with setup
+  // skipped. 'just-created' is exempt because Herdr made the checkout moments
+  // ago and it is meant to be provisioned as fresh.
+  const existedBefore = justCreated
+    ? false
+    : findWorktreeAtPath(plan.root, plan.worktree) !== undefined
 
   // `?.length`, not just presence: `bootstrap = []` is a truthy empty argv, and
   // spawning argv[0] === undefined crashes with a Node type error instead of
@@ -57,6 +64,12 @@ export const provisionWorktree = (
   } else if (existedBefore) {
     log(`worktree already exists: ${plan.worktree}`)
   } else {
+    if (pathInTheWay(plan.worktree)) {
+      throw new Error(
+        `${plan.worktree} already holds files, but git has no worktree there: nothing to reopen, and nothing to create into. ` +
+          'Move it aside or remove it, or give worktree_dir a path of its own.',
+      )
+    }
     addWorktree(plan.root, { path: plan.worktree, branch: plan.branch, base: plan.base, warn })
   }
 
@@ -79,6 +92,20 @@ export const provisionWorktree = (
   }
   runSetup(plan, setup, log)
   return { created: !existedBefore, setupRan: setup.length > 0 }
+}
+
+// Whether something at the path stops git from checking a worktree out into it.
+// `git worktree add` takes over an EMPTY directory happily, so only a path with
+// files in it is in the way; readdir on a plain file throws, which is in the way
+// too. Refusing on mere existence would turn a harmless leftover directory into
+// an error for no gain.
+const pathInTheWay = (path: string): boolean => {
+  if (!existsSync(path)) return false
+  try {
+    return readdirSync(path).length > 0
+  } catch {
+    return true
+  }
 }
 
 // A half-provisioned worktree is worse than none at all, so a failing setup

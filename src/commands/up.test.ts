@@ -199,6 +199,21 @@ command = "npm run dev"
     expect(fake.calls).toHaveLength(0)
   })
 
+  test('a stray directory at the worktree path is refused instead of opened as a tab', async () => {
+    writeLocalConfig('base = "master"\nsetup = ["echo ran > ran.txt"]\n')
+    const stray = join(repo.parent, 'my-repo-abc-1')
+    mkdirSync(stray, { recursive: true })
+    writeFileSync(join(stray, 'leftover.txt'), 'from a half-deleted worktree')
+
+    const fake = createFakeHerdr(RESPONSES)
+    await expectRejection(
+      up(['--repo', repo.root, '--branch', 'ABC-1/fix', '--no-agent'], deps(fake)),
+      /already holds files, but git has no worktree there/,
+    )
+    expect(fake.calls).toHaveLength(0)
+    expect(existsSync(join(stray, 'ran.txt'))).toBe(false)
+  })
+
   test('--setup runs the setup commands in a worktree that already exists', async () => {
     writeLocalConfig('base = "master"\nsetup = ["echo ran >> ran.txt"]\n')
     await up(['--repo', repo.root, '--branch', 'ABC-1/fix', '--no-agent'], deps(createFakeHerdr(RESPONSES)))
