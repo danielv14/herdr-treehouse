@@ -149,10 +149,9 @@ command = "npm run dev"
   })
 
   test('a worktree at a path the convention would never derive is reused, not recreated', async () => {
-    // The real case: a worktree made by another tool, named after a ticket that
-    // is not in the branch name. Deriving the path from worktree_dir sent
-    // provisioning off to create a second worktree for a branch git already had
-    // checked out, and git refused with "already used by worktree at ...".
+    // A worktree made by another tool, named after a ticket that is not in the
+    // branch name (placement.ts owns the rule; this is provisioning reusing it
+    // instead of creating a second worktree git would refuse).
     writeLocalConfig('base = "master"\nsetup = ["echo ran > ran.txt"]\n')
     const elsewhere = join(repo.parent, 'npm-packages-abc-11206')
     repo.git('worktree', 'add', elsewhere, '-b', 'ui/upgrade-to-ui-in-konto', '--no-track', 'master')
@@ -173,7 +172,9 @@ command = "npm run dev"
       up(['--repo', repo.root, '--branch', 'master', '--no-agent'], deps(fake)),
       /master is checked out in the main checkout \(.*\), not in a worktree/,
     )
-    expect(fake.callsMatching('tab create')).toHaveLength(0)
+    // A placement refusal lands before any Herdr work at all, not just before
+    // the tab: it is the one integration proof for both refusals.
+    expect(fake.calls).toHaveLength(0)
   })
 
   test('--setup runs the setup commands in a worktree that already exists', async () => {
@@ -268,8 +269,9 @@ command = "npm run dev"
 
 describe('two branches under one ticket', () => {
   // Attacking one ticket from several angles: two branches, two worktrees, two
-  // tabs, two agents. They derive the same {id} path, and the second one used
-  // to land on the first one's worktree without a word.
+  // tabs, two agents. The rule itself belongs to placement.ts and is tested
+  // there against a temp repo; these two prove it reaches the tab, which is
+  // where a wrong answer would actually bite.
   const reducer = 'ABC-1/reducer-approach'
   const stateMachine = 'ABC-1/state-machine-approach'
   const short = () => join(repo.parent, 'my-repo-abc-1')
@@ -302,16 +304,6 @@ describe('two branches under one ticket', () => {
     expect(tabCreate(second)).toContain('--label 🌳 abc-1-state-machine-approach')
   })
 
-  test('the short path goes to whichever branch was created first', async () => {
-    writeLocalConfig('base = "master"\n')
-    await upFor(stateMachine)
-    const second = await upFor(reducer)
-
-    expect(existsSync(join(repo.parent, 'my-repo-abc-1'))).toBe(true)
-    expect(existsSync(longFor(reducer))).toBe(true)
-    expect(tabCreate(second)).toContain(`--cwd ${longFor(reducer)}`)
-  })
-
   test('reopening the second branch returns to its own worktree, under the same name', async () => {
     writeLocalConfig('base = "master"\nsetup = ["echo ran >> ran.txt"]\n')
     await upFor(reducer)
@@ -327,28 +319,6 @@ describe('two branches under one ticket', () => {
     expect(readFileSync(join(longFor(stateMachine), 'ran.txt'), 'utf8').trim().split('\n')).toEqual(['ran'])
   })
 
-  test('one branch per ticket still lands on the short path it always had', async () => {
-    writeLocalConfig('base = "master"\n')
-    const fake = await upFor(reducer)
-    expect(existsSync(short())).toBe(true)
-    expect(tabCreate(fake)).toContain(`--cwd ${short()}`)
-    expect(tabCreate(fake)).toContain('--label 🌳 abc-1')
-    expect(existsSync(longFor(reducer))).toBe(false)
-  })
-
-  test('a worktree_dir with no room to tell them apart refuses instead of opening a tab', async () => {
-    // Every branch of the ticket derives one path here, so there is no second
-    // one to move to; saying so beats reusing the first branch's worktree.
-    writeLocalConfig('base = "master"\nworktree_dir = "../{repo}-{ticket}"\n')
-    await upFor(reducer)
-    const fake = createFakeHerdr(RESPONSES)
-    await expectRejection(
-      up(['--repo', repo.root, '--branch', stateMachine, '--no-agent'], deps(fake)),
-      /every path worktree_dir derives for ABC-1\/state-machine-approach is already a worktree of another branch: .*my-repo-abc-1 \(ABC-1\/reducer-approach\)/,
-    )
-    expect(fake.callsMatching('tab create')).toHaveLength(0)
-    expect(fake.callsMatching('pane run')).toHaveLength(0)
-  })
 })
 
 describe('agent context', () => {

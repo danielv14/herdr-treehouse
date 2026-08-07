@@ -1,8 +1,8 @@
 import { existsSync } from 'node:fs'
-import { slugFromBranch, ticketFromBranch } from './branch.ts'
+import { ticketFromBranch } from './branch.ts'
 import { DEFAULT_BASE, type RepoConfig } from '../config/config.ts'
-import { listWorktrees, samePath, worktreeFacts } from './git.ts'
-import { worktreePlacements, type WorktreePlacement } from './plan.ts'
+import { listWorktrees, worktreeFacts } from './git.ts'
+import { placementOfWorktree, unplaceable, type ResolvedPlacement } from './placement.ts'
 
 // One record per linked worktree of a configured repo. Assembles and returns;
 // rendering is the ls command's job. Herdr facts arrive as plain data through
@@ -62,20 +62,17 @@ export const collectRepoInventory = (
   // A broken worktree_dir template throws for every branch alike; one warning
   // says why the whole repo reads as unmanaged.
   let templateWarned = false
-  // Which of the branch's legal spots this worktree stands on, if any. Asking
-  // for the whole set keeps a disambiguated slug path reading as conventional,
-  // named the way `up` named it.
-  const placementOf = (branch: string, path: string): WorktreePlacement | undefined => {
+  // The same module `up` asks, so a disambiguated slug path reads as
+  // conventional here, under the name `up` gave it.
+  const placementOf = (branch: string, path: string): ResolvedPlacement => {
     try {
-      return worktreePlacements({ repoName: name, branch, mainRepoRoot: root, repoConfig: config }).find(
-        (placement) => samePath(placement.worktree, path),
-      )
+      return placementOfWorktree({ repoName: name, branch, mainRepoRoot: root, repoConfig: config }, path)
     } catch (error) {
       if (!templateWarned) {
         templateWarned = true
         warn(`warning: ${name}: cannot derive the worktree_dir convention: ${error instanceof Error ? error.message : error}`)
       }
-      return undefined
+      return unplaceable(branch, path)
     }
   }
 
@@ -101,8 +98,9 @@ export const collectRepoInventory = (
         path,
         branch,
         ticket,
-        id: placement?.id ?? (branch ? ticket || slugFromBranch(branch) : ''),
-        managed: placement !== undefined,
+        // Detached: no branch, so nothing to name the worktree after.
+        id: placement?.id ?? '',
+        managed: placement?.managed ?? false,
         missing,
         base,
         ...(facts ?? {}),

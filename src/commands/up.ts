@@ -3,19 +3,10 @@ import { parseFlags, type CommandSpec } from '../cli.ts'
 import { PANE_DEFAULTS, resolveRepoConfig, type RepoConfig } from '../config/config.ts'
 import { invocationTargetPath, isPluginInvocation, readInvocationContext } from '../herdr/context.ts'
 import { resolveDeps, type Ask, type EngineDeps } from '../deps.ts'
-import {
-  findMainRepoRoot,
-  findWorktreeAtPath,
-  findWorktreeForBranch,
-  samePath,
-} from '../worktree/git.ts'
+import { findMainRepoRoot } from '../worktree/git.ts'
 import { refreshWorktreeCount } from '../worktreeCount.ts'
-import {
-  bootstrapTakesTargets,
-  buildWorktreePlan,
-  worktreePlacements,
-  type WorktreePlacement,
-} from '../worktree/plan.ts'
+import { bootstrapTakesTargets, buildWorktreePlan } from '../worktree/plan.ts'
+import { resolveWorktreePlacement } from '../worktree/placement.ts'
 import { prepareAgentCommand } from '../worktree/agentContext.ts'
 import { provisionWorktree } from '../worktree/provision.ts'
 import type { PaneSpec } from '../herdr/tabs.ts'
@@ -97,37 +88,6 @@ const askInteractively = async (
   return { branch, targets }
 }
 
-// A worktree standing on a placement keeps that placement's name, so a
-// disambiguated worktree reopens under the same tab label and {id} it was
-// created with; one somewhere else keeps the convention's short name.
-const placementOfExisting = (placements: WorktreePlacement[], worktree: string): WorktreePlacement =>
-  placements.find((placement) => samePath(placement.worktree, worktree)) ?? {
-    id: placements[0].id,
-    worktree,
-  }
-
-// Nothing holds this branch yet: pick the shortest placement no other worktree
-// occupies (two branches under one ticket, see docs/worktree-lifecycle.md).
-const freePlacement = (
-  placements: WorktreePlacement[],
-  mainRepoRoot: string,
-  branch: string,
-): WorktreePlacement => {
-  const occupancy = placements.map((placement) => ({
-    placement,
-    occupant: findWorktreeAtPath(mainRepoRoot, placement.worktree),
-  }))
-  const free = occupancy.find((entry) => entry.occupant === undefined)
-  if (free) return free.placement
-  const taken = occupancy
-    .map(({ placement, occupant }) => `${placement.worktree} (${occupant?.branch ?? 'detached'})`)
-    .join(', ')
-  throw new Error(
-    `every path worktree_dir derives for ${branch} is already a worktree of another branch: ${taken}. ` +
-      'Remove one of those worktrees, or give worktree_dir something unique per branch ({slug} or {branch}).',
-  )
-}
-
 const paneSpecs = (repoConfig: RepoConfig, expand: (template: string, where?: string) => string): PaneSpec[] =>
   (repoConfig.panes ?? []).map((pane) => ({
     split: pane.split ?? PANE_DEFAULTS.split,
@@ -181,24 +141,15 @@ export const up = async (argv: string[], deps: EngineDeps) => {
     throw new Error('--model needs an agent to apply to (drop --no-agent, or drop --model)')
   }
 
-  // Git decides where an existing worktree is, not `worktree_dir`: the naming
-  // convention only describes the ones treehouse created.
-  const checkedOutAt = findWorktreeForBranch(mainRepoRoot, options.branch)
-  if (checkedOutAt?.isMain) {
-    throw new Error(
-      `${options.branch} is checked out in the main checkout (${mainRepoRoot}), not in a worktree. Switch it there, or pick another branch.`,
-    )
-  }
-
-  const placements = worktreePlacements({
+  // Where this branch's worktree goes, asked once and answered in one place:
+  // an existing worktree keeps its own path and name, a new one takes the first
+  // free spot the convention allows, and both refusals come from there.
+  const placement = resolveWorktreePlacement({
     repoName,
     branch: options.branch,
     mainRepoRoot,
     repoConfig,
   })
-  const placement = checkedOutAt
-    ? placementOfExisting(placements, checkedOutAt.path)
-    : freePlacement(placements, mainRepoRoot, options.branch)
 
   const plan = buildWorktreePlan({
     repoName,

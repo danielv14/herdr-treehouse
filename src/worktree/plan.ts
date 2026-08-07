@@ -189,10 +189,14 @@ const idCandidates = (branch: string): string[] => {
   return ticket === '' || ticket === slug ? [slug] : [ticket, slug]
 }
 
-// The ordered spots the convention allows one branch; only the caller can ask
-// git which are taken. A worktree_dir that ignores {id} yields a single
-// placement, so the caller refuses instead of silently reusing another
-// branch's worktree. Background: docs/worktree-lifecycle.md.
+// The short name a branch's worktree goes by when nothing disambiguates it:
+// the ticket if the branch has one, the slug otherwise.
+export const conventionalId = (branch: string): string => idCandidates(branch)[0]
+
+// The ordered spots the convention allows one branch; placement.ts asks git
+// which are taken. A worktree_dir that ignores {id} yields a single placement,
+// so that module refuses instead of silently reusing another branch's
+// worktree. Background: docs/worktree-lifecycle.md.
 export const worktreePlacements = (input: PlacementInput): WorktreePlacement[] =>
   idCandidates(input.branch).reduce<WorktreePlacement[]>((placements, id) => {
     const worktree = resolveWorktreePath(
@@ -228,7 +232,7 @@ export const buildWorktreePlan = ({
 }: PlanInput): WorktreePlan => {
   const slug = slugFromBranch(branch)
   const ticket = ticketFromBranch(branch)
-  const id = chosenId ?? idCandidates(branch)[0]
+  const id = chosenId ?? conventionalId(branch)
   const base = repoConfig.base ?? DEFAULT_BASE
 
   const withoutWorktree = placeholderValues({ repoName, branch, mainRepoRoot, repoConfig }, id)
