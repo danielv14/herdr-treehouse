@@ -106,6 +106,29 @@ autostart = false
     expect(logged).toContain('agent:     claude --resume in wA:p5')
   })
 
+  test('a pane that declares neither ratio nor autostart reaches the tab with the defaults', async () => {
+    // The whole pane-defaults path, end to end: the resolver fills them in, and
+    // the choreography reads them as split down, ratio 0.5 and a command that is
+    // only pre-filled (autostart false is what keeps two tabs off one port).
+    writeLocalConfig(`
+base = "master"
+
+[[panes]]
+label = "dev"
+command = "npm run dev"
+`)
+    const fake = createFakeHerdr(RESPONSES)
+    await up(['--repo', repo.root, '--branch', 'ABC-1/fix', '--no-agent'], deps(fake))
+
+    const worktree = join(repo.parent, 'my-repo-abc-1')
+    expect(fake.commands()).toContain(
+      `pane split wA:p5 --direction down --ratio 0.5 --cwd ${worktree} --no-focus`,
+    )
+    expect(fake.commands()).toContain('pane send-text wA:p6 npm run dev')
+    expect(fake.callsMatching('pane run')).toHaveLength(0)
+    expect(logged).toContain('pane:      wA:p6 (dev): "npm run dev" prefilled (press Enter to start)')
+  })
+
   test('--no-dev skips the panes and --no-agent skips the agent', async () => {
     writeLocalConfig(`
 base = "master"

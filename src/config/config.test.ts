@@ -1,351 +1,541 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
-import {
-  DEFAULT_BASE,
-  diagnosticsForRepo,
-  renderProposedBlock,
-  resolveAllRepoConfigs,
-  validateConfigFile,
-  validateLocalConfigFile,
-} from './config.ts'
+import { renderProposedBlock, resolveAllRepoConfigs, resolveRepoConfig } from './config.ts'
 import { reportDiagnostics } from './diagnostics.ts'
 import { expectRejection } from '../testing/expectRejection.ts'
 
-const FILE = '/cfg/config.toml'
+// Driven through the two resolvers, which is the interface every call site uses:
+// a temp config dir for the central file, real directories for the repos (a
+// [repos.X] block is matched by path identity), and a warn sink for the
+// diagnostics. Validation is reached the way a command reaches it.
 
-const validate = (toml: string) => validateConfigFile(Bun.TOML.parse(toml), FILE)
+let parent: string
+let configDir: string
+let centralPath: string
+// The repo under test, named the way its config key is, so a diagnostic scoped
+// to it stays fatal instead of demoting to "another repo's block".
+let mine: string
+let warned: string[]
 
-const errors = (toml: string) =>
-  validate(toml).diagnostics.filter((diagnostic) => diagnostic.severity === 'error').map((d) => d.message)
+const warn = (message: string) => warned.push(message)
 
-const warnings = (toml: string) =>
-  validate(toml).diagnostics.filter((diagnostic) => diagnostic.severity === 'warning').map((d) => d.message)
+const repoDir = (name: string) => {
+  const dir = join(parent, name)
+  mkdirSync(dir, { recursive: true })
+  return dir
+}
 
-describe('value shapes that used to crash or coerce', () => {
-  test('single-bracket panes name the [[...]] fix instead of throwing a TypeError', () => {
-    const found = errors(`
-[repos.x]
-root = "/tmp/x"
-[repos.x.panes]
-split = "down"
+const localPath = (repoRoot: string) => join(repoRoot, '.treehouse.toml')
+
+const writeCentral = (toml: string) => writeFileSync(centralPath, toml)
+
+const writeLocal = (repoRoot: string, toml: string) => writeFileSync(localPath(repoRoot), toml)
+
+// The central config as one [repos.my-repo] block for the repo under test.
+const writeMyBlock = (body: string) =>
+  writeCentral(`[repos.my-repo]\nroot = ${JSON.stringify(mine)}\n${body}`)
+
+const resolveMine = () => resolveRepoConfig(mine, configDir, warn)
+
+beforeEach(() => {
+  parent = mkdtempSync(join(tmpdir(), 'treehouse-config-test-'))
+  configDir = join(parent, 'config')
+  mkdirSync(configDir)
+  centralPath = join(configDir, 'config.toml')
+  mine = repoDir('my-repo')
+  warned = []
+})
+
+afterEach(() => {
+  rmSync(parent, { recursive: true, force: true })
+})
+
+describe('resolving one repo', () => {
+  test('layers [defaults], the repo block and the local file, highest last', async () => {
+    writeLocal(mine, 'agent = "claude --resume"\n')
+    writeCentral(`
+[defaults]
+agent = "claude"
+context = "from defaults"
+model_arg = "--model {model}"
+
+[repos.my-repo]
+root = ${JSON.stringify(mine)}
+base = "origin/main"
+context = "from the repo block"
 `)
-    expect(found).toHaveLength(1)
-    expect(found[0]).toContain('repos.x.panes in /cfg/config.toml')
-    expect(found[0]).toContain('expected a list of tables, found a single table')
-    expect(found[0]).toContain('[[repos.x.panes]]')
+    const { name, config } = await resolveMine()
+    expect(name).toBe('my-repo')
+    expect(config.agent).toBe('claude --resume')
+    expect(config.context).toBe('from the repo block')
+    expect(config.model_arg).toBe('--model {model}')
+    expect(config.base).toBe('origin/main')
+    expect(config.root).toBe(mine)
+    expect(warned).toEqual([])
   })
 
-  test('a string setup is reported, not run one character per command', () => {
-    const { config, diagnostics } = validate(`
-[repos.x]
-root = "/tmp/x"
-setup = "npm ci"
-`)
-    expect(diagnostics.map((d) => d.message)).toEqual([
-      'repos.x.setup in /cfg/config.toml: expected a list of strings, found a string ("npm ci")',
-    ])
-    expect(config.repos.x.setup).toBeUndefined()
+  test('the keys with a default are present even when nothing declares them', async () => {
+    const { config } = await resolveMine()
+    expect(config.base).toBe('origin/master')
+    expect(config.worktree_dir).toBe('../{repo}-{id}')
+    expect(config.panes).toEqual([])
   })
 
-  test('a string bootstrap is reported, not handed to flatMap', () => {
-    const { config, diagnostics } = validate(`
-[repos.x]
-root = "/tmp/x"
-bootstrap = "script.sh"
-`)
-    expect(diagnostics[0].severity).toBe('error')
-    expect(diagnostics[0].message).toContain('expected a list of strings, found a string ("script.sh")')
-    expect(config.repos.x.bootstrap).toBeUndefined()
+  test('a key with no default stays absent, so "not configured" is still readable', async () => {
+    const { config } = await resolveMine()
+    expect(config.bootstrap).toBeUndefined()
+    expect(config.setup).toBeUndefined()
+    expect(config.agent).toBeUndefined()
+    expect(config.context).toBeUndefined()
+    expect(config.model_arg).toBeUndefined()
   })
 
-  test('a quoted boolean is rejected rather than coerced into a truthy autostart', () => {
-    const { config, diagnostics } = validate(`
-[repos.x]
-root = "/tmp/x"
-[[repos.x.panes]]
+  test('a pane gets the documented defaults per entry, keeping what it declares', async () => {
+    writeLocal(mine, `
+[[panes]]
 label = "dev"
 command = "npm run dev"
-autostart = "false"
-`)
-    expect(diagnostics[0].message).toBe(
-      'repos.x.panes[0].autostart in /cfg/config.toml: expected a boolean (unquoted true or false), found a string ("false")',
-    )
-    // Dropped, not coerced: nothing downstream can read it as truthy.
-    expect(config.repos.x.panes?.[0].autostart).toBeUndefined()
-    expect(config.repos.x.panes?.[0].command).toBe('npm run dev')
-  })
 
-  test('a real TOML boolean survives', () => {
-    const { config, diagnostics } = validate(`
-[repos.x]
-root = "/tmp/x"
-[[repos.x.panes]]
+[[panes]]
+split = "right"
+ratio = 0.3
 autostart = true
 `)
-    expect(diagnostics).toEqual([])
-    expect(config.repos.x.panes?.[0].autostart).toBe(true)
+    const { config } = await resolveMine()
+    expect(config.panes[0]).toEqual({
+      split: 'down',
+      ratio: 0.5,
+      label: 'dev',
+      command: 'npm run dev',
+      autostart: false,
+    })
+    expect(config.panes[1]).toEqual({ split: 'right', ratio: 0.3, autostart: true })
   })
 
-  test('a non-string entry inside a list names its index', () => {
-    expect(errors(`
-[repos.x]
-root = "/tmp/x"
-setup = ["npm ci", 3]
-`)[0]).toContain('expected a list of strings, found a list with a number (3) at index 1')
+  test('an unknown key warns and the rest of the config still resolves', async () => {
+    writeMyBlock('dev_command = "npm run dev"\nsetup = ["npm ci"]\n')
+    const { config } = await resolveMine()
+    expect(config.setup).toEqual(['npm ci'])
+    expect('dev_command' in config).toBe(false)
+    expect(warned).toHaveLength(1)
+    expect(warned[0]).toContain('unknown key "dev_command" in [repos.my-repo]')
   })
 
-  test('an unsupported split value is reported with the allowed ones', () => {
-    expect(errors(`
-[repos.x]
-root = "/tmp/x"
-[[repos.x.panes]]
-split = "left"
-`)[0]).toBe('repos.x.panes[0].split in /cfg/config.toml: expected one of "down", "right", found "left"')
-  })
-
-  test('a repo entry that is not a table is reported', () => {
-    expect(errors('repos = { x = "nope" }')[0]).toBe(
-      'repos.x in /cfg/config.toml: expected a table, found a string ("nope")',
+  test('a wrong value shape stops the run instead of resolving', async () => {
+    writeMyBlock('setup = "npm ci"\n')
+    await expectRejection(
+      resolveMine(),
+      `repos.my-repo.setup in ${centralPath}: expected a list of strings, found a string ("npm ci")`,
     )
   })
 
-  test('a non-table defaults is reported', () => {
-    expect(errors('defaults = "claude"')[0]).toBe(
-      'defaults in /cfg/config.toml: expected a table, found a string ("claude")',
+  test('another repo\'s broken block is demoted to a warning, so work here continues', async () => {
+    writeCentral(`
+[repos.my-repo]
+root = ${JSON.stringify(mine)}
+
+[repos.broken]
+root = "/nowhere/at/all"
+setup = "npm ci"
+`)
+    const { config } = await resolveMine()
+    expect(config.base).toBe('origin/master')
+    expect(warned).toHaveLength(1)
+    expect(warned[0]).toContain('repos.broken.setup')
+    expect(warned[0]).toContain("another repo's block, ignored here")
+  })
+
+  test('a repo whose key merely starts with this one\'s is still another repo', async () => {
+    writeCentral(`
+[repos.my-repo]
+root = ${JSON.stringify(mine)}
+
+[repos.my-repo-too]
+root = "/nowhere/at/all"
+setup = "npm ci"
+`)
+    await resolveMine()
+    expect(warned[0]).toContain("another repo's block, ignored here")
+  })
+
+  test('a block that broke its own root cannot demote itself to another repo\'s', async () => {
+    // `root` is the match key, so a block that lost it matches nothing; the
+    // directory-name fallback keeps its errors fatal here instead of letting the
+    // repo run unconfigured.
+    writeCentral('[repos.my-repo]\nsetup = "npm ci"\n')
+    await expectRejection(resolveMine(), 'expected a list of strings')
+  })
+
+  test('an error outside any repo block stops the run whichever repo asked', async () => {
+    writeCentral('[defaults]\nagent = 3\n')
+    await expectRejection(
+      resolveMine(),
+      `defaults.agent in ${centralPath}: expected a string, found a number (3)`,
+    )
+  })
+
+  test('no central config at all is a repo with nothing but the defaults', async () => {
+    const { name, config } = await resolveRepoConfig(repoDir('unconfigured'), configDir, warn)
+    expect(name).toBe('unconfigured')
+    expect(config.base).toBe('origin/master')
+    expect(warned).toEqual([])
+  })
+
+  test('a repo known only by its local file resolves under its directory name', async () => {
+    const lonely = repoDir('lonely')
+    writeLocal(lonely, 'base = "origin/main"\nsetup = ["bun install"]\n')
+    const { name, config } = await resolveRepoConfig(lonely, configDir, warn)
+    expect(name).toBe('lonely')
+    expect(config.base).toBe('origin/main')
+    expect(config.setup).toEqual(['bun install'])
+    expect(warned).toEqual([])
+  })
+
+  test('a block keyed differently from the directory still configures it, by root', async () => {
+    writeCentral(`[repos.work-repo]\nroot = ${JSON.stringify(mine)}\nbase = "origin/main"\n`)
+    const { name, config } = await resolveMine()
+    expect(name).toBe('work-repo')
+    expect(config.base).toBe('origin/main')
+  })
+})
+
+describe('value shapes that used to crash or coerce', () => {
+  test('single-bracket panes name the [[...]] fix instead of throwing a TypeError', async () => {
+    writeCentral(`
+[repos.my-repo]
+root = ${JSON.stringify(mine)}
+[repos.my-repo.panes]
+split = "down"
+`)
+    await expectRejection(
+      resolveMine(),
+      'expected a list of tables, found a single table. Write [[repos.my-repo.panes]]',
+    )
+  })
+
+  test('a string setup is reported once, against the file it came from', async () => {
+    // Anchored: one mistake is one diagnostic, and it names the local file rather
+    // than the central one.
+    writeLocal(mine, 'setup = "npm ci"\n')
+    await expectRejection(
+      resolveMine(),
+      new RegExp(
+        `^invalid config:\\n {2}setup in ${localPath(mine)}: expected a list of strings, found a string \\("npm ci"\\)$`,
+      ),
+    )
+  })
+
+  test('a string bootstrap is reported, not handed to flatMap', async () => {
+    writeLocal(mine, 'bootstrap = "script.sh"\n')
+    await expectRejection(resolveMine(), 'expected a list of strings, found a string ("script.sh")')
+  })
+
+  test('a quoted boolean is rejected rather than coerced into a truthy autostart', async () => {
+    // Coercing is what started dev servers that must not race, so the run stops
+    // here rather than resolving a pane with a value nobody meant.
+    writeLocal(mine, '[[panes]]\nlabel = "dev"\ncommand = "npm run dev"\nautostart = "false"\n')
+    await expectRejection(
+      resolveMine(),
+      'panes[0].autostart in ' +
+        `${localPath(mine)}: expected a boolean (unquoted true or false), found a string ("false")`,
+    )
+  })
+
+  test('a real TOML boolean survives', async () => {
+    writeLocal(mine, '[[panes]]\nautostart = true\n')
+    const { config } = await resolveMine()
+    expect(config.panes[0].autostart).toBe(true)
+    expect(warned).toEqual([])
+  })
+
+  test('a non-string entry inside a list names its index', async () => {
+    writeLocal(mine, 'setup = ["npm ci", 3]\n')
+    await expectRejection(
+      resolveMine(),
+      'expected a list of strings, found a list with a number (3) at index 1',
+    )
+  })
+
+  test('an unsupported split value is reported with the allowed ones', async () => {
+    writeLocal(mine, '[[panes]]\nsplit = "left"\n')
+    await expectRejection(
+      resolveMine(),
+      `panes[0].split in ${localPath(mine)}: expected one of "down", "right", found "left"`,
+    )
+  })
+
+  test('a repo entry that is not a table is reported', async () => {
+    const x = repoDir('x')
+    writeCentral('repos = { x = "nope" }')
+    await expectRejection(
+      resolveRepoConfig(x, configDir, warn),
+      `repos.x in ${centralPath}: expected a table, found a string ("nope")`,
+    )
+  })
+
+  test('a non-table defaults is reported', async () => {
+    writeCentral('defaults = "claude"')
+    await expectRejection(
+      resolveMine(),
+      `defaults in ${centralPath}: expected a table, found a string ("claude")`,
     )
   })
 })
 
 describe('unknown keys stay non-fatal warnings that name the file', () => {
-  test('at the top level', () => {
-    const found = warnings('agent = "claude"')
-    expect(found).toHaveLength(1)
-    expect(found[0]).toContain('unknown key "agent" in the top level of /cfg/config.toml')
-    expect(found[0]).toContain('Known keys: defaults, repos')
+  test('at the top level', async () => {
+    writeCentral('agent = "claude"')
+    await resolveMine()
+    expect(warned).toHaveLength(1)
+    expect(warned[0]).toContain(`unknown key "agent" in the top level of ${centralPath}`)
+    expect(warned[0]).toContain('Known keys: defaults, repos')
   })
 
-  test('in [defaults]', () => {
-    expect(warnings(`
-[defaults]
-agnet = "claude"
-`)[0]).toContain('unknown key "agnet" in [defaults] in /cfg/config.toml')
+  test('in [defaults]', async () => {
+    writeCentral('[defaults]\nagnet = "claude"\n')
+    await resolveMine()
+    expect(warned[0]).toContain(`unknown key "agnet" in [defaults] in ${centralPath}`)
   })
 
-  test('in a repo block', () => {
-    expect(warnings(`
-[repos.x]
-root = "/tmp/x"
-dev_command = "npm run dev"
-`)[0]).toContain('unknown key "dev_command" in [repos.x] in /cfg/config.toml')
-  })
-
-  test('in a pane table', () => {
-    expect(warnings(`
-[repos.x]
-root = "/tmp/x"
-[[repos.x.panes]]
-auto_start = false
-`)[0]).toContain('unknown key "auto_start" in [repos.x.panes[0]] in /cfg/config.toml')
-  })
-
-  test('and the surrounding config still loads', () => {
-    const { config } = validate(`
-[repos.x]
-root = "/tmp/x"
-dev_command = "npm run dev"
-setup = ["npm ci"]
-`)
-    expect(config.repos.x.setup).toEqual(['npm ci'])
-    expect('dev_command' in config.repos.x).toBe(false)
+  test('in a pane table, under the nested path it sits at', async () => {
+    writeMyBlock('[[repos.my-repo.panes]]\nauto_start = false\n')
+    await resolveMine()
+    expect(warned[0]).toContain(
+      `unknown key "auto_start" in [repos.my-repo.panes[0]] in ${centralPath}`,
+    )
   })
 })
 
 describe('the shipped example config', () => {
-  test('validates without a single diagnostic', async () => {
-    const path = new URL('../../config.example.toml', import.meta.url).pathname
-    const { config, diagnostics } = validateConfigFile(Bun.TOML.parse(await Bun.file(path).text()), path)
-    expect(diagnostics).toEqual([])
-    expect(config.repos['my-awesome-repo'].panes).toHaveLength(2)
-    expect(config.repos['my-awesome-repo'].bootstrap?.[0]).toContain('worktree-up.sh')
+  const examplePath = new URL('../../config.example.toml', import.meta.url).pathname
+
+  test('resolves without a single diagnostic', async () => {
+    copyFileSync(examplePath, centralPath)
+    // Resolved from a repo the example does not name: the whole file is still
+    // validated, and nothing reads the ~/dev path the example's root points at.
+    await resolveRepoConfig(repoDir('not-in-the-example'), configDir, warn)
+    expect(warned).toEqual([])
+  })
+
+  test('its repo comes back with the panes and bootstrap it declares', async () => {
+    // The shipped text with the example's ~ root aimed at a temp dir, so the
+    // listing (which looks for a .treehouse.toml next to every root) stays off
+    // the developer's own ~/dev.
+    const root = repoDir('my-awesome-repo')
+    writeCentral((await Bun.file(examplePath).text()).replaceAll('~/dev/my-awesome-repo', root))
+    const resolved = await resolveAllRepoConfigs(configDir, warn)
+    expect(warned).toEqual([])
+    expect(resolved.map((entry) => entry.name)).toEqual(['my-awesome-repo'])
+    expect(resolved[0].config.panes).toHaveLength(2)
+    expect(resolved[0].config.bootstrap?.[0]).toContain('worktree-up.sh')
   })
 })
 
 describe('the proposed onboarding block', () => {
   // The block onboard writes to the user's real config gets the same guarantee
-  // as the shipped example: it must satisfy the validators it will be read by.
-  const proposal = { name: 'my-repo', root: '/dev/my-repo', installCommand: 'npm ci', devCommand: 'npm run dev' }
+  // as the shipped example: it must resolve, through the validators it will be
+  // read by, without a diagnostic.
+  const proposal = { name: 'my-repo', root: '', installCommand: 'npm ci', devCommand: 'npm run dev' }
 
-  test('round-trips through the central validator with zero diagnostics', () => {
-    const { config, diagnostics } = validate(renderProposedBlock(proposal, 'central'))
-    expect(diagnostics).toEqual([])
-    expect(config.repos['my-repo'].root).toBe('/dev/my-repo')
-    expect(config.repos['my-repo'].setup).toEqual(['npm ci'])
-    expect(config.repos['my-repo'].panes?.[0].command).toBe('npm run dev')
-  })
-
-  test('round-trips through the local validator with zero diagnostics', () => {
-    const { config, diagnostics } = validateLocalConfigFile(
-      Bun.TOML.parse(renderProposedBlock(proposal, 'local')),
-      '/repo/.treehouse.toml',
-    )
-    expect(diagnostics).toEqual([])
+  test('round-trips through central resolution with zero diagnostics', async () => {
+    writeCentral(renderProposedBlock({ ...proposal, root: mine }, 'central'))
+    const { name, config } = await resolveMine()
+    expect(warned).toEqual([])
+    expect(name).toBe('my-repo')
+    expect(config.root).toBe(mine)
     expect(config.setup).toEqual(['npm ci'])
-    expect(config.panes?.[0].autostart).toBe(false)
+    expect(config.panes[0].command).toBe('npm run dev')
   })
 
-  test('the commented examples uncomment into valid keys carrying the real defaults', () => {
+  test('round-trips through local resolution with zero diagnostics', async () => {
+    writeLocal(mine, renderProposedBlock({ ...proposal, root: mine }, 'local'))
+    const { config } = await resolveMine()
+    expect(warned).toEqual([])
+    expect(config.setup).toEqual(['npm ci'])
+    expect(config.panes[0].autostart).toBe(false)
+  })
+
+  test('the commented lines uncomment into keys the validator accepts', async () => {
     // A scan that learned nothing renders every optional line commented; those
-    // lines must be one '#' away from config the validator accepts, with the
-    // defaults the engine actually applies.
-    const block = renderProposedBlock({ name: 'my-repo', root: '/dev/my-repo' }, 'central')
-    const uncommented = block
-      .split('\n')
-      .map((line) => line.replace(/^# (?=(worktree_dir|base|bootstrap|setup|command) )/, ''))
-      .join('\n')
-    const { config, diagnostics } = validate(uncommented)
-    expect(diagnostics).toEqual([])
-    expect(config.repos['my-repo'].worktree_dir).toBe('../my-repo-{id}')
-    expect(config.repos['my-repo'].base).toBe(DEFAULT_BASE)
-    expect(config.repos['my-repo'].setup).toEqual(['npm ci'])
+    // lines must be one '#' away from config that resolves.
+    const block = renderProposedBlock({ name: 'my-repo', root: mine }, 'central')
+    writeCentral(
+      block
+        .split('\n')
+        .map((line) => line.replace(/^# (?=(worktree_dir|base|bootstrap|setup|command) )/, ''))
+        .join('\n'),
+    )
+    const { config } = await resolveMine()
+    expect(warned).toEqual([])
+    expect(config.worktree_dir).toBe('../my-repo-{id}')
+    expect(config.base).toBe('origin/master')
+    expect(config.setup).toEqual(['npm ci'])
   })
 
-  test('a dotted repo name is quoted so the block still parses', () => {
-    const { config, diagnostics } = validate(
-      renderProposedBlock({ ...proposal, name: 'my.repo' }, 'central'),
-    )
-    expect(diagnostics).toEqual([])
-    expect(config.repos['my.repo'].root).toBe('/dev/my-repo')
+  test('the values it advertises are the ones the resolver applies', async () => {
+    // Read off the rendered text, not off a resolution of it: a defaulted key
+    // resolves to the same value whether the block declared it or the resolver
+    // filled it in, so comparing two resolutions cannot see a line that stopped
+    // being advertised at all.
+    const bare = repoDir('bare')
+    writeLocal(bare, '[[panes]]\n')
+    const applied = (await resolveRepoConfig(bare, configDir, warn)).config
+
+    const block = renderProposedBlock({ name: 'my-repo', root: mine }, 'central')
+    expect(block).toContain(`# base = "${applied.base}"`)
+    // Advertised with {repo} already filled in, since the block names one repo.
+    expect(block).toContain(`# worktree_dir = "${applied.worktree_dir.replace('{repo}', 'my-repo')}"`)
+    expect(block).toContain(`split = "${applied.panes[0].split}"`)
+    expect(block).toContain(`autostart = ${applied.panes[0].autostart}`)
   })
 
-  test('a name and root that are not TOML-safe are escaped, not interpolated raw', () => {
-    // A space is not a bare-key character, and a quote in the path would end
-    // the root string early; either used to render TOML the engine then
-    // refuses to load.
-    const { config, diagnostics } = validate(
-      renderProposedBlock({ ...proposal, name: 'my repo', root: '/dev/my "repo"' }, 'central'),
-    )
-    expect(diagnostics).toEqual([])
-    expect(config.repos['my repo'].root).toBe('/dev/my "repo"')
+  test('a dotted repo name is quoted so the block still parses', async () => {
+    writeCentral(renderProposedBlock({ ...proposal, name: 'my.repo', root: mine }, 'central'))
+    const { name } = await resolveMine()
+    expect(warned).toEqual([])
+    expect(name).toBe('my.repo')
+  })
+
+  test('a name and root that are not TOML-safe are escaped, not interpolated raw', async () => {
+    // A space is not a bare-key character, and a quote in the path would end the
+    // root string early; either used to render TOML the engine then refuses to
+    // load, or a block that matches no checkout.
+    const quoted = repoDir('my "repo"')
+    writeCentral(renderProposedBlock({ ...proposal, name: 'my repo', root: quoted }, 'central'))
+    const { name, config } = await resolveRepoConfig(quoted, configDir, warn)
+    expect(warned).toEqual([])
+    expect(name).toBe('my repo')
+    expect(config.setup).toEqual(['npm ci'])
   })
 })
 
 describe('repo-local .treehouse.toml', () => {
-  test('takes the repo fields without the wrapper', () => {
-    const { config, diagnostics } = validateLocalConfigFile(
-      Bun.TOML.parse(`
+  test('takes the repo fields without the wrapper', async () => {
+    writeLocal(mine, `
 base = "origin/main"
 setup = ["bun install"]
 [[panes]]
 split = "down"
 label = "test"
-`),
-      '/repo/.treehouse.toml',
-    )
-    expect(diagnostics).toEqual([])
+`)
+    const { config } = await resolveMine()
+    expect(warned).toEqual([])
     expect(config.base).toBe('origin/main')
-    expect(config.panes?.[0].label).toBe('test')
+    expect(config.panes[0].label).toBe('test')
   })
 
-  test('warns that root is ignored', () => {
-    const { diagnostics } = validateLocalConfigFile(
-      Bun.TOML.parse('root = "/elsewhere"'),
-      '/repo/.treehouse.toml',
-    )
-    expect(diagnostics).toEqual([
-      {
-        severity: 'warning',
-        message: '"root" in /repo/.treehouse.toml is ignored (the repo root is where the file lives)',
-      },
+  test('warns that root is ignored, and the repo stays where the file lives', async () => {
+    writeLocal(mine, 'root = "/elsewhere"\n')
+    const { config } = await resolveMine()
+    expect(warned).toEqual([
+      `warning: "root" in ${localPath(mine)} is ignored (the repo root is where the file lives)`,
     ])
+    expect(config.root).toBe(mine)
   })
 
-  test('reports value shapes against the local file', () => {
-    const { diagnostics } = validateLocalConfigFile(
-      Bun.TOML.parse('setup = "npm ci"'),
-      '/repo/.treehouse.toml',
-    )
-    expect(diagnostics[0].message).toBe(
-      'setup in /repo/.treehouse.toml: expected a list of strings, found a string ("npm ci")',
-    )
+  test('single-bracket panes name [[panes]] for the local shape', async () => {
+    writeLocal(mine, '[panes]\nsplit = "down"\n')
+    await expectRejection(resolveMine(), '[[panes]]')
   })
 
-  test('single-bracket panes name [[panes]] for the local shape', () => {
-    const { diagnostics } = validateLocalConfigFile(
-      Bun.TOML.parse('[panes]\nsplit = "down"\n'),
-      '/repo/.treehouse.toml',
-    )
-    expect(diagnostics[0].message).toContain('[[panes]]')
+  test('wins over the central block, key by key', async () => {
+    writeMyBlock('base = "origin/master"\nsetup = ["npm ci"]\n')
+    writeLocal(mine, 'base = "origin/main"\n')
+    const { config } = await resolveMine()
+    expect(config.base).toBe('origin/main')
+    expect(config.setup).toEqual(['npm ci'])
   })
 })
 
 describe('context', () => {
-  test('is accepted in [defaults] and in a repo block', () => {
-    const { config, diagnostics } = validate(`
+  test('is accepted in [defaults] and in a repo block', async () => {
+    writeCentral(`
 [defaults]
 context = "every repo"
 
-[repos.x]
-root = "/tmp/x"
+[repos.my-repo]
+root = ${JSON.stringify(mine)}
 context = """
 line one
 line two
 """
 `)
-    expect(diagnostics).toEqual([])
-    expect(config.defaults.context).toBe('every repo')
-    // Stored as TOML handed it over, blank edges and all (Bun keeps the newline
+    const { config } = await resolveMine()
+    expect(warned).toEqual([])
+    // Kept as TOML handed it over, blank edges and all (Bun keeps the newline
     // after the """); trimming them is the rendering side's business.
-    expect(config.repos.x.context).toBe('\nline one\nline two\n')
+    expect(config.context).toBe('\nline one\nline two\n')
   })
 
-  test('is accepted in a repo-local file', () => {
-    const { config, diagnostics } = validateLocalConfigFile(
-      Bun.TOML.parse('context = "just this repo"'),
-      '/repo/.treehouse.toml',
+  test('is accepted in a repo-local file', async () => {
+    writeLocal(mine, 'context = "just this repo"\n')
+    expect((await resolveMine()).config.context).toBe('just this repo')
+  })
+
+  test('a list is reported rather than reaching the renderer', async () => {
+    writeLocal(mine, 'context = ["a", "b"]\n')
+    await expectRejection(
+      resolveMine(),
+      `context in ${localPath(mine)}: expected a string, found a list`,
     )
-    expect(diagnostics).toEqual([])
-    expect(config.context).toBe('just this repo')
-  })
-
-  test('a list is reported rather than reaching the renderer', () => {
-    expect(errors('[repos.x]\nroot = "/tmp/x"\ncontext = ["a", "b"]\n')).toEqual([
-      'repos.x.context in /cfg/config.toml: expected a string, found a list',
-    ])
   })
 })
 
-describe('resolveAllRepoConfigs', () => {
-  let parent: string
-  let configDir: string
-  let warned: string[]
-
-  const warn = (message: string) => warned.push(message)
-
-  const repoDir = (name: string) => {
-    const dir = join(parent, name)
-    mkdirSync(dir, { recursive: true })
-    return dir
-  }
-
-  const writeCentral = (toml: string) => writeFileSync(join(configDir, 'config.toml'), toml)
-
-  beforeEach(() => {
-    parent = mkdtempSync(join(tmpdir(), 'treehouse-config-test-'))
-    configDir = join(parent, 'config')
-    mkdirSync(configDir)
-    warned = []
+describe('a [repos.X] block without root', () => {
+  // realpathSync('') resolves to the process cwd, so an empty or missing root
+  // would make the block claim whichever repo you happened to run from.
+  test('is an error naming the missing key', async () => {
+    writeCentral('[repos.my-repo]\nbase = "origin/main"\n')
+    await expectRejection(resolveMine(), `[repos.my-repo] in ${centralPath}: missing required key "root"`)
   })
 
-  afterEach(() => {
-    rmSync(parent, { recursive: true, force: true })
+  test('and a wrong-typed root is reported as a type error, then as the key it left unfilled', async () => {
+    writeCentral('repos = { "my-repo" = { root = 3 } }')
+    await expectRejection(
+      resolveMine(),
+      /repos\.my-repo\.root in .*: expected a string, found a number \(3\)[\s\S]*\[repos\.my-repo\] in .*: missing required key "root"/,
+    )
   })
 
+  test('a repo-local file still needs no root', async () => {
+    writeLocal(mine, 'base = "origin/main"\n')
+    await resolveMine()
+    expect(warned).toEqual([])
+  })
+})
+
+describe('root must be an absolute path', () => {
+  test('an empty root is an error, not a block that claims the cwd', async () => {
+    writeCentral('[repos.my-repo]\nroot = ""\n')
+    await expectRejection(
+      resolveMine(),
+      `repos.my-repo.root in ${centralPath}: expected an absolute path, found ""`,
+    )
+  })
+
+  test('a relative root is an error', async () => {
+    writeCentral('[repos.my-repo]\nroot = "../somewhere"\n')
+    await expectRejection(resolveMine(), 'expected an absolute path, found "../somewhere"')
+  })
+
+  test('a ~ root is expanded before the check, not rejected', async () => {
+    // Expanded where it is used, so the repo it claims is the one under ~. The
+    // path is one no machine has, since resolution looks for a .treehouse.toml
+    // next to it and this test may not read the developer's own repos.
+    writeCentral('[repos.elsewhere]\nroot = "~/.treehouse-test-no-such-repo"\n')
+    const resolved = await resolveAllRepoConfigs(configDir, warn)
+    expect(warned).toEqual([])
+    expect(resolved[0].config.root).toBe(join(homedir(), '.treehouse-test-no-such-repo'))
+  })
+})
+
+describe('the multi-repo view', () => {
   test('every central entry comes back with defaults and local file layered', async () => {
     const a = repoDir('a')
     const b = repoDir('b')
-    writeFileSync(join(b, '.treehouse.toml'), 'base = "origin/main"\n')
+    writeLocal(b, 'base = "origin/main"\n')
     writeCentral(`
 [defaults]
 agent = "claude"
@@ -367,11 +557,20 @@ base = "origin/master"
     expect(warned).toEqual([])
   })
 
+  test('applies the same defaults as the single-repo resolver', async () => {
+    const a = repoDir('a')
+    writeCentral(`[repos.a]\nroot = ${JSON.stringify(a)}\n[[repos.a.panes]]\nlabel = "dev"\n`)
+    const [{ config }] = await resolveAllRepoConfigs(configDir, warn)
+    expect(config.base).toBe('origin/master')
+    expect(config.worktree_dir).toBe('../{repo}-{id}')
+    expect(config.panes[0]).toEqual({ split: 'down', ratio: 0.5, label: 'dev', autostart: false })
+  })
+
   test('a repo context replaces the default rather than appending to it', async () => {
     const a = repoDir('a')
     const b = repoDir('b')
     const c = repoDir('c')
-    writeFileSync(join(c, '.treehouse.toml'), 'context = "from the local file"\n')
+    writeLocal(c, 'context = "from the local file"\n')
     writeCentral(`
 [defaults]
 context = "from defaults"
@@ -450,7 +649,7 @@ root = ${JSON.stringify(a)}
 
   test('a repo with a broken local file is skipped with a warning', async () => {
     const a = repoDir('a')
-    writeFileSync(join(a, '.treehouse.toml'), 'setup = "npm ci"\n')
+    writeLocal(a, 'setup = "npm ci"\n')
     writeCentral(`[repos.a]\nroot = ${JSON.stringify(a)}\n`)
     const resolved = await resolveAllRepoConfigs(configDir, warn)
     expect(resolved).toEqual([])
@@ -466,6 +665,11 @@ root = ${JSON.stringify(a)}
   test('an error outside the repo blocks still stops the run', async () => {
     writeCentral('[defaults]\nagent = 3\n')
     await expectRejection(resolveAllRepoConfigs(configDir, warn), 'invalid config')
+  })
+
+  test('repos known only by a local file are invisible here, by design', async () => {
+    writeLocal(repoDir('lonely'), 'base = "origin/main"\n')
+    expect(await resolveAllRepoConfigs(configDir, warn)).toEqual([])
   })
 })
 
@@ -487,95 +691,5 @@ describe('reportDiagnostics', () => {
         () => {},
       ),
     ).toThrow('invalid config:\n  first\n  second')
-  })
-})
-
-describe('a [repos.X] block without root', () => {
-  // realpathSync('') resolves to the process cwd, so an empty or missing root
-  // would make the block claim whichever repo you happened to run from.
-  test('is an error naming the missing key', () => {
-    const found = errors(`
-[repos.x]
-base = "origin/main"
-`)
-    expect(found).toEqual(['[repos.x] in /cfg/config.toml: missing required key "root"'])
-  })
-
-  test('and a wrong-typed root is reported once, as a type error', () => {
-    expect(errors('repos = { x = { root = 3 } }')).toEqual([
-      'repos.x.root in /cfg/config.toml: expected a string, found a number (3)',
-      '[repos.x] in /cfg/config.toml: missing required key "root"',
-    ])
-  })
-
-  test('a repo-local file still needs no root', () => {
-    const { diagnostics } = validateLocalConfigFile(Bun.TOML.parse('base = "origin/main"'), '/repo/.treehouse.toml')
-    expect(diagnostics).toEqual([])
-  })
-})
-
-describe('root must be an absolute path', () => {
-  test('an empty root is an error, not a block that claims the cwd', () => {
-    expect(errors('[repos.x]\nroot = ""\n')).toEqual([
-      'repos.x.root in /cfg/config.toml: expected an absolute path, found ""',
-      '[repos.x] in /cfg/config.toml: missing required key "root"',
-    ])
-  })
-
-  test('a relative root is an error', () => {
-    expect(errors('[repos.x]\nroot = "../somewhere"\n')[0]).toBe(
-      'repos.x.root in /cfg/config.toml: expected an absolute path, found "../somewhere"',
-    )
-  })
-
-  test('a ~ root is expanded before the check, not rejected', () => {
-    const { config, diagnostics } = validate('[repos.x]\nroot = "~/dev/x"\n')
-    expect(diagnostics).toEqual([])
-    // Stored unexpanded; expansion happens where the path is used.
-    expect(config.repos.x.root).toBe('~/dev/x')
-  })
-
-  test('the error is scoped to the repo, so it demotes and skips like any other', () => {
-    const { diagnostics } = validate('[repos.x]\nroot = "relative"\n')
-    expect(diagnostics[0].key).toBe('repos.x.root')
-    expect(diagnosticsForRepo(diagnostics, 'other')[0].severity).toBe('warning')
-  })
-})
-
-describe('diagnosticsForRepo', () => {
-  const diagnostics = [
-    { severity: 'error' as const, key: 'repos.mine.setup', message: 'mine is broken' },
-    { severity: 'error' as const, key: 'repos.other.setup', message: 'other is broken' },
-    { severity: 'error' as const, key: 'defaults.agent', message: 'defaults is broken' },
-    { severity: 'warning' as const, key: 'repos.other.nope', message: 'unknown key' },
-  ]
-
-  test('keeps errors for this repo and for shared blocks fatal', () => {
-    const scoped = diagnosticsForRepo(diagnostics, 'mine')
-    expect(scoped[0]).toEqual(diagnostics[0])
-    expect(scoped[2]).toEqual(diagnostics[2])
-  })
-
-  test('demotes another repo\'s errors, so one bad block cannot break every command', () => {
-    const scoped = diagnosticsForRepo(diagnostics, 'mine')
-    expect(scoped[1].severity).toBe('warning')
-    expect(scoped[1].message).toContain("another repo's block, ignored here")
-  })
-
-  test('with no repo in scope, every repo-scoped error is demoted', () => {
-    const scoped = diagnosticsForRepo(diagnostics, undefined)
-    expect(scoped.filter((d) => d.severity === 'error').map((d) => d.key)).toEqual(['defaults.agent'])
-  })
-
-  test('leaves warnings alone', () => {
-    expect(diagnosticsForRepo(diagnostics, 'mine')[3]).toEqual(diagnostics[3])
-  })
-
-  test('a repo whose name merely starts with mine is still another repo', () => {
-    const scoped = diagnosticsForRepo(
-      [{ severity: 'error', key: 'repos.mine-too.setup', message: 'broken' }],
-      'mine',
-    )
-    expect(scoped[0].severity).toBe('warning')
   })
 })

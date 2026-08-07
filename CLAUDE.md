@@ -43,7 +43,7 @@ src/commands/      one file per treehouse subcommand + registry.ts, the one regi
 src/worktree/      the git/worktree domain: branch naming, plan, placement, provision, git
 src/herdr/         everything that knows Herdr: invoker, tab choreography, env payloads
 src/config/        config shape, validation, resolution, defaults; diagnostics severity
-src/testing/       fake Herdr, temp repos, expectRejection
+src/testing/       fake Herdr, temp repos, resolved configs, expectRejection
 src/manifest.test.ts   the manifest <-> code contract, which belongs to no single layer
 ```
 
@@ -67,7 +67,8 @@ Tests stay next to what they test (`up.ts` / `up.test.ts`); the two that pin cod
 
 ### `src/config/` — the config shape
 
-- `config.ts` — one shape declaration (keys *and* value shapes, per level) validated in one pass; takes a resolved config dir, never a Herdr invoker. The resolvers (`resolveRepoConfig`, `findConfiguredEntry`, `resolveAllRepoConfigs`) report their own diagnostics through `diagnostics.ts` before returning, so a call site cannot obtain a usable config while an unreported error sits in the data (unknown keys warn, wrong value shapes stop the run). `resolveAllRepoConfigs` is the multi-repo view (`ls`, `report`): same layering per repo, but a repo whose own block is broken is skipped with a warning instead of stopping the listing. Also the one home of the defaults (`DEFAULT_BASE`, `DEFAULT_WORKTREE_DIR`, `PANE_DEFAULTS`) and of `renderProposedBlock`, the write side of the shape: onboard hands it a value and the round-trip through the validators is pinned in `config.test.ts`.
+- `config.ts` — one shape declaration (keys *and* value shapes, per level) validated in one pass; takes a resolved config dir, never a Herdr invoker. The resolvers (`resolveRepoConfig`, `configuredRepoName`, `resolveAllRepoConfigs`) report their own diagnostics through `diagnostics.ts` before returning, so a call site cannot obtain a usable config while an unreported error sits in the data (unknown keys warn, wrong value shapes stop the run). `resolveAllRepoConfigs` is the multi-repo view (`ls`, `report`): same layering per repo, but a repo whose own block is broken is skipped with a warning instead of stopping the listing. The defaults live here *and are applied here*, by both resolvers, so `RepoConfig` promises `base`, `worktree_dir` and `panes` (pane `split`/`ratio`/`autostart` included) and a consumer cannot forget a fallback; keys with no default stay optional, which is what keeps `bootstrap?.length` and `context === undefined` readable. The validator entry points are private for the same reason the diagnostics are reported inside: the resolvers are the way in, so `config.test.ts` drives validation through them rather than behind them. Also the home of `renderProposedBlock`, the write side of the shape: onboard hands it a value and the round-trip through resolution is pinned in `config.test.ts`.
+- `diagnostics.ts` — the `Diagnostic` type and the severity decision (warnings print, errors throw). The type lives here, with the module that acts on it, so the folder has no import cycle.
 
 ### `src/` — the shell
 

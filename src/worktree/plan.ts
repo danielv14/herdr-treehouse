@@ -1,6 +1,6 @@
 import { isAbsolute, resolve } from 'node:path'
 import { slugFromBranch, ticketFromBranch } from './branch.ts'
-import { DEFAULT_BASE, DEFAULT_WORKTREE_DIR, expandHome, type RepoConfig } from '../config/config.ts'
+import { expandHome, type RepoConfig } from '../config/config.ts'
 
 // Everything derived about one worktree, resolved in a single call. Pure: no
 // filesystem, no git, no Herdr.
@@ -217,7 +217,7 @@ const placeholderValues = (input: PlacementInput, id: string): Record<string, st
   ticket: ticketFromBranch(input.branch),
   id,
   root: input.mainRepoRoot,
-  base: input.repoConfig.base ?? DEFAULT_BASE,
+  base: input.repoConfig.base,
 })
 
 export const buildWorktreePlan = ({
@@ -233,7 +233,7 @@ export const buildWorktreePlan = ({
   const slug = slugFromBranch(branch)
   const ticket = ticketFromBranch(branch)
   const id = chosenId ?? conventionalId(branch)
-  const base = repoConfig.base ?? DEFAULT_BASE
+  const base = repoConfig.base
 
   const withoutWorktree = placeholderValues({ repoName, branch, mainRepoRoot, repoConfig }, id)
 
@@ -291,8 +291,7 @@ const resolveWorktreePath = (
   mainRepoRoot: string,
   values: Record<string, string>,
 ): string => {
-  const template = repoConfig.worktree_dir ?? DEFAULT_WORKTREE_DIR
-  const expanded = expandHome(expandWith(template, values, 'worktree_dir'))
+  const expanded = expandHome(expandWith(repoConfig.worktree_dir, values, 'worktree_dir'))
   // Relative paths resolve against the main checkout, not the caller's cwd:
   // "../foo" must mean the same thing from a skill, a keybinding and a shell.
   return isAbsolute(expanded) ? expanded : resolve(mainRepoRoot, expanded)

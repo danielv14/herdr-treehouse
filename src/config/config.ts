@@ -1,26 +1,31 @@
 import { existsSync, realpathSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, isAbsolute, join } from 'node:path'
-import { reportDiagnostics } from './diagnostics.ts'
+import { reportDiagnostics, type Diagnostic } from './diagnostics.ts'
 
 // Config shape, validation and resolution. Policy and rationale live in
 // docs/config.md; field semantics in config.example.toml.
 
-export type PaneConfig = {
-  split?: 'down' | 'right'
-  ratio?: number
+// A pane as the resolvers hand it over: the keys that have a default are always
+// there. `label` and `command` have none (a pane can be a bare shell).
+type PaneConfig = {
+  split: 'down' | 'right'
+  ratio: number
   label?: string
   command?: string
-  autostart?: boolean
+  autostart: boolean
 }
 
+// What the resolvers return: layered, with the defaults applied. A key with a
+// default is a fact here, so no consumer decides one for itself; a key without
+// one stays optional, so absence keeps meaning "not configured".
 export type RepoConfig = {
   root: string
-  worktree_dir?: string
-  base?: string
+  base: string
+  worktree_dir: string
+  panes: PaneConfig[]
   bootstrap?: string[]
   setup?: string[]
-  panes?: PaneConfig[]
   agent?: string
   // Standing agent instructions, delivered through the agent command's
   // {context_file}. Layered like every other key: replaces, never appends.
@@ -31,18 +36,23 @@ export type RepoConfig = {
   model_arg?: string
 }
 
+// One config level's own view of the same keys: nothing promised, since a level
+// says only what it changes. `root` is optional here too - a repo-local file has
+// none, and a [repos.X] block gets it required at validation.
+type DeclaredRepo = Partial<Omit<RepoConfig, 'panes'>> & { panes?: Partial<PaneConfig>[] }
+
 // A table rather than bare top-level keys on purpose: TOML bare keys attach to
 // whatever table precedes them, so an `agent = "..."` line appended below a
 // [repos.X] block would silently become that repo's setting.
-export type DefaultsConfig = {
+type DefaultsConfig = {
   agent?: string
   context?: string
   model_arg?: string
 }
 
-export type TreehouseConfig = {
+type TreehouseConfig = {
   defaults: DefaultsConfig
-  repos: Record<string, RepoConfig>
+  repos: Record<string, DeclaredRepo>
 }
 
 export const expandHome = (path: string) =>
@@ -52,14 +62,15 @@ export const expandHome = (path: string) =>
 // tabs.ts); everything here takes the resolved dir.
 export const configPath = (configDir: string) => join(configDir, 'config.toml')
 
-// Defaults applied when config leaves a field out. renderProposedBlock below
-// advertises them, and config.test.ts pins the round-trip, so onboard cannot
-// drift from what the engine does.
-export const DEFAULT_BASE = 'origin/master'
+// Defaults applied when config leaves a field out. Applied by the resolvers
+// below, the one place that sees every level; renderProposedBlock advertises
+// them, and config.test.ts pins that its commented lines resolve to the same
+// values, so onboard cannot drift from what the engine does.
+const DEFAULT_BASE = 'origin/master'
 
-export const DEFAULT_WORKTREE_DIR = '../{repo}-{id}'
+const DEFAULT_WORKTREE_DIR = '../{repo}-{id}'
 
-export const PANE_DEFAULTS = { split: 'down', ratio: 0.5, autostart: false } as const
+const PANE_DEFAULTS = { split: 'down', ratio: 0.5, autostart: false } as const
 
 export const LOCAL_CONFIG_FILE = '.treehouse.toml'
 
@@ -135,7 +146,7 @@ const LOCAL_SHAPE: Shape = Object.fromEntries(
 // Rendering a proposed block (the write side of the shape)
 // ---------------------------------------------------------------------------
 
-export type RepoProposal = {
+type RepoProposal = {
   name: string
   root: string
   installCommand?: string
@@ -184,17 +195,6 @@ export const renderProposedBlock = (proposal: RepoProposal, home: 'central' | 'l
 // ---------------------------------------------------------------------------
 // Validation
 // ---------------------------------------------------------------------------
-
-// Unknown keys warn (the config still works); a wrong value shape is an error,
-// because guessing is how a quoted "false" started dev servers. See
-// docs/config.md for the full policy.
-export type Diagnostic = {
-  severity: 'warning' | 'error'
-  message: string
-  // TOML path the diagnostic belongs to, e.g. "repos.npm-packages.setup". Lets a
-  // caller tell "my repo's block is broken" from "some other repo's block is".
-  key?: string
-}
 
 type Scope = {
   file: string
@@ -377,7 +377,9 @@ const validateTable = (
   return result
 }
 
-export const validateConfigFile = (
+// Both validator entry points are private: their behaviour is reached through
+// the resolvers below, which is where a call site meets it too.
+const validateConfigFile = (
   raw: unknown,
   file: string,
 ): { config: TreehouseConfig; diagnostics: Diagnostic[] } => {
@@ -392,16 +394,16 @@ export const validateConfigFile = (
   return {
     config: {
       defaults: (validated.defaults ?? {}) as DefaultsConfig,
-      repos: (validated.repos ?? {}) as Record<string, RepoConfig>,
+      repos: (validated.repos ?? {}) as Record<string, DeclaredRepo>,
     },
     diagnostics,
   }
 }
 
-export const validateLocalConfigFile = (
+const validateLocalConfigFile = (
   raw: unknown,
   file: string,
-): { config: Partial<RepoConfig>; diagnostics: Diagnostic[] } => {
+): { config: DeclaredRepo; diagnostics: Diagnostic[] } => {
   const diagnostics: Diagnostic[] = []
   if (!isTable(raw)) {
     return {
@@ -417,7 +419,7 @@ export const validateLocalConfigFile = (
   }
   const { root: _ignored, ...rest } = raw
   const validated = validateTable(rest, LOCAL_SHAPE, { file, prefix: '' }, diagnostics)
-  return { config: validated as Partial<RepoConfig>, diagnostics }
+  return { config: validated as DeclaredRepo, diagnostics }
 }
 
 // ---------------------------------------------------------------------------
@@ -432,7 +434,7 @@ const parseToml = async (path: string): Promise<unknown> => {
   }
 }
 
-export const loadConfig = async (
+const loadConfig = async (
   configDir: string,
 ): Promise<{ config: TreehouseConfig; diagnostics: Diagnostic[] }> => {
   const path = configPath(configDir)
@@ -450,17 +452,18 @@ const sameDir = (a: string, b: string) => {
 
 // Matched by path, not by name: the config key is a label, `root` is the
 // identity. Shared with onboard so both answer "already configured" the same way.
-export const findRepoEntry = (
-  repos: Record<string, RepoConfig>,
+const findRepoEntry = (
+  repos: Record<string, DeclaredRepo>,
   mainRepoRoot: string,
-): [string, RepoConfig] | undefined =>
-  Object.entries(repos).find(([, repo]) => {
-    // ABSOLUTE_ROOT drops a root it rejects, so a block can arrive here without
-    // one at all: the single-repo path matches before it reports diagnostics.
-    // Nothing to compare, hence no match (realpathSync('') would be the cwd).
-    const root: string | undefined = repo.root
-    return root !== undefined && sameDir(expandHome(root), mainRepoRoot)
-  })
+): [string, DeclaredRepo] | undefined =>
+  Object.entries(repos).find(
+    ([, repo]) =>
+      // ABSOLUTE_ROOT drops a root it rejects, so a block can arrive here
+      // without one at all: the single-repo path matches before it reports
+      // diagnostics. Nothing to compare, hence no match (realpathSync('')
+      // would be the cwd).
+      repo.root !== undefined && sameDir(expandHome(repo.root), mainRepoRoot),
+  )
 
 // The `repos.<name>[.<field>]` key convention, read in one place. Three call
 // sites ask these two questions and want different answers from them.
@@ -474,13 +477,10 @@ const isScopedToRepo = (diagnostic: Diagnostic, name: string) =>
 // every command for repo a. Pass the matched entry's key (falling back to the
 // checkout's directory name) so a block that broke its own `root` cannot demote
 // itself to "another repo's block" and slip through.
-export const diagnosticsForRepo = (
-  diagnostics: Diagnostic[],
-  repoName: string | undefined,
-): Diagnostic[] =>
+const diagnosticsForRepo = (diagnostics: Diagnostic[], repoName: string): Diagnostic[] =>
   diagnostics.map((diagnostic) => {
     if (diagnostic.severity !== 'error' || !isRepoScoped(diagnostic)) return diagnostic
-    if (repoName !== undefined && isScopedToRepo(diagnostic, repoName)) return diagnostic
+    if (isScopedToRepo(diagnostic, repoName)) return diagnostic
     return {
       ...diagnostic,
       severity: 'warning',
@@ -490,11 +490,27 @@ export const diagnosticsForRepo = (
 
 const loadLocalConfig = async (
   mainRepoRoot: string,
-): Promise<{ config: Partial<RepoConfig>; diagnostics: Diagnostic[] }> => {
+): Promise<{ config: DeclaredRepo; diagnostics: Diagnostic[] }> => {
   const localPath = join(mainRepoRoot, LOCAL_CONFIG_FILE)
   if (!existsSync(localPath)) return { config: {}, diagnostics: [] }
   return validateLocalConfigFile(await parseToml(localPath), localPath)
 }
+
+// The layered levels with the defaults filled in, so what a consumer reads is
+// what the engine does. Each pane gets its own: a pane declares only the keys it
+// changes, and the layering replaces the list wholesale.
+const withDefaults = (declared: DeclaredRepo, root: string): RepoConfig => ({
+  ...declared,
+  root,
+  base: declared.base ?? DEFAULT_BASE,
+  worktree_dir: declared.worktree_dir ?? DEFAULT_WORKTREE_DIR,
+  panes: (declared.panes ?? []).map((pane) => ({
+    ...pane,
+    split: pane.split ?? PANE_DEFAULTS.split,
+    ratio: pane.ratio ?? PANE_DEFAULTS.ratio,
+    autostart: pane.autostart ?? PANE_DEFAULTS.autostart,
+  })),
+})
 
 // Layered lowest to highest: [defaults], the repo's [repos.X] entry, then a
 // repo-local .treehouse.toml. Reports its own diagnostics before returning, so
@@ -510,12 +526,7 @@ export const resolveRepoConfig = async (
   const name = entry?.[0] ?? basename(mainRepoRoot)
   const local = await loadLocalConfig(mainRepoRoot)
   diagnostics.push(...local.diagnostics)
-  const config: RepoConfig = {
-    ...loaded.defaults,
-    ...(entry?.[1] ?? {}),
-    ...local.config,
-    root: mainRepoRoot,
-  }
+  const config = withDefaults({ ...loaded.defaults, ...(entry?.[1] ?? {}), ...local.config }, mainRepoRoot)
   reportDiagnostics(diagnosticsForRepo(diagnostics, name), warn)
   return { name, config }
 }
@@ -548,8 +559,10 @@ export const resolveAllRepoConfigs = async (
   const resolved: Array<{ name: string; config: RepoConfig }> = []
   for (const [name, entry] of Object.entries(loaded.repos)) {
     if (brokenRepo(name)) continue
-    // Absolute by then: a root ABSOLUTE_ROOT rejected is an error under
-    // repos.<name>.root, which brokenRepo skipped above.
+    // Present and absolute by then (a rejected or missing root is an error under
+    // repos.<name>.root, which brokenRepo skipped above); the guard is what
+    // proves that to the type checker.
+    if (entry.root === undefined) continue
     const root = expandHome(entry.root)
     const local = await loadLocalConfig(root)
     if (local.diagnostics.some((diagnostic) => diagnostic.severity === 'error')) {
@@ -557,20 +570,21 @@ export const resolveAllRepoConfigs = async (
       continue
     }
     for (const diagnostic of local.diagnostics) warn(`warning: ${diagnostic.message}`)
-    resolved.push({ name, config: { ...loaded.defaults, ...entry, ...local.config, root } })
+    resolved.push({ name, config: withDefaults({ ...loaded.defaults, ...entry, ...local.config }, root) })
   }
   return resolved
 }
 
-// Onboard's view of the central config: which entry (if any) already claims the
-// checkout, with the same demote-and-report policy as resolveRepoConfig.
-export const findConfiguredEntry = async (
+// Onboard's view of the central config: the config key (if any) whose `root`
+// already claims the checkout, with the same demote-and-report policy as
+// resolveRepoConfig.
+export const configuredRepoName = async (
   mainRepoRoot: string,
   configDir: string,
   warn: (message: string) => void,
-): Promise<[string, RepoConfig] | undefined> => {
+): Promise<string | undefined> => {
   const { config, diagnostics } = await loadConfig(configDir)
   const entry = findRepoEntry(config.repos, mainRepoRoot)
   reportDiagnostics(diagnosticsForRepo(diagnostics, entry?.[0] ?? basename(mainRepoRoot)), warn)
-  return entry
+  return entry?.[0]
 }

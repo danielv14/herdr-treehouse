@@ -1,7 +1,7 @@
 import { appendFileSync, existsSync, mkdirSync, readdirSync } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
 import { parseFlags, type CommandSpec } from '../cli.ts'
-import { LOCAL_CONFIG_FILE, configPath, findConfiguredEntry, renderProposedBlock } from '../config/config.ts'
+import { LOCAL_CONFIG_FILE, configPath, configuredRepoName, renderProposedBlock } from '../config/config.ts'
 import { resolveDeps, type EngineDeps } from '../deps.ts'
 import { findMainRepoRoot } from '../worktree/git.ts'
 
@@ -73,9 +73,11 @@ export const onboard = async (argv: string[], deps: EngineDeps) => {
   // resolution matches: a block keyed differently from the directory still
   // configures this repo, and appending a second one would leave two blocks
   // fighting over it.
-  const configuredEntry = await findConfiguredEntry(repoRoot, configDir, warn)
-  if (configuredEntry) {
-    const asKey = configuredEntry[0] === repoName ? '' : ` as [repos.${configuredEntry[0]}]`
+  const configuredName = await configuredRepoName(repoRoot, configDir, warn)
+  // Compared against undefined, not for truthiness: [repos.""] is legal TOML,
+  // and an empty key that already claims this root must still refuse.
+  if (configuredName !== undefined) {
+    const asKey = configuredName === repoName ? '' : ` as [repos.${configuredName}]`
     throw new Error(`"${repoName}" is already configured${asKey} in ${centralPath} (remove that block first if you are moving it to ${LOCAL_CONFIG_FILE})`)
   }
   if (existsSync(localPath)) {
