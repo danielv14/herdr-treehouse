@@ -6,49 +6,31 @@ import { reportDiagnostics, type Diagnostic } from './diagnostics.ts'
 // Config shape, validation and resolution. Policy and rationale live in
 // docs/config.md; field semantics in config.example.toml.
 
+// The types a consumer reads are derived from the shape declarations below via
+// Declared<>, the way parsing and help both derive from cli.ts's declarations:
+// a key added to a shape is a key the types know, with no second list to keep
+// in step. Declared<> is everything-optional (a level says only what it
+// changes); WithDefaulted names the keys the resolvers promise to fill in.
+type WithDefaulted<T, K extends keyof T> = T & Required<Pick<T, K>>
+
 // A pane as the resolvers hand it over: the keys that have a default are always
 // there. `label` and `command` have none (a pane can be a bare shell).
-type PaneConfig = {
-  split: 'down' | 'right'
-  ratio: number
-  label?: string
-  command?: string
-  autostart: boolean
-}
+type PaneConfig = WithDefaulted<Declared<typeof PANE_SHAPE>, 'split' | 'ratio' | 'autostart'>
 
 // What the resolvers return: layered, with the defaults applied. A key with a
 // default is a fact here, so no consumer decides one for itself; a key without
 // one stays optional, so absence keeps meaning "not configured".
-export type RepoConfig = {
-  root: string
-  base: string
-  worktree_dir: string
-  panes: PaneConfig[]
-  bootstrap?: string[]
-  setup?: string[]
-  agent?: string
-  // Standing agent instructions, delivered through the agent command's
-  // {context_file}. Layered like every other key: replaces, never appends.
-  context?: string
-  // How this repo's agent spells a model, e.g. '--model {model}'. The engine
-  // holds no opinion about the flag; it only fills the {model_arg} slot the
-  // agent command declares, with what --model was given.
-  model_arg?: string
-}
+export type RepoConfig = WithDefaulted<
+  Omit<Declared<typeof REPO_SHAPE>, 'panes'>,
+  'root' | 'base' | 'worktree_dir'
+> & { panes: PaneConfig[] }
 
 // One config level's own view of the same keys: nothing promised, since a level
 // says only what it changes. `root` is optional here too - a repo-local file has
 // none, and a [repos.X] block gets it required at validation.
-type DeclaredRepo = Partial<Omit<RepoConfig, 'panes'>> & { panes?: Partial<PaneConfig>[] }
+type DeclaredRepo = Declared<typeof REPO_SHAPE>
 
-// A table rather than bare top-level keys on purpose: TOML bare keys attach to
-// whatever table precedes them, so an `agent = "..."` line appended below a
-// [repos.X] block would silently become that repo's setting.
-type DefaultsConfig = {
-  agent?: string
-  context?: string
-  model_arg?: string
-}
+type DefaultsConfig = Declared<typeof DEFAULTS_SHAPE>
 
 type TreehouseConfig = {
   defaults: DefaultsConfig
@@ -96,13 +78,44 @@ type FieldSpec =
 
 type Shape = Record<string, FieldSpec>
 
-const PANE_SHAPE: Shape = {
+// The type a spec's kind promises, so Declared<> can spell out what a validated
+// table holds. A `values` list narrows to its literals; the table kinds recurse.
+type FieldValue<S extends FieldSpec> = S extends {
+  kind: 'string'
+  values: readonly (infer V extends string)[]
+}
+  ? V
+  : S extends { kind: 'string' }
+    ? string
+    : S extends { kind: 'number' }
+      ? number
+      : S extends { kind: 'boolean' }
+        ? boolean
+        : S extends { kind: 'string-list' }
+          ? string[]
+          : S extends { kind: 'table'; shape: infer T extends Shape }
+            ? Declared<T>
+            : S extends { kind: 'table-list'; shape: infer T extends Shape }
+              ? Declared<T>[]
+              : S extends { kind: 'table-map'; shape: infer T extends Shape }
+                ? Record<string, Declared<T>>
+                : never
+
+// What validating against a shape returns. Every key optional: `required` keys
+// are enforced as diagnostics, not types, because a missing one must demote and
+// skip by the blast-radius rules, not fail compilation.
+type Declared<S extends Shape> = { [K in keyof S]?: FieldValue<S[K]> }
+
+// `as const satisfies Shape` on each declaration keeps the literal types
+// (Declared<> needs them to narrow `values` and find each `shape`) while still
+// checking the declaration against Shape.
+const PANE_SHAPE = {
   split: { kind: 'string', values: ['down', 'right'] },
   ratio: { kind: 'number' },
   label: { kind: 'string' },
   command: { kind: 'string' },
   autostart: { kind: 'boolean' },
-}
+} as const satisfies Shape
 
 const ABSOLUTE_ROOT: StringCheck = {
   expected: 'an absolute path',
@@ -112,7 +125,7 @@ const ABSOLUTE_ROOT: StringCheck = {
   ok: (value) => isAbsolute(expandHome(value)),
 }
 
-const REPO_SHAPE: Shape = {
+const REPO_SHAPE = {
   root: { kind: 'string', check: ABSOLUTE_ROOT },
   worktree_dir: { kind: 'string' },
   base: { kind: 'string' },
@@ -120,27 +133,35 @@ const REPO_SHAPE: Shape = {
   setup: { kind: 'string-list' },
   panes: { kind: 'table-list', shape: PANE_SHAPE },
   agent: { kind: 'string' },
+  // Standing agent instructions, delivered through the agent command's
+  // {context_file}. Layered like every other key: replaces, never appends.
   context: { kind: 'string' },
+  // How this repo's agent spells a model, e.g. '--model {model}'. The engine
+  // holds no opinion about the flag; it only fills the {model_arg} slot the
+  // agent command declares, with what --model was given.
   model_arg: { kind: 'string' },
-}
+} as const satisfies Shape
 
-const DEFAULTS_SHAPE: Shape = {
+// A table rather than bare top-level keys on purpose: TOML bare keys attach to
+// whatever table precedes them, so an `agent = "..."` line appended below a
+// [repos.X] block would silently become that repo's setting.
+const DEFAULTS_SHAPE = {
   agent: { kind: 'string' },
   context: { kind: 'string' },
   model_arg: { kind: 'string' },
-}
+} as const satisfies Shape
 
-const TOP_LEVEL_SHAPE: Shape = {
+const TOP_LEVEL_SHAPE = {
   defaults: { kind: 'table', shape: DEFAULTS_SHAPE },
   // `root` is required: it is what matches a block to a checkout.
   repos: { kind: 'table-map', shape: REPO_SHAPE, required: ['root'] },
-}
+} as const satisfies Shape
 
 // A repo-local .treehouse.toml holds the same fields without the [repos.X]
 // wrapper, and without `root`: the file's own location is the repo root.
-const LOCAL_SHAPE: Shape = Object.fromEntries(
-  Object.entries(REPO_SHAPE).filter(([key]) => key !== 'root'),
-)
+// Destructuring rather than Object.fromEntries so the entry types survive and
+// Declared<typeof LOCAL_SHAPE> stays precise.
+const { root: _centralOnly, ...LOCAL_SHAPE } = REPO_SHAPE
 
 // ---------------------------------------------------------------------------
 // Rendering a proposed block (the write side of the shape)
@@ -344,13 +365,13 @@ const validateField = (
 
 // Returns only known keys with valid values, so everything downstream can trust
 // the declared types without re-checking.
-const validateTable = (
+const validateTable = <S extends Shape>(
   raw: Record<string, unknown>,
-  shape: Shape,
+  shape: S,
   scope: Scope,
   diagnostics: Diagnostic[],
   required: readonly string[] = [],
-): Record<string, unknown> => {
+): Declared<S> => {
   const result: Record<string, unknown> = {}
   for (const [key, value] of Object.entries(raw)) {
     const spec = shape[key]
@@ -374,7 +395,11 @@ const validateTable = (
       })
     }
   }
-  return result
+  // The module's one assertion: validateField's switch returns exactly what the
+  // spec's kind promises, which is what Declared<S> spells per key. TS cannot
+  // correlate a runtime switch with a conditional type, so it is asserted here,
+  // once, instead of cast at every call site reading a validated table.
+  return result as Declared<S>
 }
 
 // Both validator entry points are private: their behaviour is reached through
@@ -393,8 +418,8 @@ const validateConfigFile = (
   const validated = validateTable(raw, TOP_LEVEL_SHAPE, { file, prefix: '' }, diagnostics)
   return {
     config: {
-      defaults: (validated.defaults ?? {}) as DefaultsConfig,
-      repos: (validated.repos ?? {}) as Record<string, DeclaredRepo>,
+      defaults: validated.defaults ?? {},
+      repos: validated.repos ?? {},
     },
     diagnostics,
   }
@@ -419,7 +444,7 @@ const validateLocalConfigFile = (
   }
   const { root: _ignored, ...rest } = raw
   const validated = validateTable(rest, LOCAL_SHAPE, { file, prefix: '' }, diagnostics)
-  return { config: validated as DeclaredRepo, diagnostics }
+  return { config: validated, diagnostics }
 }
 
 // ---------------------------------------------------------------------------
