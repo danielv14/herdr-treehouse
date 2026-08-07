@@ -2,53 +2,44 @@ import { existsSync, realpathSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, isAbsolute, join } from 'node:path'
 import { reportDiagnostics, type Diagnostic } from './diagnostics.ts'
+import {
+  describe,
+  isTable,
+  validateTable,
+  type Declared,
+  type Shape,
+  type StringCheck,
+  type WithDefaulted,
+} from './shape.ts'
 
-// Config shape, validation and resolution. Policy and rationale live in
+// The treehouse config: its shape, defaults and resolution policy. The generic
+// declare-and-validate engine lives in shape.ts; policy and rationale in
 // docs/config.md; field semantics in config.example.toml.
+
+// The types a consumer reads are derived from the shape declarations below via
+// Declared<>, the way parsing and help both derive from cli.ts's declarations:
+// a key added to a shape is a key the types know, with no second list to keep
+// in step. Declared<> is everything-optional (a level says only what it
+// changes); WithDefaulted names the keys the resolvers promise to fill in.
 
 // A pane as the resolvers hand it over: the keys that have a default are always
 // there. `label` and `command` have none (a pane can be a bare shell).
-type PaneConfig = {
-  split: 'down' | 'right'
-  ratio: number
-  label?: string
-  command?: string
-  autostart: boolean
-}
+type PaneConfig = WithDefaulted<Declared<typeof PANE_SHAPE>, 'split' | 'ratio' | 'autostart'>
 
 // What the resolvers return: layered, with the defaults applied. A key with a
 // default is a fact here, so no consumer decides one for itself; a key without
 // one stays optional, so absence keeps meaning "not configured".
-export type RepoConfig = {
-  root: string
-  base: string
-  worktree_dir: string
-  panes: PaneConfig[]
-  bootstrap?: string[]
-  setup?: string[]
-  agent?: string
-  // Standing agent instructions, delivered through the agent command's
-  // {context_file}. Layered like every other key: replaces, never appends.
-  context?: string
-  // How this repo's agent spells a model, e.g. '--model {model}'. The engine
-  // holds no opinion about the flag; it only fills the {model_arg} slot the
-  // agent command declares, with what --model was given.
-  model_arg?: string
-}
+export type RepoConfig = WithDefaulted<
+  Omit<Declared<typeof REPO_SHAPE>, 'panes'>,
+  'root' | 'base' | 'worktree_dir'
+> & { panes: PaneConfig[] }
 
 // One config level's own view of the same keys: nothing promised, since a level
 // says only what it changes. `root` is optional here too - a repo-local file has
 // none, and a [repos.X] block gets it required at validation.
-type DeclaredRepo = Partial<Omit<RepoConfig, 'panes'>> & { panes?: Partial<PaneConfig>[] }
+type DeclaredRepo = Declared<typeof REPO_SHAPE>
 
-// A table rather than bare top-level keys on purpose: TOML bare keys attach to
-// whatever table precedes them, so an `agent = "..."` line appended below a
-// [repos.X] block would silently become that repo's setting.
-type DefaultsConfig = {
-  agent?: string
-  context?: string
-  model_arg?: string
-}
+type DefaultsConfig = Declared<typeof DEFAULTS_SHAPE>
 
 type TreehouseConfig = {
   defaults: DefaultsConfig
@@ -78,31 +69,16 @@ export const LOCAL_CONFIG_FILE = '.treehouse.toml'
 // Shape declaration
 // ---------------------------------------------------------------------------
 
-// A value constraint on a string, declared with the shape so a bad value
-// surfaces as a Diagnostic like every other config error, and a repo-scoped one
-// inherits demote-and-skip instead of needing its own warn-and-continue.
-type StringCheck = { expected: string; ok: (value: string) => boolean }
-
-// Keys AND value shapes are declared once here and checked in a single pass.
-type FieldSpec =
-  | { kind: 'string'; values?: readonly string[]; check?: StringCheck }
-  | { kind: 'number' }
-  | { kind: 'boolean' }
-  | { kind: 'string-list' }
-  | { kind: 'table'; shape: Shape; required?: readonly string[] }
-  | { kind: 'table-list'; shape: Shape; required?: readonly string[] }
-  // `required` applies to each entry of the map, not to the map itself.
-  | { kind: 'table-map'; shape: Shape; required?: readonly string[] }
-
-type Shape = Record<string, FieldSpec>
-
-const PANE_SHAPE: Shape = {
+// `as const satisfies Shape` on each declaration keeps the literal types
+// (Declared<> needs them to narrow `values` and find each `shape`) while still
+// checking the declaration against Shape.
+const PANE_SHAPE = {
   split: { kind: 'string', values: ['down', 'right'] },
   ratio: { kind: 'number' },
   label: { kind: 'string' },
   command: { kind: 'string' },
   autostart: { kind: 'boolean' },
-}
+} as const satisfies Shape
 
 const ABSOLUTE_ROOT: StringCheck = {
   expected: 'an absolute path',
@@ -112,7 +88,7 @@ const ABSOLUTE_ROOT: StringCheck = {
   ok: (value) => isAbsolute(expandHome(value)),
 }
 
-const REPO_SHAPE: Shape = {
+const REPO_SHAPE = {
   root: { kind: 'string', check: ABSOLUTE_ROOT },
   worktree_dir: { kind: 'string' },
   base: { kind: 'string' },
@@ -120,27 +96,35 @@ const REPO_SHAPE: Shape = {
   setup: { kind: 'string-list' },
   panes: { kind: 'table-list', shape: PANE_SHAPE },
   agent: { kind: 'string' },
+  // Standing agent instructions, delivered through the agent command's
+  // {context_file}. Layered like every other key: replaces, never appends.
   context: { kind: 'string' },
+  // How this repo's agent spells a model, e.g. '--model {model}'. The engine
+  // holds no opinion about the flag; it only fills the {model_arg} slot the
+  // agent command declares, with what --model was given.
   model_arg: { kind: 'string' },
-}
+} as const satisfies Shape
 
-const DEFAULTS_SHAPE: Shape = {
+// A table rather than bare top-level keys on purpose: TOML bare keys attach to
+// whatever table precedes them, so an `agent = "..."` line appended below a
+// [repos.X] block would silently become that repo's setting.
+const DEFAULTS_SHAPE = {
   agent: { kind: 'string' },
   context: { kind: 'string' },
   model_arg: { kind: 'string' },
-}
+} as const satisfies Shape
 
-const TOP_LEVEL_SHAPE: Shape = {
+const TOP_LEVEL_SHAPE = {
   defaults: { kind: 'table', shape: DEFAULTS_SHAPE },
   // `root` is required: it is what matches a block to a checkout.
   repos: { kind: 'table-map', shape: REPO_SHAPE, required: ['root'] },
-}
+} as const satisfies Shape
 
 // A repo-local .treehouse.toml holds the same fields without the [repos.X]
 // wrapper, and without `root`: the file's own location is the repo root.
-const LOCAL_SHAPE: Shape = Object.fromEntries(
-  Object.entries(REPO_SHAPE).filter(([key]) => key !== 'root'),
-)
+// Destructuring rather than Object.fromEntries so the entry types survive and
+// Declared<typeof LOCAL_SHAPE> stays precise.
+const { root: _centralOnly, ...LOCAL_SHAPE } = REPO_SHAPE
 
 // ---------------------------------------------------------------------------
 // Rendering a proposed block (the write side of the shape)
@@ -196,187 +180,6 @@ export const renderProposedBlock = (proposal: RepoProposal, home: 'central' | 'l
 // Validation
 // ---------------------------------------------------------------------------
 
-type Scope = {
-  file: string
-  // TOML path of the enclosing table; empty at the top level of a file.
-  prefix: string
-}
-
-const child = (scope: Scope, key: string): Scope => ({
-  file: scope.file,
-  prefix: scope.prefix === '' ? key : `${scope.prefix}.${key}`,
-})
-
-const tableLabel = (scope: Scope) =>
-  scope.prefix === '' ? `the top level of ${scope.file}` : `[${scope.prefix}] in ${scope.file}`
-
-const keyPath = (scope: Scope, key: string) =>
-  scope.prefix === '' ? key : `${scope.prefix}.${key}`
-
-const keyLabel = (scope: Scope, key: string) => `${keyPath(scope, key)} in ${scope.file}`
-
-const isTable = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value)
-
-const describe = (value: unknown): string => {
-  if (value === null) return 'null'
-  if (Array.isArray(value)) return 'a list'
-  switch (typeof value) {
-    case 'string':
-      return `a string (${JSON.stringify(value)})`
-    case 'number':
-      return `a number (${value})`
-    case 'boolean':
-      return `a boolean (${value})`
-    case 'object':
-      return 'a table'
-    default:
-      return typeof value
-  }
-}
-
-const expected = (spec: FieldSpec): string => {
-  switch (spec.kind) {
-    case 'string':
-      return spec.values ? `one of ${spec.values.map((v) => JSON.stringify(v)).join(', ')}` : 'a string'
-    case 'number':
-      return 'a number'
-    case 'boolean':
-      return 'a boolean (unquoted true or false)'
-    case 'string-list':
-      return 'a list of strings'
-    case 'table':
-      return 'a table'
-    case 'table-list':
-      return 'a list of tables'
-    case 'table-map':
-      return 'a table of tables'
-  }
-}
-
-const validateField = (
-  spec: FieldSpec,
-  raw: unknown,
-  scope: Scope,
-  key: string,
-  diagnostics: Diagnostic[],
-): unknown => {
-  const reject = (found = describe(raw), want = expected(spec)) => {
-    diagnostics.push({
-      severity: 'error',
-      key: keyPath(scope, key),
-      message: `${keyLabel(scope, key)}: expected ${want}, found ${found}`,
-    })
-    return undefined
-  }
-
-  switch (spec.kind) {
-    case 'string':
-      if (typeof raw !== 'string') return reject()
-      if (spec.values && !spec.values.includes(raw)) return reject(JSON.stringify(raw))
-      // The check names its own expectation: a wrong type still reads "expected
-      // a string", only a wrong value reads "expected an absolute path".
-      if (spec.check && !spec.check.ok(raw)) return reject(JSON.stringify(raw), spec.check.expected)
-      return raw
-    case 'number':
-      return typeof raw === 'number' ? raw : reject()
-    case 'boolean':
-      return typeof raw === 'boolean' ? raw : reject()
-    case 'string-list': {
-      if (!Array.isArray(raw)) return reject()
-      const wrong = raw.findIndex((entry) => typeof entry !== 'string')
-      if (wrong !== -1) return reject(`a list with ${describe(raw[wrong])} at index ${wrong}`)
-      return raw
-    }
-    case 'table':
-      if (!isTable(raw)) return reject()
-      return validateTable(raw, spec.shape, child(scope, key), diagnostics, spec.required)
-    case 'table-list': {
-      if (isTable(raw)) {
-        // The single-vs-double bracket mistake gets its own message; the
-        // generic "expected a list" says nothing about the fix.
-        const path = keyPath(scope, key)
-        diagnostics.push({
-          severity: 'error',
-          key: path,
-          message: `${keyLabel(scope, key)}: expected ${expected(spec)}, found a single table. Write [[${path}]] (double brackets) so each ${key.replace(/s$/, '')} is its own entry, not [${path}].`,
-        })
-        return undefined
-      }
-      if (!Array.isArray(raw)) return reject()
-      const entries = raw.map((entry, index) => {
-        if (!isTable(entry)) {
-          diagnostics.push({
-            severity: 'error',
-            key: `${keyPath(scope, key)}[${index}]`,
-            message: `${keyLabel(scope, key)}[${index}]: expected a table, found ${describe(entry)}`,
-          })
-          return undefined
-        }
-        return validateTable(entry, spec.shape, child(scope, `${key}[${index}]`), diagnostics, spec.required)
-      })
-      return entries.filter((entry) => entry !== undefined)
-    }
-    case 'table-map': {
-      if (!isTable(raw)) return reject()
-      const result: Record<string, unknown> = {}
-      for (const [name, entry] of Object.entries(raw)) {
-        if (!isTable(entry)) {
-          diagnostics.push({
-            severity: 'error',
-            key: keyPath(child(scope, key), name),
-            message: `${keyLabel(child(scope, key), name)}: expected a table, found ${describe(entry)}`,
-          })
-          continue
-        }
-        result[name] = validateTable(
-          entry,
-          spec.shape,
-          child(child(scope, key), name),
-          diagnostics,
-          spec.required,
-        )
-      }
-      return result
-    }
-  }
-}
-
-// Returns only known keys with valid values, so everything downstream can trust
-// the declared types without re-checking.
-const validateTable = (
-  raw: Record<string, unknown>,
-  shape: Shape,
-  scope: Scope,
-  diagnostics: Diagnostic[],
-  required: readonly string[] = [],
-): Record<string, unknown> => {
-  const result: Record<string, unknown> = {}
-  for (const [key, value] of Object.entries(raw)) {
-    const spec = shape[key]
-    if (!spec) {
-      diagnostics.push({
-        severity: 'warning',
-        key: keyPath(scope, key),
-        message: `unknown key "${key}" in ${tableLabel(scope)} (ignored). Known keys: ${Object.keys(shape).join(', ')}`,
-      })
-      continue
-    }
-    const validated = validateField(spec, value, scope, key, diagnostics)
-    if (validated !== undefined) result[key] = validated
-  }
-  for (const key of required) {
-    if (result[key] === undefined) {
-      diagnostics.push({
-        severity: 'error',
-        key: keyPath(scope, key),
-        message: `${tableLabel(scope)}: missing required key "${key}"`,
-      })
-    }
-  }
-  return result
-}
-
 // Both validator entry points are private: their behaviour is reached through
 // the resolvers below, which is where a call site meets it too.
 const validateConfigFile = (
@@ -393,8 +196,8 @@ const validateConfigFile = (
   const validated = validateTable(raw, TOP_LEVEL_SHAPE, { file, prefix: '' }, diagnostics)
   return {
     config: {
-      defaults: (validated.defaults ?? {}) as DefaultsConfig,
-      repos: (validated.repos ?? {}) as Record<string, DeclaredRepo>,
+      defaults: validated.defaults ?? {},
+      repos: validated.repos ?? {},
     },
     diagnostics,
   }
@@ -419,7 +222,7 @@ const validateLocalConfigFile = (
   }
   const { root: _ignored, ...rest } = raw
   const validated = validateTable(rest, LOCAL_SHAPE, { file, prefix: '' }, diagnostics)
-  return { config: validated as DeclaredRepo, diagnostics }
+  return { config: validated, diagnostics }
 }
 
 // ---------------------------------------------------------------------------

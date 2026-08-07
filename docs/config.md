@@ -43,6 +43,23 @@ returning, so no call site can obtain a usable config while an unreported error
 sits in the data. The validators are private to the module for that reason: the
 resolvers are the only way in, so validation is tested where a command meets it.
 
+The engine doing the checking (`shape.ts`) is generic: it knows nothing about
+treehouse's keys, so every judgment in this document lives in `config.ts` with
+the shape declarations, and the engine could validate any TOML-shaped table.
+The split is the same one `processRunner.ts` and `git.ts` make — mechanism in a
+module with no domain knowledge, policy at the caller.
+
+The TypeScript types are derived from the same declaration (`Declared<typeof
+REPO_SHAPE>` and friends), the way `cli.ts` derives help from its flag
+declarations: a key added to a shape is a key the types know, with no second
+hand-kept list to update and no `as`-casts connecting the two. The engine keeps
+one assertion, at `validateTable`'s return, where TS cannot correlate the
+runtime switch with the conditional type. `Declared<>` is everything-optional
+because a level says only what it changes; the resolvers' defaults are what
+upgrade it to the promised `RepoConfig`. `required` keys stay diagnostics, not
+types: a missing `root` must demote and skip by the blast-radius rules below,
+not fail compilation.
+
 ### Blast-radius rules
 
 - A broken block in some *other* repo's config must not stop work in this one:
