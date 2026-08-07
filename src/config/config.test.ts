@@ -215,11 +215,15 @@ split = "down"
     )
   })
 
-  test('a string setup is reported against the file it came from, not run per character', async () => {
+  test('a string setup is reported once, against the file it came from', async () => {
+    // Anchored: one mistake is one diagnostic, and it names the local file rather
+    // than the central one.
     writeLocal(mine, 'setup = "npm ci"\n')
     await expectRejection(
       resolveMine(),
-      `setup in ${localPath(mine)}: expected a list of strings, found a string ("npm ci")`,
+      new RegExp(
+        `^invalid config:\\n {2}setup in ${localPath(mine)}: expected a list of strings, found a string \\("npm ci"\\)$`,
+      ),
     )
   })
 
@@ -295,16 +299,32 @@ describe('unknown keys stay non-fatal warnings that name the file', () => {
     expect(warned[0]).toContain(`unknown key "agnet" in [defaults] in ${centralPath}`)
   })
 
-  test('in a pane table', async () => {
-    writeLocal(mine, '[[panes]]\nauto_start = false\n')
+  test('in a pane table, under the nested path it sits at', async () => {
+    writeMyBlock('[[repos.my-repo.panes]]\nauto_start = false\n')
     await resolveMine()
-    expect(warned[0]).toContain(`unknown key "auto_start" in [panes[0]] in ${localPath(mine)}`)
+    expect(warned[0]).toContain(
+      `unknown key "auto_start" in [repos.my-repo.panes[0]] in ${centralPath}`,
+    )
   })
 })
 
 describe('the shipped example config', () => {
+  const examplePath = new URL('../../config.example.toml', import.meta.url).pathname
+
   test('resolves without a single diagnostic', async () => {
-    copyFileSync(new URL('../../config.example.toml', import.meta.url).pathname, centralPath)
+    copyFileSync(examplePath, centralPath)
+    // Resolved from a repo the example does not name: the whole file is still
+    // validated, and nothing reads the ~/dev path the example's root points at.
+    await resolveRepoConfig(repoDir('not-in-the-example'), configDir, warn)
+    expect(warned).toEqual([])
+  })
+
+  test('its repo comes back with the panes and bootstrap it declares', async () => {
+    // The shipped text with the example's ~ root aimed at a temp dir, so the
+    // listing (which looks for a .treehouse.toml next to every root) stays off
+    // the developer's own ~/dev.
+    const root = repoDir('my-awesome-repo')
+    writeCentral((await Bun.file(examplePath).text()).replaceAll('~/dev/my-awesome-repo', root))
     const resolved = await resolveAllRepoConfigs(configDir, warn)
     expect(warned).toEqual([])
     expect(resolved.map((entry) => entry.name)).toEqual(['my-awesome-repo'])
@@ -337,39 +357,38 @@ describe('the proposed onboarding block', () => {
     expect(config.panes[0].autostart).toBe(false)
   })
 
-  test('the commented lines uncomment into the very defaults the resolver applies', async () => {
+  test('the commented lines uncomment into keys the validator accepts', async () => {
     // A scan that learned nothing renders every optional line commented; those
-    // lines must be one '#' away from config the validator accepts, carrying the
-    // values the engine would have filled in anyway.
+    // lines must be one '#' away from config that resolves.
     const block = renderProposedBlock({ name: 'my-repo', root: mine }, 'central')
-    writeCentral(block)
-    const commented = await resolveMine()
     writeCentral(
       block
         .split('\n')
         .map((line) => line.replace(/^# (?=(worktree_dir|base|bootstrap|setup|command) )/, ''))
         .join('\n'),
     )
-    const uncommented = await resolveMine()
-
+    const { config } = await resolveMine()
     expect(warned).toEqual([])
-    expect(uncommented.config.base).toBe(commented.config.base)
-    // Advertised with {repo} already filled in, since the block names one repo.
-    expect(uncommented.config.worktree_dir).toBe(
-      commented.config.worktree_dir.replace('{repo}', 'my-repo'),
-    )
-    expect(uncommented.config.setup).toEqual(['npm ci'])
+    expect(config.worktree_dir).toBe('../my-repo-{id}')
+    expect(config.base).toBe('origin/master')
+    expect(config.setup).toEqual(['npm ci'])
   })
 
-  test('the pane it renders spells out the defaults a bare pane would get', async () => {
+  test('the values it advertises are the ones the resolver applies', async () => {
+    // Read off the rendered text, not off a resolution of it: a defaulted key
+    // resolves to the same value whether the block declared it or the resolver
+    // filled it in, so comparing two resolutions cannot see a line that stopped
+    // being advertised at all.
     const bare = repoDir('bare')
     writeLocal(bare, '[[panes]]\n')
-    const defaultPane = (await resolveRepoConfig(bare, configDir, warn)).config.panes[0]
+    const applied = (await resolveRepoConfig(bare, configDir, warn)).config
 
-    writeCentral(renderProposedBlock({ name: 'my-repo', root: mine }, 'central'))
-    const rendered = (await resolveMine()).config.panes[0]
-    expect(rendered.split).toBe(defaultPane.split)
-    expect(rendered.autostart).toBe(defaultPane.autostart)
+    const block = renderProposedBlock({ name: 'my-repo', root: mine }, 'central')
+    expect(block).toContain(`# base = "${applied.base}"`)
+    // Advertised with {repo} already filled in, since the block names one repo.
+    expect(block).toContain(`# worktree_dir = "${applied.worktree_dir.replace('{repo}', 'my-repo')}"`)
+    expect(block).toContain(`split = "${applied.panes[0].split}"`)
+    expect(block).toContain(`autostart = ${applied.panes[0].autostart}`)
   })
 
   test('a dotted repo name is quoted so the block still parses', async () => {
@@ -472,11 +491,11 @@ describe('a [repos.X] block without root', () => {
     await expectRejection(resolveMine(), `[repos.my-repo] in ${centralPath}: missing required key "root"`)
   })
 
-  test('and a wrong-typed root is reported as a type error too', async () => {
+  test('and a wrong-typed root is reported as a type error, then as the key it left unfilled', async () => {
     writeCentral('repos = { "my-repo" = { root = 3 } }')
     await expectRejection(
       resolveMine(),
-      `repos.my-repo.root in ${centralPath}: expected a string, found a number (3)`,
+      /repos\.my-repo\.root in .*: expected a string, found a number \(3\)[\s\S]*\[repos\.my-repo\] in .*: missing required key "root"/,
     )
   })
 
@@ -502,11 +521,13 @@ describe('root must be an absolute path', () => {
   })
 
   test('a ~ root is expanded before the check, not rejected', async () => {
-    // Expanded where it is used, so the repo it claims is the one under ~.
-    writeCentral('[repos.elsewhere]\nroot = "~/dev/elsewhere"\n')
+    // Expanded where it is used, so the repo it claims is the one under ~. The
+    // path is one no machine has, since resolution looks for a .treehouse.toml
+    // next to it and this test may not read the developer's own repos.
+    writeCentral('[repos.elsewhere]\nroot = "~/.treehouse-test-no-such-repo"\n')
     const resolved = await resolveAllRepoConfigs(configDir, warn)
     expect(warned).toEqual([])
-    expect(resolved[0].config.root).toBe(join(homedir(), 'dev/elsewhere'))
+    expect(resolved[0].config.root).toBe(join(homedir(), '.treehouse-test-no-such-repo'))
   })
 })
 

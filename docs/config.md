@@ -43,16 +43,6 @@ returning, so no call site can obtain a usable config while an unreported error
 sits in the data. The validators are private to the module for that reason: the
 resolvers are the only way in, so validation is tested where a command meets it.
 
-## Defaults are applied where the layering happens
-
-`base`, `worktree_dir` and `panes` (and each pane's `split`, `ratio` and
-`autostart`) have defaults, and the resolvers apply them, so what a consumer
-reads is what the engine does. They are therefore always present in a resolved
-config: a consumer that forgot a fallback used to get a silently wrong default
-where it now gets a type error. Keys with no default stay optional, which is
-what keeps "no bootstrap configured" and "no context configured" readable as
-absence.
-
 ### Blast-radius rules
 
 - A broken block in some *other* repo's config must not stop work in this one:
@@ -76,6 +66,16 @@ absence.
 - Repos known only by a local `.treehouse.toml` are invisible to multi-repo
   commands by design: there is deliberately no registry of them.
 
+## Defaults are applied where the layering happens
+
+`base`, `worktree_dir` and `panes` (and each pane's `split`, `ratio` and
+`autostart`) have defaults, and the resolvers apply them, so what a consumer
+reads is what the engine does. They are therefore always present in a resolved
+config: a consumer that forgot a fallback used to get a silently wrong default
+where it now gets a type error. Keys with no default stay optional, which is
+what keeps "no bootstrap configured" and "no context configured" readable as
+absence.
+
 ## TOML footguns encoded in the shape
 
 - `[defaults]` is a table rather than bare top-level keys on purpose: TOML bare
@@ -92,12 +92,11 @@ absence.
 
 `renderProposedBlock` lives next to the shape it must satisfy, and
 `config.test.ts` round-trips its output (commented examples included) through
-resolution, so the key names and advertised defaults cannot drift from what
-validation accepts. It renders from the same constants the resolvers apply, and
-the round-trip pins that: the block's commented `base` and `worktree_dir` lines
-resolve to the values the resolver fills in when they stay commented, and its
-rendered pane spells out what a bare `[[panes]]` entry gets.
-TOML rendering detail: bare keys are letters, digits, dashes and
+resolution, so the key names cannot drift from what validation accepts. It
+renders from the same constants the resolvers apply, and a second test reads the
+rendered text back against a resolved config, so a `base`, `worktree_dir`,
+`split` or `autostart` line that changed value or stopped being advertised at
+all fails. TOML rendering detail: bare keys are letters, digits, dashes and
 underscores — anything else is quoted, and JSON string escapes are a subset of
 TOML basic string escapes, so `JSON.stringify` renders a valid TOML string
 either way.

@@ -88,8 +88,9 @@ const askInteractively = async (
   return { branch, targets }
 }
 
-// The panes arrive with their defaults applied, so the only work left is
-// expanding each command.
+// The panes arrive with their defaults applied, so expanding the command is all
+// that is left. The spread is also where a config pane becomes a Herdr one: a
+// key added to the config shape reaches the tab request from here.
 const paneSpecs = (repoConfig: RepoConfig, expand: (template: string, where?: string) => string): PaneSpec[] =>
   repoConfig.panes.map((pane) => ({
     ...pane,

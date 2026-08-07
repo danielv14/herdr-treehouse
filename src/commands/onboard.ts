@@ -74,7 +74,9 @@ export const onboard = async (argv: string[], deps: EngineDeps) => {
   // configures this repo, and appending a second one would leave two blocks
   // fighting over it.
   const configuredName = await configuredRepoName(repoRoot, configDir, warn)
-  if (configuredName) {
+  // Compared against undefined, not for truthiness: [repos.""] is legal TOML,
+  // and an empty key that already claims this root must still refuse.
+  if (configuredName !== undefined) {
     const asKey = configuredName === repoName ? '' : ` as [repos.${configuredName}]`
     throw new Error(`"${repoName}" is already configured${asKey} in ${centralPath} (remove that block first if you are moving it to ${LOCAL_CONFIG_FILE})`)
   }

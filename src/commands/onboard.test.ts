@@ -93,6 +93,14 @@ describe('onboard', () => {
     expect(await Bun.file(configFile).text()).not.toContain('[repos.my-repo]')
   })
 
+  test('refuses when the block that claims it is keyed with an empty name', async () => {
+    // [repos.""] is legal TOML, and an empty key is falsy: testing the resolved
+    // name for truthiness instead of for absence let a second block through.
+    writeFileSync(configFile, `[repos.""]\nroot = "${repo.root}"\n`)
+    await expectRejection(onboard(['--apply'], deps()), 'already configured as [repos.]')
+    expect(await Bun.file(configFile).text()).not.toContain('[repos.my-repo]')
+  })
+
   test('refuses when the repo is already configured under its own name', async () => {
     writeFileSync(configFile, `[repos.my-repo]\nroot = "${repo.root}"\n`)
     await expectRejection(onboard(['--apply'], deps()), '"my-repo" is already configured in')

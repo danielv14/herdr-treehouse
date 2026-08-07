@@ -18,8 +18,7 @@ type PaneConfig = {
 
 // What the resolvers return: layered, with the defaults applied. A key with a
 // default is a fact here, so no consumer decides one for itself; a key without
-// one stays optional, which is what keeps "no bootstrap configured" and "no
-// context configured" readable.
+// one stays optional, so absence keeps meaning "not configured".
 export type RepoConfig = {
   root: string
   base: string
@@ -478,13 +477,10 @@ const isScopedToRepo = (diagnostic: Diagnostic, name: string) =>
 // every command for repo a. Pass the matched entry's key (falling back to the
 // checkout's directory name) so a block that broke its own `root` cannot demote
 // itself to "another repo's block" and slip through.
-const diagnosticsForRepo = (
-  diagnostics: Diagnostic[],
-  repoName: string | undefined,
-): Diagnostic[] =>
+const diagnosticsForRepo = (diagnostics: Diagnostic[], repoName: string): Diagnostic[] =>
   diagnostics.map((diagnostic) => {
     if (diagnostic.severity !== 'error' || !isRepoScoped(diagnostic)) return diagnostic
-    if (repoName !== undefined && isScopedToRepo(diagnostic, repoName)) return diagnostic
+    if (isScopedToRepo(diagnostic, repoName)) return diagnostic
     return {
       ...diagnostic,
       severity: 'warning',
@@ -563,9 +559,9 @@ export const resolveAllRepoConfigs = async (
   const resolved: Array<{ name: string; config: RepoConfig }> = []
   for (const [name, entry] of Object.entries(loaded.repos)) {
     if (brokenRepo(name)) continue
-    // Present and absolute by then: a root ABSOLUTE_ROOT rejected, like a block
-    // that has none at all, is an error under repos.<name>.root, which
-    // brokenRepo skipped above.
+    // Present and absolute by then (a rejected or missing root is an error under
+    // repos.<name>.root, which brokenRepo skipped above); the guard is what
+    // proves that to the type checker.
     if (entry.root === undefined) continue
     const root = expandHome(entry.root)
     const local = await loadLocalConfig(root)
