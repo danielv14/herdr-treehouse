@@ -1,6 +1,6 @@
-import { spawnSync } from 'node:child_process'
 import { existsSync, lstatSync, readdirSync, statSync } from 'node:fs'
 import type { RepoConfig } from '../config/config.ts'
+import type { ProcessRunner } from '../processRunner.ts'
 import { addWorktree, findWorktreeAtPath } from './git.ts'
 import type { WorktreePlan } from './plan.ts'
 
@@ -16,6 +16,10 @@ export type ProvisionOptions = {
   // existing worktree is not necessarily a provisioned one; whether the
   // commands are worth re-running is the caller's call.
   setupExisting?: boolean
+  // The bootstrap script and the setup commands are the only processes this
+  // module starts, and both go through here (git creation goes through git.ts,
+  // which spawns git itself).
+  run: ProcessRunner
   log: (message: string) => void
   warn: (message: string) => void
 }
@@ -31,7 +35,7 @@ export const provisionWorktree = (
   repoConfig: RepoConfig,
   options: ProvisionOptions,
 ): ProvisionResult => {
-  const { log, warn } = options
+  const { run, log, warn } = options
   const justCreated = options.worktreeState === 'just-created'
   // git's question, not existsSync's: a directory git knows nothing about is not
   // a worktree to reopen. 'just-created' answers it first, so the hook never
@@ -51,7 +55,7 @@ export const provisionWorktree = (
     // needed.
     const argv = plan.expandArgv(repoConfig.bootstrap ?? [])
     log(`bootstrap: ${argv.join(' ')}`)
-    const result = spawnSync(argv[0], argv.slice(1), { cwd: plan.root, stdio: 'inherit' })
+    const result = run({ command: argv[0], args: argv.slice(1), cwd: plan.root })
     // A spawn that never reached the script (argv[0] missing, or without its exec
     // bit) leaves status undefined and the reason in `error`, so reading status
     // first reported "exit undefined" and named neither the file nor the reason.
@@ -97,7 +101,7 @@ export const provisionWorktree = (
     }
     return { created: false, setupRan: false }
   }
-  runSetup(plan, setup, log)
+  runSetup(plan, setup, run, log)
   return { created: !existedBefore, setupRan: setup.length > 0 }
 }
 
@@ -124,6 +128,7 @@ const pathInTheWay = (path: string): boolean => {
 const runSetup = (
   plan: WorktreePlan,
   commands: string[],
+  run: ProcessRunner,
   log: (message: string) => void,
 ) => {
   // Expand the whole list before running any of it: a typo'd placeholder in the
@@ -131,7 +136,7 @@ const runSetup = (
   const expanded = commands.map((rawCommand) => plan.expand(rawCommand, 'setup'))
   for (const command of expanded) {
     log(`setup: ${command}`)
-    const result = spawnSync('bash', ['-lc', command], { cwd: plan.worktree, stdio: 'inherit' })
+    const result = run({ command: 'bash', args: ['-lc', command], cwd: plan.worktree })
     // bash existing covers argv[0], but not the cwd: a bootstrap that leaves a
     // plain file at the worktree path passes the existsSync check above, and the
     // spawn then fails with no status to report.

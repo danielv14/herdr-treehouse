@@ -3,7 +3,9 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { join } from 'node:path'
 import type { Environment } from '../herdr/context.ts'
 import type { EngineDeps } from '../deps.ts'
+import type { ProcessRunner } from '../processRunner.ts'
 import { createFakeHerdr, type FakeHerdr, type FakeResponses } from '../testing/fakeHerdr.ts'
+import { createFakeProcessRunner } from '../testing/fakeProcessRunner.ts'
 import { expectRejection } from '../testing/expectRejection.ts'
 import { createTempRepo, type TempRepo } from '../testing/tempRepo.ts'
 import { up } from './up.ts'
@@ -639,6 +641,37 @@ describe('interactive popup', () => {
 
     const targets = await Bun.file(join(repo.parent, 'my-repo-abc-9', 'targets.txt')).text()
     expect(targets.trim()).toBe('')
+  })
+})
+
+describe('the process seam', () => {
+  // Running the commands is provisioning's job and is tested there; what is up's
+  // to prove is that the runner from EngineDeps is the one that gets them, and
+  // that a command it reports as failing stops the run before a tab exists.
+  const depsRunning = (fake: FakeHerdr, run: ProcessRunner): EngineDeps => ({ ...deps(fake), run })
+
+  test('the setup commands go to the runner from deps, expanded and in the worktree', async () => {
+    writeLocalConfig('base = "master"\nsetup = ["npm ci", "cp {root}/.env .env"]\n')
+    const runner = createFakeProcessRunner()
+    const fake = createFakeHerdr(RESPONSES)
+    await up(['--repo', repo.root, '--branch', 'ABC-1/fix', '--no-agent'], depsRunning(fake, runner.run))
+
+    const worktree = join(repo.parent, 'my-repo-abc-1')
+    expect(runner.commands()).toEqual(['bash -lc npm ci', `bash -lc cp ${repo.root}/.env .env`])
+    expect(runner.runsIn(worktree)).toHaveLength(2)
+    // The worktree itself is still made by real git: only the commands are faked.
+    expect(existsSync(worktree)).toBe(true)
+  })
+
+  test('a setup command the runner fails stops the run before the tab is created', async () => {
+    writeLocalConfig('base = "master"\nsetup = ["npm ci"]\n')
+    const runner = createFakeProcessRunner({ 'bash -lc npm ci': 1 })
+    const fake = createFakeHerdr(RESPONSES)
+    await expectRejection(
+      up(['--repo', repo.root, '--branch', 'ABC-1/fix', '--no-agent'], depsRunning(fake, runner.run)),
+      /setup command failed \(exit 1\): npm ci/,
+    )
+    expect(fake.calls).toHaveLength(0)
   })
 })
 

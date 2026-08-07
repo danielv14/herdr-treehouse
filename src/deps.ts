@@ -1,6 +1,7 @@
 import type { Environment } from './herdr/context.ts'
 import { insideHerdr, type HerdrInvoker } from './herdr/invoker.ts'
 import { createTabChoreography, pluginConfigDir, type TabChoreography } from './herdr/tabs.ts'
+import { spawnProcess, type ProcessRunner } from './processRunner.ts'
 
 // What the commands need from the outside world. Only `invoke` is required;
 // the rest have production defaults and exist so tests can drive the engine
@@ -9,6 +10,7 @@ export type Ask = (question: string) => Promise<string>
 
 export type EngineDeps = {
   invoke: HerdrInvoker
+  run?: ProcessRunner
   env?: Environment
   sleep?: (ms: number) => Promise<void>
   now?: () => number
@@ -31,6 +33,7 @@ const askViaStdin: Ask = async (question) => {
 
 export type ResolvedDeps = {
   invoke: HerdrInvoker
+  run: ProcessRunner
   tabs: TabChoreography
   env: Environment
   insideHerdr: boolean
@@ -45,6 +48,7 @@ export const resolveDeps = (deps: EngineDeps): ResolvedDeps => {
   const env = deps.env ?? process.env
   return {
     invoke: deps.invoke,
+    run: deps.run ?? spawnProcess,
     tabs: createTabChoreography(deps.invoke, { sleep: deps.sleep, now: deps.now }),
     env,
     insideHerdr: insideHerdr(env),
