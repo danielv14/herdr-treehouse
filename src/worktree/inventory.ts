@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs'
 import { ticketFromBranch } from './branch.ts'
-import { DEFAULT_BASE, type RepoConfig } from '../config/config.ts'
+import type { RepoConfig } from '../config/config.ts'
 import { listWorktrees, worktreeFacts } from './git.ts'
 import { placementOfWorktree, unplaceable, type ResolvedPlacement } from './placement.ts'
 
@@ -57,7 +57,7 @@ export const collectRepoInventory = (
     return undefined
   }
   const root = listings.find((listing) => listing.isMain)?.path ?? config.root
-  const base = config.base ?? DEFAULT_BASE
+  const base = config.base
 
   // A broken worktree_dir template throws for every branch alike; one warning
   // says why the whole repo reads as unmanaged.

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { join } from 'node:path'
 import { placementOfWorktree, resolveWorktreePlacement } from './placement.ts'
+import { resolvedRepoConfig } from '../testing/repoConfig.ts'
 import { createTempRepo, type TempRepo } from '../testing/tempRepo.ts'
 
 // The placement rule against a real repo, with no Herdr anywhere: git is the
@@ -13,7 +14,11 @@ const request = (branch: string, worktree_dir?: string) => ({
   repoName: 'my-repo',
   branch,
   mainRepoRoot: repo.root,
-  repoConfig: { root: repo.root, base: 'master', ...(worktree_dir ? { worktree_dir } : {}) },
+  repoConfig: resolvedRepoConfig({
+    root: repo.root,
+    base: 'master',
+    ...(worktree_dir ? { worktree_dir } : {}),
+  }),
 })
 
 const sibling = (name: string) => join(repo.parent, name)

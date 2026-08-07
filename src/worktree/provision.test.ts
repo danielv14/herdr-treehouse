@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import type { RepoConfig } from '../config/config.ts'
 import { buildWorktreePlan } from './plan.ts'
 import { provisionWorktree, type ProvisionOptions } from './provision.ts'
+import { resolvedRepoConfig } from '../testing/repoConfig.ts'
 import { createTempRepo, type TempRepo } from '../testing/tempRepo.ts'
 
 let repo: TempRepo
@@ -32,7 +33,7 @@ const options = (extra: ProvisionExtras = {}): ProvisionOptions => ({
 })
 
 const provision = (repoConfig: Partial<RepoConfig>, extra: ProvisionExtras = {}, branch = 'ABC-1/fix') => {
-  const config: RepoConfig = { root: repo.root, base: 'master', ...repoConfig }
+  const config = resolvedRepoConfig({ root: repo.root, base: 'master', ...repoConfig })
   const plan = buildWorktreePlan({
     repoName: repo.name,
     branch,

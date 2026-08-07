@@ -1,6 +1,6 @@
 import { branchFromUrl } from '../worktree/branch.ts'
 import { parseFlags, type CommandSpec } from '../cli.ts'
-import { PANE_DEFAULTS, resolveRepoConfig, type RepoConfig } from '../config/config.ts'
+import { resolveRepoConfig, type RepoConfig } from '../config/config.ts'
 import { invocationTargetPath, isPluginInvocation, readInvocationContext } from '../herdr/context.ts'
 import { resolveDeps, type Ask, type EngineDeps } from '../deps.ts'
 import { findMainRepoRoot } from '../worktree/git.ts'
@@ -88,13 +88,12 @@ const askInteractively = async (
   return { branch, targets }
 }
 
+// The panes arrive with their defaults applied, so the only work left is
+// expanding each command.
 const paneSpecs = (repoConfig: RepoConfig, expand: (template: string, where?: string) => string): PaneSpec[] =>
-  (repoConfig.panes ?? []).map((pane) => ({
-    split: pane.split ?? PANE_DEFAULTS.split,
-    ratio: pane.ratio ?? PANE_DEFAULTS.ratio,
-    label: pane.label,
+  repoConfig.panes.map((pane) => ({
+    ...pane,
     command: pane.command ? expand(pane.command, 'a pane command') : undefined,
-    autostart: pane.autostart ?? PANE_DEFAULTS.autostart,
   }))
 
 export const up = async (argv: string[], deps: EngineDeps) => {

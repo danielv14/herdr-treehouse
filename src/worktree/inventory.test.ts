@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { attachTabFacts, collectRepoInventory, type RepoInventory } from './inventory.ts'
+import { resolvedRepoConfig } from '../testing/repoConfig.ts'
 import { createTempRepo, type TempRepo } from '../testing/tempRepo.ts'
 
 // Against real repos, like the git module's own tests: the records are what a
@@ -12,11 +13,8 @@ let warned: string[]
 
 const warn = (message: string) => warned.push(message)
 
-const config = (overrides: Partial<{ base: string; worktree_dir: string }> = {}) => ({
-  root: repo.root,
-  base: 'master',
-  ...overrides,
-})
+const config = (overrides: Partial<{ base: string; worktree_dir: string }> = {}) =>
+  resolvedRepoConfig({ root: repo.root, base: 'master', ...overrides })
 
 beforeEach(() => {
   repo = createTempRepo('my-repo')
@@ -128,7 +126,11 @@ describe('collectRepoInventory', () => {
   })
 
   test('a root that is not a repo is skipped with a warning', () => {
-    const inventory = collectRepoInventory('gone', { root: join(repo.parent, 'gone') }, warn)
+    const inventory = collectRepoInventory(
+      'gone',
+      resolvedRepoConfig({ root: join(repo.parent, 'gone') }),
+      warn,
+    )
     expect(inventory).toBeUndefined()
     expect(warned).toHaveLength(1)
     expect(warned[0]).toContain('skipping gone')

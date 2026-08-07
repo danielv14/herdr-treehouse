@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { homedir } from 'node:os'
-import { DEFAULT_BASE, type RepoConfig } from '../config/config.ts'
+import type { RepoConfig } from '../config/config.ts'
+import { resolvedRepoConfig } from '../testing/repoConfig.ts'
 import {
   agentCommandTakesContext,
   agentCommandTakesModel,
@@ -16,7 +17,7 @@ const plan = (branch: string, repoConfig: Partial<RepoConfig> = {}, targets: str
     repoName: 'my-repo',
     branch,
     mainRepoRoot: MAIN,
-    repoConfig: { root: MAIN, ...repoConfig },
+    repoConfig: resolvedRepoConfig({ root: MAIN, ...repoConfig }),
     configDir: CONFIG_DIR,
     targets,
   })
@@ -38,18 +39,15 @@ describe('derived fields', () => {
 })
 
 describe('base ref', () => {
-  test('defaults to origin/master', () => {
-    expect(plan('x/y').base).toBe(DEFAULT_BASE)
-    expect(DEFAULT_BASE).toBe('origin/master')
-  })
-
-  test('repo config wins', () => {
+  // The default itself belongs to the resolver that applies it (config.test.ts);
+  // here it is a resolved value the plan carries.
+  test('comes from the repo config', () => {
     expect(plan('x/y', { base: 'origin/main' }).base).toBe('origin/main')
   })
 })
 
 describe('worktree path', () => {
-  test('defaults to a sibling of the main checkout', () => {
+  test('the conventional worktree_dir lands a sibling of the main checkout', () => {
     expect(plan('ABC-1/x').worktree).toBe('/tmp/checkouts/my-repo-abc-1')
   })
 
@@ -72,7 +70,7 @@ describe('worktree path', () => {
       repoName: 'my-repo',
       branch: 'ABC-1/x',
       mainRepoRoot: MAIN,
-      repoConfig: { root: MAIN, worktree_dir: '../ignored-{id}' },
+      repoConfig: resolvedRepoConfig({ root: MAIN, worktree_dir: '../ignored-{id}' }),
       configDir: CONFIG_DIR,
       worktree: '/somewhere/herdr-made-this',
     })
@@ -93,7 +91,7 @@ describe('placements', () => {
       repoName: 'my-repo',
       branch,
       mainRepoRoot: MAIN,
-      repoConfig: { root: MAIN, ...repoConfig },
+      repoConfig: resolvedRepoConfig({ root: MAIN, ...repoConfig }),
     })
 
   test('a ticket branch may go by its ticket, then by its full slug', () => {
@@ -132,7 +130,7 @@ describe('placements', () => {
       repoName: 'my-repo',
       branch: 'ABC-1/state-machine',
       mainRepoRoot: MAIN,
-      repoConfig: { root: MAIN },
+      repoConfig: resolvedRepoConfig({ root: MAIN }),
       configDir: CONFIG_DIR,
       worktree: '/tmp/checkouts/my-repo-abc-1-state-machine',
       id: 'abc-1-state-machine',

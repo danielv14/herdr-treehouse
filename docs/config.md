@@ -38,9 +38,20 @@ inherits the blast-radius rules below instead of needing a check of its own at
 every call site. A wrong type still reads "expected a string"; only a wrong
 value reads "expected an absolute path".
 
-Validators return diagnostics as data (so tests assert on them); the resolvers
-report them before returning, so no call site can obtain a usable config while
-an unreported error sits in the data.
+Validators return diagnostics as data; the resolvers report them before
+returning, so no call site can obtain a usable config while an unreported error
+sits in the data. The validators are private to the module for that reason: the
+resolvers are the only way in, so validation is tested where a command meets it.
+
+## Defaults are applied where the layering happens
+
+`base`, `worktree_dir` and `panes` (and each pane's `split`, `ratio` and
+`autostart`) have defaults, and the resolvers apply them, so what a consumer
+reads is what the engine does. They are therefore always present in a resolved
+config: a consumer that forgot a fallback used to get a silently wrong default
+where it now gets a type error. Keys with no default stay optional, which is
+what keeps "no bootstrap configured" and "no context configured" readable as
+absence.
 
 ### Blast-radius rules
 
@@ -81,10 +92,12 @@ an unreported error sits in the data.
 
 `renderProposedBlock` lives next to the shape it must satisfy, and
 `config.test.ts` round-trips its output (commented examples included) through
-the validators, so the key names and advertised defaults cannot drift from what
-validation accepts. The defaults it advertises (`DEFAULT_BASE`,
-`DEFAULT_WORKTREE_DIR`, `PANE_DEFAULTS`) are the same constants the engine
-applies. TOML rendering detail: bare keys are letters, digits, dashes and
+resolution, so the key names and advertised defaults cannot drift from what
+validation accepts. It renders from the same constants the resolvers apply, and
+the round-trip pins that: the block's commented `base` and `worktree_dir` lines
+resolve to the values the resolver fills in when they stay commented, and its
+rendered pane spells out what a bare `[[panes]]` entry gets.
+TOML rendering detail: bare keys are letters, digits, dashes and
 underscores — anything else is quoted, and JSON string escapes are a subset of
 TOML basic string escapes, so `JSON.stringify` renders a valid TOML string
 either way.
