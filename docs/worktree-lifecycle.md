@@ -3,18 +3,31 @@
 The short versions of these decisions are in CLAUDE.md ("Key decisions"); this
 file keeps the longer reasoning that used to live as code comments.
 
+## One module answers where a branch's worktree goes
+
+`placement.ts` owns the whole rule: given a repo, a branch, the main checkout
+root and the repo's config, it answers which path the branch gets, which short
+name that path goes by, and whether a worktree is already there — and it raises
+both refusals (the branch sits in the main checkout, every legal path belongs to
+another branch). `plan.ts` keeps the pure half, `worktreePlacements()`, and
+placement is the half that may ask git, the way provisioning does.
+
+`up` asks once, between resolving the config and building the plan, and hands
+the answer to `buildWorktreePlan` as its explicit `worktree` and `id`. `ls` asks
+the same module which placement a worktree stands on, so both read one rule
+rather than each assembling it from the pure half plus git.
+
 ## Git owns where an existing worktree is
 
 `worktree_dir` only says where a *new* worktree goes. The naming convention
 describes worktrees treehouse made — one created by hand, by another tool, or
-under a different ticket id sits wherever that tool put it. So `up` asks
-`findWorktreeForBranch` before building the plan, and passes the answer in as
-the plan's explicit `worktree`. Deriving the path instead sent provisioning off
-to create a *second* worktree for a branch git already had checked out, which
-git refuses (`already used by worktree at ...`) — after the bootstrap had
-already run. The main checkout is included in the answer so "the branch is on
-your desk, not in a worktree" can be refused explicitly instead of reading as
-"nowhere".
+under a different ticket id sits wherever that tool put it. So placement asks
+git where the branch is checked out before anything derives a path. Deriving it
+instead sent provisioning off to create a *second* worktree for a branch git
+already had checked out, which git refuses (`already used by worktree at ...`)
+— after the bootstrap had already run. The main checkout is included in the
+answer so "the branch is on your desk, not in a worktree" can be refused
+explicitly instead of reading as "nowhere".
 
 The same reasoning gives `findWorktreeAtPath`: whether a *path* is taken is a
 git question, not an `existsSync` question — the directory being there says
@@ -36,12 +49,11 @@ a tab with an agent standing on the other branch.
 `worktreePlacements()` returns the ordered spots the convention allows one
 branch — the short `{id}` path first, the full-slug path second (that is what
 keeps `ABC-1/reducer-approach` and `ABC-1/state-machine-approach` apart). The
-placement derivation is pure; only the caller can ask git which spots are
-taken:
+derivation is pure; placement asks git which spots are taken:
 
-- **New worktree** (`up`, nothing holds the branch): take the first placement
-  no other worktree occupies. One branch per ticket lands on exactly the path
-  it always has; a second branch under the same ticket takes the slug path.
+- **New worktree** (nothing holds the branch): take the first placement no
+  other worktree occupies. One branch per ticket lands on exactly the path it
+  always has; a second branch under the same ticket takes the slug path.
 - **Existing worktree**: a worktree standing on a placement keeps that
   placement's name, so a disambiguated worktree reopens under the same tab
   label and `{id}` it was created with; one somewhere else entirely keeps the
@@ -54,11 +66,14 @@ name would collide the way the paths did. A `worktree_dir` with no room to
 disambiguate (no `{id}`, e.g. `../{repo}-{ticket}`) yields one placement and is
 refused with an explanation, not silently reused.
 
-`ls` asks for the whole placement set too, which is why a disambiguated slug
-path reads as managed rather than off-convention. The managed check is a path
-comparison against the *current* branch name, so a branch renamed after
-creation trips the `*` marker as well — the worktree no longer stands where
-the convention would put that name.
+`ls` asks placement about a worktree it already has a path for, which is why a
+disambiguated slug path reads as managed rather than off-convention. The managed
+check is a path comparison against the *current* branch name, so a branch
+renamed after creation trips the `*` marker as well — the worktree no longer
+stands where the convention would put that name. A `worktree_dir` too broken to
+derive anything throws there as it does in `up`; `ls` catches it, warns once and
+falls back to the branch's plain short name, because one broken template must
+not blank a whole listing.
 
 ## Sibling layout
 
