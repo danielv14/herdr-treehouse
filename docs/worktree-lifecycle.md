@@ -238,3 +238,19 @@ choreography: the count changed at provisioning/removal, and what follows can
 take a minute, throw, or end the process (closing your own tab), none of which
 may leave the token stale — Herdr's worktree events do not see git-side
 changes. Reports are best-effort and never fail the command.
+
+The gap those two leave is plain git: `git worktree remove` fires no Herdr
+event, so the token kept the old number until the TTL aged it out. The
+manifest's `workspace.focused` hook closes it, on two decisions worth keeping:
+
+- **Focus, not a git watcher.** The token is read when you look at the sidebar,
+  and focus is the event that says you are looking. It does not heal the moment
+  right after the git command (you are already focused where you ran it), which
+  is accepted: the next workspace switch fixes it, and a watcher for a
+  decorative number is not worth the machinery.
+- **Every repo, not the focused one.** The sidebar shows all workspace rows at
+  once, so the count you want to be right is usually the repo you are *not* in.
+  A full `report` is ~120ms for a handful of repos, which is cheap enough that
+  scoping it to the focused workspace would buy nothing. Scoping would also
+  need a workspace-id-to-repo lookup Herdr does not offer: `workspace get`
+  returns no cwd, and the mapping only runs root to workspace.

@@ -74,6 +74,14 @@ command = ["bash", "bin/treehouse", "report"]
 on = "worktree.removed"
 command = ["bash", "bin/treehouse", "report"]
 
+# Raw git changes the count without firing any Herdr event, so the token would
+# stay wrong until the TTL expires. Focus is the moment the sidebar is read;
+# reporting every repo (not just the focused workspace) is what matters, since
+# every workspace row is on screen at once.
+[[events]]
+on = "workspace.focused"
+command = ["bash", "bin/treehouse", "report"]
+
 # Herdr does not persist reported metadata across a server restart; re-report
 # once the session is restored.
 [[startup]]
