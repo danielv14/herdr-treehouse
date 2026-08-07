@@ -115,6 +115,25 @@ premise of writing `context` to a file, and it was checked in a scratch pane
   falling back to the invocation context's `workspace_cwd`/`focused_pane_cwd`.
   Commands that would otherwise fall back to cwd on a plugin invocation refuse
   instead — the plugin repo itself must never become the target.
+- **Who owns that refusal** (#58): `requireInvocationTarget` in `context.ts`, not
+  the commands. Whether cwd is an answer is a property of the *invocation*, not
+  of the caller: a hand-run command may have it, an action, a popup pane and a
+  clicked link may not. `up` carried both refusals and `down` carried neither,
+  which is why teardown from an action used to reach "not a linked worktree" and
+  blame the wrong path. A clicked link is checked separately from the context
+  payload because the url can arrive through `HERDR_PLUGIN_CLICKED_URL` alone,
+  with no payload to read a cwd from — the case the plugin check misses.
+  `cwd` is a parameter rather than a `process.cwd()` call inside the module, the
+  way `env` is a dependency everywhere else in `src/`.
+- **What #58 deliberately did NOT build**: a module resolving an invocation all
+  the way to `{mainRepoRoot, configDir, repoConfig}`. Only `up` wants all three:
+  `down` wants a worktree path and no config, the `worktree.created` hook starts
+  from a path the payload named, and `onboard` ends in a different config call.
+  What is left once the target refusals move out is `findMainRepoRoot` plus
+  `pluginConfigDir` plus a resolver call, two of which are one line each, so a
+  module wrapping them would serve one caller and move complexity instead of
+  concentrating it. Do not re-suggest it without a second caller that wants the
+  whole triple.
 - Actions run headless; anything that needs to prompt happens in a popup
   plugin pane (`plugin pane open --placement popup`).
 - `HERDR_PLUGIN_CONTEXT_JSON` and `HERDR_PLUGIN_EVENT_JSON` both decode

@@ -210,6 +210,16 @@ describe('down', () => {
     expect(existsSync(repo.root)).toBe(true)
   })
 
+  test('a plugin invocation with no target refuses instead of falling back to cwd', async () => {
+    // cwd is the plugin's own root for an action, so teardown used to reach the
+    // main-checkout refusal by luck and blame the wrong path. Same rule as up's.
+    await expectRejection(
+      down([], deps(createFakeHerdr({}), { HERDR_PLUGIN_CONTEXT_JSON: JSON.stringify({ invocation_source: 'keybinding' }) })),
+      'plugin invocation: could not derive the target repo',
+    )
+    expect(existsSync(worktree)).toBe(true)
+  })
+
   test('a repo with no open workspace still removes the worktree', async () => {
     const fake = createFakeHerdr({ 'worktree list': {} })
     await down(['--path', worktree], deps(fake))

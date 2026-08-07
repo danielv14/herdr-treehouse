@@ -535,7 +535,18 @@ describe('invocation context', () => {
   test('a plugin invocation with no cwd in the context refuses instead of targeting the plugin repo', async () => {
     await expectRejection(
       up(['--branch', 'ABC-1/fix'], deps(createFakeHerdr({}), context({ invocation_source: 'keybinding' }))),
-      'refusing to fall back to the plugin repo',
+      "plugin invocation: could not derive the target repo from the plugin context (refusing to fall back to cwd, which is the plugin's own repo)",
+    )
+  })
+
+  test('a clicked link with no cwd anywhere refuses as a link invocation', async () => {
+    // The url can arrive through its own variable with no context payload to read
+    // a cwd from, which is the case the plugin-invocation check alone misses.
+    await expectRejection(
+      up(['--from-link'], deps(createFakeHerdr({}), {
+        HERDR_PLUGIN_CLICKED_URL: 'https://example.atlassian.net/browse/ABC-42',
+      })),
+      'link invocation: could not derive the target repo',
     )
   })
 

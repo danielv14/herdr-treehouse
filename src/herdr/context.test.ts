@@ -5,6 +5,8 @@ import {
   isPluginInvocation,
   readInvocationContext,
   readWorktreeCreatedEvent,
+  requireInvocationTarget,
+  type Environment,
 } from './context.ts'
 
 const contextEnv = (context: Record<string, unknown>, extra: Record<string, string> = {}) => ({
@@ -129,5 +131,40 @@ describe('invocationTargetPath precedence', () => {
   test('a context with no cwd at all resolves to nothing, so callers can refuse', () => {
     expect(invocationTargetPath({ prefer: 'pane', env: contextEnv({ invocation_source: 'keybinding' }) })).toBeUndefined()
     expect(invocationTargetPath({ prefer: 'pane', env: {} })).toBeUndefined()
+  })
+})
+
+describe('requireInvocationTarget', () => {
+  const target = (env: Environment, explicit?: string) =>
+    requireInvocationTarget({ explicit, prefer: 'pane', env, cwd: '/dev/cwd' })
+
+  test('a hand-run command falls back to cwd', () => {
+    expect(target({})).toBe('/dev/cwd')
+  })
+
+  test('anything the invocation named wins over cwd', () => {
+    expect(target({}, '/dev/explicit')).toBe('/dev/explicit')
+    expect(target({ [TARGET_PATH_ENV]: '/dev/from-env' })).toBe('/dev/from-env')
+    expect(target(contextEnv({ focused_pane_cwd: '/dev/wt' }))).toBe('/dev/wt')
+  })
+
+  test('a plugin invocation with no cwd refuses rather than naming the plugin repo', () => {
+    // cwd is the plugin's own root there, so `up` would bootstrap a worktree of
+    // treehouse and `down` would inspect it.
+    expect(() => target(contextEnv({ invocation_source: 'keybinding' }))).toThrow(
+      /^plugin invocation: could not derive the target repo/,
+    )
+  })
+
+  test('a clicked link with no context payload refuses as a link invocation', () => {
+    // The url arrives through its own variable, so there is no payload to read a
+    // cwd from and the plugin check alone would miss it.
+    expect(() => target({ HERDR_PLUGIN_CLICKED_URL: 'https://example.atlassian.net/browse/ABC-1' })).toThrow(
+      /^link invocation: could not derive the target repo/,
+    )
+  })
+
+  test('an explicit path is still honoured for a plugin invocation', () => {
+    expect(target(contextEnv({ invocation_source: 'keybinding' }), '/dev/explicit')).toBe('/dev/explicit')
   })
 })
