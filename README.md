@@ -169,7 +169,9 @@ agent = 'claude --append-system-prompt "$(cat {context_file})"'
 
 ### Sidebar token
 
-treehouse reports one workspace metadata token to Herdr: `worktrees`, the repo's linked-worktree count. A count of zero clears the token, so repos without worktrees show nothing rather than a `0`. It refreshes when `treehouse up`/`down` change the count, when Herdr's own worktree flow fires `worktree.created`/`worktree.removed`, and on server startup (Herdr does not persist reported tokens across restarts).
+treehouse reports one workspace metadata token to Herdr: `worktrees`, the repo's linked-worktree count. A count of zero clears the token, so repos without worktrees show nothing rather than a `0`. It refreshes when `treehouse up`/`down` change the count, when Herdr's own worktree flow fires `worktree.created`/`worktree.removed`, on every workspace focus, and on server startup (Herdr does not persist reported tokens across restarts).
+
+Focus is what covers plain `git worktree add`/`remove`, which fires no Herdr event at all. Every focus re-reports every configured repo, not just the focused one, because the sidebar shows all workspace rows at once. `treehouse report` does the same thing on demand if you want the numbers refreshed without switching workspace.
 
 Styling stays in your own Herdr config; treehouse only reports the value. `rows` replaces the defaults, so keep the built-in items you still want (inline styles take strict `#RGB`/`#RRGGBB` foregrounds):
 
