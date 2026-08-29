@@ -10,13 +10,13 @@ A repo's config can live in the central `config.toml` (a `[repos.X]` block) or
 in `<repo>/.treehouse.toml` (same fields, no wrapper, no `root`). Resolution
 layers lowest to highest: `[defaults]` → `[repos.X]` → the local file. The
 local file works standalone, so a repo needs no central entry at all. Which
-home fits is a judgment call about the repo's ownership — that is why `onboard`
+home fits is a judgment call about the repo's ownership, which is why `onboard`
 only exposes `--local` and leaves the choice to the caller.
 
 A `[repos.X]` block is matched to a checkout by `root` (path identity), not by
 its key: the key is just a label. `onboard` refuses to add a block when either
 home already configures the repo, naming the file, because moving a repo
-between homes means removing the old entry — a decision only the reader can
+between homes means removing the old entry, a decision only the reader can
 make.
 
 ## Validation: warn on unknown, stop on wrong shape
@@ -24,7 +24,7 @@ make.
 The TOML arrives untyped, so keys AND value shapes are declared once and
 checked in a single pass. The severity split is deliberate:
 
-- **Unknown keys warn** and are ignored — the config still works, but a typo'd
+- **Unknown keys warn** and are ignored. The config still works, but a typo'd
   key means a feature silently never happens, so it must be said out loud.
 - **Wrong value shapes are errors** and stop the run, because guessing what was
   meant has burned us: a string `setup` ran one command per character, and a
@@ -46,7 +46,7 @@ resolvers are the only way in, so validation is tested where a command meets it.
 The engine doing the checking (`shape.ts`) is generic: it knows nothing about
 treehouse's keys, so every judgment in this document lives in `config.ts` with
 the shape declarations, and the engine could validate any TOML-shaped table.
-The split is the same one `processRunner.ts` and `git.ts` make — mechanism in a
+The split is the same one `processRunner.ts` and `git.ts` make: mechanism in a
 module with no domain knowledge, policy at the caller.
 
 The TypeScript types are derived from the same declaration (`Declared<typeof
@@ -114,6 +114,6 @@ renders from the same constants the resolvers apply, and a second test reads the
 rendered text back against a resolved config, so a `base`, `worktree_dir`,
 `split` or `autostart` line that changed value or stopped being advertised at
 all fails. TOML rendering detail: bare keys are letters, digits, dashes and
-underscores — anything else is quoted, and JSON string escapes are a subset of
+underscores; anything else is quoted, and JSON string escapes are a subset of
 TOML basic string escapes, so `JSON.stringify` renders a valid TOML string
 either way.

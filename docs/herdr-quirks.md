@@ -30,7 +30,7 @@ shows up in a live session.
 `source.source_workspace_id`. A repo with no open workspace is a *normal*
 answer: the field is simply absent from a successful response. A thrown error
 is therefore a real failure and must not be swallowed where the answer feeds a
-teardown decision — `down` degrading to "no workspace" would skip the
+teardown decision: `down` degrading to "no workspace" would skip the
 busy-process check entirely. `up` may recover from a failed lookup by creating
 the workspace: the worst case there is one extra workspace, not a lost worktree.
 
@@ -65,7 +65,7 @@ Enter. On 0.7.5 `agent prompt` owns submission; do not go back.
 ## Context delivery through `pane run`
 
 `pane run <pane> <command>` hands the command to the pane's own shell, which
-evaluates it — so `claude --append-system-prompt "$(cat <file>)"` reads the
+evaluates it, so `claude --append-system-prompt "$(cat <file>)"` reads the
 context file and multi-line content arrives as one argument. That is the whole
 premise of writing `context` to a file, and it was checked in a scratch pane
 (herdr 0.7.5) before the feature was merged rather than assumed.
@@ -79,14 +79,14 @@ premise of writing `context` to a file, and it was checked in a scratch pane
   render, so a single busy snapshot gives false positives. `down` takes two
   snapshots 750ms apart and only trusts a process seen in both.
 - Shells always show as running foreground processes; they never count as busy.
-- A registered agent in `idle`/`done` is just waiting at its prompt — tearing
+- A registered agent in `idle`/`done` is just waiting at its prompt; tearing
   it down with the tab is the point. `working`/`blocked` agents and non-agent
   processes count as busy.
 
 ## Tab choreography
 
 - Tabs are opened with `tab create --cwd` (never `herdr worktree open`, which
-  opens worktrees as workspaces — see CLAUDE.md's key decisions).
+  opens worktrees as workspaces; see CLAUDE.md's key decisions).
 - Pane layout: each configured pane splits the PREVIOUS pane; the first splits
   the main/agent pane.
 - `autostart = false` pre-fills a pane command with `pane send-text` (no
@@ -114,7 +114,7 @@ premise of writing `context` to a file, and it was checked in a scratch pane
   `TREEHOUSE_TARGET_PATH` (set by `treehouse action` when it opens a popup),
   falling back to the invocation context's `workspace_cwd`/`focused_pane_cwd`.
   Commands that would otherwise fall back to cwd on a plugin invocation refuse
-  instead — the plugin repo itself must never become the target.
+  instead: the plugin repo itself must never become the target.
 - **Who owns that refusal** (#58): `requireInvocationTarget` in `context.ts`, not
   the commands. Whether cwd is an answer is a property of the *invocation*, not
   of the caller: a hand-run command may have it, an action, a popup pane and a
@@ -127,8 +127,8 @@ premise of writing `context` to a file, and it was checked in a scratch pane
   ctrl+click carries a context payload as well (`clicked_url` lives inside it),
   so asking `isPluginInvocation` first labelled every click a plugin invocation
   and left the link label reachable only through `HERDR_PLUGIN_CLICKED_URL` with
-  no payload — which is a shape that exists, hence both checks, but it is the
-  rare one. The specific case has to win.
+  no payload. That shape exists, hence both checks, but it is the rare one, and
+  the specific case has to win.
 - **What #58 deliberately did NOT build**: a module resolving an invocation all
   the way to `{mainRepoRoot, configDir, repoConfig}`. Only `up` wants all three:
   `down` wants a worktree path and no config, the `worktree.created` hook starts

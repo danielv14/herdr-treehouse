@@ -76,7 +76,7 @@ side-project     spike-oxc               clean    -      3d ago   -             
 
 Nothing is fetched or changed, so `BASE` is ahead/behind as of the last fetch. `TAB` only appears inside Herdr. Repos configured only by a repo-local `.treehouse.toml` are absent; there is deliberately no registry of them.
 
-`up` on a branch that already has a worktree creates nothing: it opens a tab on the worktree git says the branch is in, wherever that is, and runs no setup — `--setup` is for a worktree that exists but was never provisioned. Two branches of one ticket get one worktree each: the first keeps the ticket path, the second the full branch slug, with its tab label and `{id}` to match. Both cases, and what `up` refuses rather than guessing, are in [`docs/worktree-lifecycle.md`](docs/worktree-lifecycle.md).
+`up` on a branch that already has a worktree creates nothing: it opens a tab on the worktree git says the branch is in, wherever that is, and runs no setup. `--setup` is for a worktree that exists but was never provisioned. Two branches of one ticket get one worktree each: the first keeps the ticket path, the second the full branch slug, with its tab label and `{id}` to match. Both cases, and what `up` refuses rather than guessing, are in [`docs/worktree-lifecycle.md`](docs/worktree-lifecycle.md).
 
 ## Configuration
 
@@ -107,10 +107,10 @@ Layering is `[defaults]` → `[repos.X]` → `.treehouse.toml`, last one wins, s
 | `{base}` | base ref (default `origin/master`) |
 | `{config_dir}` | the plugin config dir, i.e. where `config.toml` and your `bootstraps/` live; not legal in `worktree_dir` |
 | `{targets}` | the `--target` list, comma-separated; empty when none were given |
-| `{targets...}` | one argv entry per `--target` — bootstrap argv only |
-| `{context_file}` | path of the rendered `context` file — agent command only |
-| `{model_arg}` | the repo's `model_arg` rendered, empty when no `--model` was given — agent command only |
-| `{model}` | the name passed to `--model` — `model_arg` only |
+| `{targets...}` | one argv entry per `--target`; bootstrap argv only |
+| `{context_file}` | path of the rendered `context` file; agent command only |
+| `{model_arg}` | the repo's `model_arg` rendered, empty when no `--model` was given; agent command only |
+| `{model}` | the name passed to `--model`; `model_arg` only |
 
 A typo'd placeholder (`{wortkree}`) is an error that stops the run, not a literal that reaches a shell command. Any other brace passes through untouched, since config values are shell commands: `{{.Names}}`, `{print $1}` and `${HOME}` all survive.
 
@@ -209,6 +209,6 @@ One thing to keep out of skills: permission flags like `--dangerously-skip-permi
 
 The reasoning behind the CLI's behaviour lives in `docs/`:
 
-- [`docs/worktree-lifecycle.md`](docs/worktree-lifecycle.md) — placement and naming (one worktree per branch), provisioning, standing agent context, per-tab model, sidebar count reporting, teardown safety
-- [`docs/config.md`](docs/config.md) — config resolution, validation policy, TOML footguns
-- [`docs/herdr-quirks.md`](docs/herdr-quirks.md) — live-observed Herdr behaviours the CLI codes around (agent prompt delivery, busy-pane detection, tab choreography, plugin payloads)
+- [`docs/worktree-lifecycle.md`](docs/worktree-lifecycle.md): placement and naming (one worktree per branch), provisioning, standing agent context, per-tab model, sidebar count reporting, teardown safety
+- [`docs/config.md`](docs/config.md): config resolution, validation policy, TOML footguns
+- [`docs/herdr-quirks.md`](docs/herdr-quirks.md): live-observed Herdr behaviours the CLI codes around (agent prompt delivery, busy-pane detection, tab choreography, plugin payloads)
