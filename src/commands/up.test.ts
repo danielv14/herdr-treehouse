@@ -10,10 +10,6 @@ import { expectRejection } from '../testing/expectRejection.ts'
 import { createTempRepo, type TempRepo } from '../testing/tempRepo.ts'
 import { up } from './up.ts'
 
-// Drives `up` end to end with no Herdr session and no HERDR_ENV of its own: the
-// invoker is the recording fake and the environment is constructed per test, so
-// nothing here touches process.env.
-
 let repo: TempRepo
 let configDir: string
 let logged: string[]
@@ -31,8 +27,6 @@ const RESPONSES: FakeResponses = {
   'workspace report-metadata': {},
 }
 
-// Inside Herdr, pointed at this test's config dir. Anything else a test needs
-// (a plugin context, a clicked url) is another key in the same object.
 const env = (overrides: Environment = {}): Environment => ({
   HERDR_ENV: '1',
   HERDR_PLUGIN_CONFIG_DIR: configDir,
@@ -108,9 +102,6 @@ autostart = false
   })
 
   test('a pane that declares neither ratio nor autostart reaches the tab with the defaults', async () => {
-    // The whole pane-defaults path, end to end: the resolver fills them in, and
-    // the choreography reads them as split down, ratio 0.5 and a command that is
-    // only pre-filled (autostart false is what keeps two tabs off one port).
     writeLocalConfig(`
 base = "master"
 
@@ -333,13 +324,9 @@ describe('two branches under one ticket', () => {
 
     expect(existsSync(short())).toBe(true)
     expect(existsSync(longFor(stateMachine))).toBe(true)
-    // Each worktree stands on its own branch, which is the whole point: two
-    // agents committing over each other on one branch is what this prevents.
     expect(repo.git('worktree', 'list')).toContain(`[${reducer}]`)
     expect(repo.git('worktree', 'list')).toContain(`[${stateMachine}]`)
     expect(tabCreate(second)).toContain(`--cwd ${longFor(stateMachine)}`)
-    // Two tabs labelled 🌳 abc-1 would be indistinguishable in the sidebar, so
-    // the disambiguated worktree is labelled by the name it actually goes by.
     expect(tabCreate(second)).toContain('--label 🌳 abc-1-state-machine-approach')
   })
 
@@ -353,7 +340,6 @@ describe('two branches under one ticket', () => {
     expect(logged).toContain(`worktree already exists: ${longFor(stateMachine)}`)
     expect(tabCreate(again)).toContain(`--cwd ${longFor(stateMachine)}`)
     expect(tabCreate(again)).toContain('--label 🌳 abc-1-state-machine-approach')
-    // Nothing new was created for the reopen, and setup did not run again.
     expect(repo.git('worktree', 'list').split('\n')).toHaveLength(3)
     expect(readFileSync(join(longFor(stateMachine), 'ran.txt'), 'utf8').trim().split('\n')).toEqual(['ran'])
   })
@@ -422,9 +408,6 @@ Do not start the dev command.
   })
 
   test('both halves in [defaults] reach a repo that only overrides the text', async () => {
-    // The arrangement that works cleanly when several repos are configured:
-    // [defaults] owns the agent line (permission posture included) and a context
-    // that is true everywhere, and a repo replaces only the text.
     writeFileSync(
       join(configDir, 'config.toml'),
       `[defaults]\n${APPEND}\ncontext = "generic, from defaults"\n\n` +
@@ -489,8 +472,6 @@ Do not start the dev command.
   })
 
   test('--model fills the slot of an ad-hoc --agent too', async () => {
-    // The pair --model exists to make unnecessary, so it had better compose:
-    // model_arg comes from the config, the command from the flag.
     writeLocalConfig(`base = "master"\nmodel_arg = '--model {model}'\n`)
     const fake = createFakeHerdr(RESPONSES)
     await up(
@@ -581,8 +562,6 @@ describe('invocation context', () => {
 })
 
 describe('interactive popup', () => {
-  // Scripted answers in, recorded questions out: the same leverage the fake
-  // Herdr gives the tab choreography.
   const interactiveDeps = (fake: FakeHerdr, answers: string[], asked: string[]): EngineDeps => ({
     ...deps(fake),
     ask: async (question) => {
@@ -597,16 +576,12 @@ describe('interactive popup', () => {
     const asked: string[] = []
     await up(['--repo', repo.root, '--interactive', '--no-agent'], interactiveDeps(fake, [' ABC-9/fix-popup '], asked))
 
-    // No bootstrap takes targets here, so the branch question is the only one.
     expect(asked).toEqual(['Branch name (e.g. ABC-1234/fix-thing): '])
     expect(logged).toContain('New worktree tab in my-repo\n')
     expect(existsSync(join(repo.parent, 'my-repo-abc-9'))).toBe(true)
-    // An interactive answer means "take me there", like a clicked link.
     expect(fake.commands().find((command) => command.startsWith('tab create'))).toContain('--focus')
   })
 
-  // A bootstrap that creates the worktree and records the targets it was
-  // handed, so the tests can assert what actually reached it.
   const writeTargetsBootstrap = () => {
     const script = join(repo.parent, 'bootstrap.sh')
     writeFileSync(

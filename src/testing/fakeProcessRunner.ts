@@ -13,10 +13,6 @@ import type { ProcessRun, ProcessRunner } from '../processRunner.ts'
 // An unmatched run exits 0. Unlike the Herdr fake, an unscripted call is not a
 // test passing by accident: the assertions here are on what was run, not on
 // what came back.
-//
-// What it cannot prove, and what provision.test.ts therefore keeps real spawns
-// for: a relative argv[0] resolved against cwd, a script without its exec bit,
-// and a cwd that is not a directory.
 export type FakeOutcome = number | { error: string }
 export type FakeOutcomes = Record<string, FakeOutcome | ((run: ProcessRun) => FakeOutcome | void)>
 

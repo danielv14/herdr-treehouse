@@ -2,10 +2,6 @@ import { expandHome } from '../config/config.ts'
 import type { Environment } from './context.ts'
 import type { HerdrInvoker } from './invoker.ts'
 
-// The one place that knows Herdr: subcommand names, response decoding, and the
-// version-specific quirks (documented in docs/herdr-quirks.md).
-
-// Must equal the manifest's `id`; manifest.test.ts pins the two together.
 export const PLUGIN_ID = 'treehouse'
 
 export const pluginConfigDir = (invoke: HerdrInvoker, env: Environment): string => {
@@ -82,14 +78,11 @@ type MetadataReport = {
 export const WORKTREES_TOKEN = 'worktrees'
 
 export type TabChoreography = {
-  // Workspace of a repo, or undefined when the repo has none open.
   findWorkspace: (mainRepoRoot: string) => string | undefined
-  // Same lookup, creating the workspace when the repo has none.
   resolveWorkspace: (mainRepoRoot: string) => string
   openWorktreeTab: (request: OpenTabRequest) => Promise<OpenedTab>
   // Read-only pane snapshot, none of inspectWorktreeTab's busy-check waiting.
   listPanes: (workspaceId: string) => PaneSnapshot[]
-  // Which tabs the worktree occupies, and which of its panes are genuinely busy.
   inspectWorktreeTab: (
     workspaceId: string,
     worktreePath: string,
@@ -106,8 +99,6 @@ export type CloseTabsOptions = {
   lastTabId?: string
   onClosed?: (tabId: string) => void
 }
-
-// --- response decoding ------------------------------------------------------
 
 const asTable = (value: unknown): Record<string, unknown> =>
   typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {}

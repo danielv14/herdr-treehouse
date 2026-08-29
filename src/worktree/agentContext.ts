@@ -4,13 +4,8 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { agentCommandTakesContext, agentCommandTakesModel, type WorktreePlan } from './plan.ts'
 
-// The agent command assembled: the repo's `context` rendered and put where the
-// command can read it, and a requested model dropped into the slot the repo
-// declared for it. Rationale in docs/worktree-lifecycle.md.
-
 const CONTEXT_DIR = 'treehouse-context'
 
-// Anything a repo name or an {id} can hold that a filename should not.
 const fileSafe = (name: string) => name.replace(/[^A-Za-z0-9._-]/g, '-')
 
 // Deterministic per worktree, so re-running `up` overwrites instead of leaving
@@ -60,23 +55,14 @@ const renderModelArg = (plan: WorktreePlan, input: AgentCommandInput): string =>
 }
 
 export type PreparedAgentCommand = {
-  // What the pane is handed, fully expanded.
   command: string
-  // The file the rendered context went to, absent when the repo has none. The
-  // caller reports it, and a test asserts against it instead of guessing the
-  // name the module chose.
   contextFile?: string
 }
 
-// Half-configured is an error rather than silence, the way a typo'd
-// placeholder is: context nothing reads and a command reading a file nothing
-// wrote are both invisible until you notice the agent knows nothing.
 export const prepareAgentCommand = (
   plan: WorktreePlan,
   input: AgentCommandInput,
 ): PreparedAgentCommand => {
-  // Before the context work, though either order is safe: a --model mistake is
-  // then not masked by a config problem the caller is not currently trying to fix.
   const modelArg = renderModelArg(plan, input)
   const wantsContext = agentCommandTakesContext(input.command)
   // Render before deciding: `context = "{ticket}"` on a branch with no ticket

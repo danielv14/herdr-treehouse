@@ -12,23 +12,8 @@ import {
   type WithDefaulted,
 } from './shape.ts'
 
-// The treehouse config: its shape, defaults and resolution policy. The generic
-// declare-and-validate engine lives in shape.ts; policy and rationale in
-// docs/config.md; field semantics in config.example.toml.
-
-// The types a consumer reads are derived from the shape declarations below via
-// Declared<>, the way parsing and help both derive from cli.ts's declarations:
-// a key added to a shape is a key the types know, with no second list to keep
-// in step. Declared<> is everything-optional (a level says only what it
-// changes); WithDefaulted names the keys the resolvers promise to fill in.
-
-// A pane as the resolvers hand it over: the keys that have a default are always
-// there. `label` and `command` have none (a pane can be a bare shell).
 type PaneConfig = WithDefaulted<Declared<typeof PANE_SHAPE>, 'split' | 'ratio' | 'autostart'>
 
-// What the resolvers return: layered, with the defaults applied. A key with a
-// default is a fact here, so no consumer decides one for itself; a key without
-// one stays optional, so absence keeps meaning "not configured".
 export type RepoConfig = WithDefaulted<
   Omit<Declared<typeof REPO_SHAPE>, 'panes'>,
   'root' | 'base' | 'worktree_dir'
@@ -49,14 +34,8 @@ type TreehouseConfig = {
 export const expandHome = (path: string) =>
   path.startsWith('~') ? join(homedir(), path.slice(1)) : path
 
-// Resolving WHERE the config dir is takes asking Herdr (pluginConfigDir in
-// tabs.ts); everything here takes the resolved dir.
 export const configPath = (configDir: string) => join(configDir, 'config.toml')
 
-// Defaults applied when config leaves a field out. Applied by the resolvers
-// below, the one place that sees every level; renderProposedBlock advertises
-// them, and config.test.ts pins that its commented lines resolve to the same
-// values, so onboard cannot drift from what the engine does.
 const DEFAULT_BASE = 'origin/master'
 
 const DEFAULT_WORKTREE_DIR = '../{repo}-{id}'
@@ -64,10 +43,6 @@ const DEFAULT_WORKTREE_DIR = '../{repo}-{id}'
 const PANE_DEFAULTS = { split: 'down', ratio: 0.5, autostart: false } as const
 
 export const LOCAL_CONFIG_FILE = '.treehouse.toml'
-
-// ---------------------------------------------------------------------------
-// Shape declaration
-// ---------------------------------------------------------------------------
 
 // `as const satisfies Shape` on each declaration keeps the literal types
 // (Declared<> needs them to narrow `values` and find each `shape`) while still
@@ -96,12 +71,7 @@ const REPO_SHAPE = {
   setup: { kind: 'string-list' },
   panes: { kind: 'table-list', shape: PANE_SHAPE },
   agent: { kind: 'string' },
-  // Standing agent instructions, delivered through the agent command's
-  // {context_file}. Layered like every other key: replaces, never appends.
   context: { kind: 'string' },
-  // How this repo's agent spells a model, e.g. '--model {model}'. The engine
-  // holds no opinion about the flag; it only fills the {model_arg} slot the
-  // agent command declares, with what --model was given.
   model_arg: { kind: 'string' },
 } as const satisfies Shape
 
@@ -116,19 +86,12 @@ const DEFAULTS_SHAPE = {
 
 const TOP_LEVEL_SHAPE = {
   defaults: { kind: 'table', shape: DEFAULTS_SHAPE },
-  // `root` is required: it is what matches a block to a checkout.
   repos: { kind: 'table-map', shape: REPO_SHAPE, required: ['root'] },
 } as const satisfies Shape
 
-// A repo-local .treehouse.toml holds the same fields without the [repos.X]
-// wrapper, and without `root`: the file's own location is the repo root.
 // Destructuring rather than Object.fromEntries so the entry types survive and
 // Declared<typeof LOCAL_SHAPE> stays precise.
 const { root: _centralOnly, ...LOCAL_SHAPE } = REPO_SHAPE
-
-// ---------------------------------------------------------------------------
-// Rendering a proposed block (the write side of the shape)
-// ---------------------------------------------------------------------------
 
 type RepoProposal = {
   name: string
@@ -159,8 +122,6 @@ export const renderProposedBlock = (proposal: RepoProposal, home: 'central' | 'l
     ...head,
     `# worktree_dir = "${DEFAULT_WORKTREE_DIR.replace('{repo}', proposal.name)}"  # this is the default; set it only for a different layout`,
     `# base = "${DEFAULT_BASE}"`,
-    // argv[0] needs a path that does not depend on cwd, so each home is shown
-    // the anchor it has: the config dir centrally, the repo itself locally.
     home === 'local'
       ? `# bootstrap = ["{root}/scripts/worktree-up.sh", "--dir", "{worktree}", "{branch}", "{targets...}"]`
       : `# bootstrap = ["{config_dir}/bootstraps/${proposal.name}.sh", "--dir", "{worktree}", "{branch}", "{targets...}"]`,
@@ -176,12 +137,6 @@ export const renderProposedBlock = (proposal: RepoProposal, home: 'central' | 'l
   ].join('\n')
 }
 
-// ---------------------------------------------------------------------------
-// Validation
-// ---------------------------------------------------------------------------
-
-// Both validator entry points are private: their behaviour is reached through
-// the resolvers below, which is where a call site meets it too.
 const validateConfigFile = (
   raw: unknown,
   file: string,
@@ -225,10 +180,6 @@ const validateLocalConfigFile = (
   return { config: validated, diagnostics }
 }
 
-// ---------------------------------------------------------------------------
-// Loading
-// ---------------------------------------------------------------------------
-
 const parseToml = async (path: string): Promise<unknown> => {
   try {
     return Bun.TOML.parse(await Bun.file(path).text())
@@ -268,8 +219,6 @@ const findRepoEntry = (
       repo.root !== undefined && sameDir(expandHome(repo.root), mainRepoRoot),
   )
 
-// The `repos.<name>[.<field>]` key convention, read in one place. Three call
-// sites ask these two questions and want different answers from them.
 const isRepoScoped = (diagnostic: Diagnostic) => diagnostic.key?.startsWith('repos.') ?? false
 
 // The trailing dot matters: repos.foobar must not read as scoped to repos.foo.
@@ -299,9 +248,6 @@ const loadLocalConfig = async (
   return validateLocalConfigFile(await parseToml(localPath), localPath)
 }
 
-// The layered levels with the defaults filled in, so what a consumer reads is
-// what the engine does. Each pane gets its own: a pane declares only the keys it
-// changes, and the layering replaces the list wholesale.
 const withDefaults = (declared: DeclaredRepo, root: string): RepoConfig => ({
   ...declared,
   root,
@@ -315,10 +261,6 @@ const withDefaults = (declared: DeclaredRepo, root: string): RepoConfig => ({
   })),
 })
 
-// Layered lowest to highest: [defaults], the repo's [repos.X] entry, then a
-// repo-local .treehouse.toml. Reports its own diagnostics before returning, so
-// a call site cannot obtain a usable config while an unreported error sits in
-// the data.
 export const resolveRepoConfig = async (
   mainRepoRoot: string,
   configDir: string,
@@ -334,10 +276,8 @@ export const resolveRepoConfig = async (
   return { name, config }
 }
 
-// The multi-repo view (ls, report): same layering per repo, but a repo whose
-// own block or local file is broken is skipped with a warning instead of
-// stopping the listing. Repos known only by a repo-local .treehouse.toml are
-// invisible here by design: there is deliberately no registry of them.
+// Repos known only by a repo-local .treehouse.toml are invisible here by
+// design: there is deliberately no registry of them.
 export const resolveAllRepoConfigs = async (
   configDir: string,
   warn: (message: string) => void,
@@ -378,9 +318,6 @@ export const resolveAllRepoConfigs = async (
   return resolved
 }
 
-// Onboard's view of the central config: the config key (if any) whose `root`
-// already claims the checkout, with the same demote-and-report policy as
-// resolveRepoConfig.
 export const configuredRepoName = async (
   mainRepoRoot: string,
   configDir: string,

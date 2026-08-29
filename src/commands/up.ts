@@ -126,7 +126,6 @@ export const up = async (argv: string[], deps: EngineDeps) => {
     options.focus = true
   }
   if (!options.branch) throw new Error('up requires --branch (or --interactive / --from-link)')
-  // Silently dropping the task would open a tab nothing ever acts on.
   if (options.prompt && options.noAgent) {
     throw new Error('--prompt needs an agent to hand the task to (drop --no-agent, or drop --prompt)')
   }
@@ -134,9 +133,6 @@ export const up = async (argv: string[], deps: EngineDeps) => {
     throw new Error('--model needs an agent to apply to (drop --no-agent, or drop --model)')
   }
 
-  // Where this branch's worktree goes, asked once and answered in one place:
-  // an existing worktree keeps its own path and name, a new one takes the first
-  // free spot the convention allows, and both refusals come from there.
   const placement = resolveWorktreePlacement({
     repoName,
     branch: options.branch,

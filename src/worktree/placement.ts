@@ -1,13 +1,7 @@
 import { findWorktreeAtPath, findWorktreeForBranch, samePath } from './git.ts'
 import { conventionalId, worktreePlacements, type PlacementInput } from './plan.ts'
 
-// Where a branch's worktree goes, and whether it is already there. plan.ts
-// derives the spots the convention allows one branch and stays pure; this is
-// the half that asks git which of them the branch actually gets, so no caller
-// assembles the rule out of both. Background: docs/worktree-lifecycle.md.
-
 export type ResolvedPlacement = {
-  // What this worktree goes by: {id}, the tab label, the context file name.
   id: string
   worktree: string
   // Whether the path is one the convention allows this branch. A worktree
@@ -39,9 +33,6 @@ export const resolveWorktreePlacement = (request: PlacementInput): ResolvedPlace
   return checkedOutAt ? placementOfWorktree(request, checkedOutAt.path) : freePlacement(request)
 }
 
-// Which of the branch's legal spots a worktree that already exists stands on.
-// A caller holding the path already (`ls` walks git's listing) asks this
-// directly; `up` reaches it through the resolve above.
 export const placementOfWorktree = (
   request: PlacementInput,
   worktree: string,

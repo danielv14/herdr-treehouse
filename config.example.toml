@@ -3,7 +3,9 @@
 # Placeholders available in worktree_dir, bootstrap, setup, pane commands,
 # `context` and the agent command (the entries that name a place are legal only
 # there, which is narrower):
-#   {repo}        repo name (config key)
+#   {repo}        repo name (config key; the directory name for unconfigured
+#                 repos - set worktree_dir explicitly if a key deliberately
+#                 differs from it)
 #   {branch}      full branch name, e.g. ABC-1234/fix-thing
 #   {slug}        slugified branch, e.g. abc-1234-fix-thing
 #   {ticket}      leading ticket id lowercased (abc-1234), empty if none

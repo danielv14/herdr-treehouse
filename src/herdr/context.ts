@@ -1,7 +1,3 @@
-// The only reader of the payloads Herdr hands the engine through the
-// environment. Both payloads decode tolerantly (raw kept for the plugin log,
-// fields read as absent): a malformed payload may not take an invocation down.
-
 // Plugin-invoked processes run with cwd = plugin root, so the target path has
 // to be carried explicitly.
 export const TARGET_PATH_ENV = 'TREEHOUSE_TARGET_PATH'
@@ -81,8 +77,6 @@ export type TargetPathInput = {
   env: Environment
 }
 
-// Precedence: explicit flag, then TARGET_PATH_ENV, then the invocation context.
-// Undefined means nothing said; what to do about it is the caller's decision.
 export const invocationTargetPath = ({
   explicit,
   prefer,
@@ -104,10 +98,6 @@ export type RequiredTargetInput = TargetPathInput & {
   cwd: string
 }
 
-// The path an invocation is about, cwd included, or a refusal. cwd is only an
-// answer for a command someone typed: plugin-invoked processes run with
-// cwd = plugin root, so falling back there names treehouse itself.
-// Reasoning: docs/herdr-quirks.md.
 export const requireInvocationTarget = (input: RequiredTargetInput): string => {
   const target = invocationTargetPath(input)
   if (target) return target
@@ -128,7 +118,5 @@ export const requireInvocationTarget = (input: RequiredTargetInput): string => {
   return input.cwd
 }
 
-// The caller's own pane/tab: teardown skips itself in the busy check and
-// closes its own tab last.
 export const callerPaneId = (env: Environment) => env.HERDR_PANE_ID
 export const callerTabId = (env: Environment) => env.HERDR_TAB_ID

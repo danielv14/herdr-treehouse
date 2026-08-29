@@ -60,8 +60,6 @@ const provision = (repoConfig: Partial<RepoConfig>, extra: ProvisionExtras = {},
   return { plan, result: provisionWorktree(plan, config, options(extra)) }
 }
 
-// A stand-in bootstrap script: creates the worktree itself, like the real ones
-// do, and records the argv it was handed.
 const writeBootstrap = (name: string, body: string) => {
   const path = join(repo.parent, name)
   writeFileSync(path, `#!/usr/bin/env bash\nset -euo pipefail\n${body}\n`)
@@ -191,8 +189,6 @@ describe('a stray path where the worktree should go', () => {
 })
 
 describe('setupExisting', () => {
-  // A worktree that exists is not the same as a worktree that was provisioned:
-  // this is how `up --setup` says "run them here anyway".
   const setup = { setup: ['echo ran >> ran.txt'] }
 
   test('runs setup in a worktree that already existed, without claiming it created it', () => {
@@ -298,8 +294,6 @@ describe('bootstrap path', () => {
   })
 
   test('a bootstrap that never started names the file and the reason', () => {
-    // The spawn never reached a script, so there is no exit status: reading
-    // status first reported "exit undefined" and named nothing.
     const missing = join(repo.parent, 'not-here.sh')
     const failure = expect(() => provision({ bootstrap: [missing] }))
     failure.toThrow(`bootstrap failed to run ${missing}`)
@@ -313,8 +307,6 @@ describe('bootstrap path', () => {
   })
 
   test('argv[0] may name a script through {config_dir}', () => {
-    // The point of the placeholder: the script lives next to the config, and no
-    // config has to spell out where Herdr keeps that.
     mkdirSync(join(repo.parent, 'config', 'bootstraps'), { recursive: true })
     const script = writeBootstrap(
       'config/bootstraps/up.sh',
@@ -329,8 +321,6 @@ describe('bootstrap path', () => {
   })
 
   test('the bootstrap runs first, then setup when --setup asks for it', () => {
-    // A bootstrap always runs, and it owns creation, so it has to tolerate being
-    // handed a worktree that is already there - like the real ones do.
     const script = writeBootstrap(
       'bootstrap.sh',
       '[ -d "$2" ] || git worktree add "$2" -b "$3" --no-track master\necho bootstrap >> "$2/order.txt"',
@@ -364,8 +354,6 @@ describe('bootstrap path', () => {
 })
 
 describe('the worktree.created path', () => {
-  // Herdr creates the checkout before the hook fires, so provisioning must not
-  // try to create it - but it is still a fresh worktree, and setup has to run.
   const createWorktreeLikeHerdrDoes = () => {
     const path = join(repo.parent, 'my-repo-abc-1')
     repo.git('worktree', 'add', path, '-b', 'ABC-1/fix', '--no-track', 'master')
@@ -393,11 +381,6 @@ describe('the worktree.created path', () => {
 })
 
 describe('the process seam', () => {
-  // What the runner dependency buys: argv, cwd and call order are assertable
-  // without a script on disk and without a command that changes the worktree to
-  // prove it ran. The tests above still spawn for real, so the fake stays
-  // anchored to what a real spawn does.
-
   test('setup commands reach the runner expanded, in order, and in the worktree', () => {
     const runner = createFakeProcessRunner()
     const { plan } = provision({ setup: ['npm ci', 'cp {root}/.env .env'] }, { run: runner.run })
@@ -452,8 +435,6 @@ describe('the process seam', () => {
 })
 
 describe('an empty bootstrap list', () => {
-  // `bootstrap = []` is truthy but has no argv[0]; spawning it crashed with a
-  // Node type error. Treated as "no bootstrap configured" instead.
   test('creates the worktree with git instead of crashing', () => {
     const { plan, result } = provision({ bootstrap: [] })
     expect(existsSync(plan.worktree)).toBe(true)

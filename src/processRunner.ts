@@ -1,10 +1,5 @@
 import { spawnSync } from 'node:child_process'
 
-// Running an external process is a dependency, the way the Herdr invoker is:
-// `spawnProcess` is the production adapter and src/testing/fakeProcessRunner.ts
-// the recording one. Reasoning, git.ts's exemption included:
-// docs/worktree-lifecycle.md.
-
 export type ProcessRun = {
   command: string
   args: string[]

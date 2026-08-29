@@ -4,10 +4,6 @@ import { placementOfWorktree, resolveWorktreePlacement } from './placement.ts'
 import { resolvedRepoConfig } from '../testing/repoConfig.ts'
 import { createTempRepo, type TempRepo } from '../testing/tempRepo.ts'
 
-// The placement rule against a real repo, with no Herdr anywhere: git is the
-// only thing that knows which spots are taken, so the cases that used to be
-// reachable only through `up` end to end live here.
-
 let repo: TempRepo
 
 const request = (branch: string, worktree_dir?: string) => ({

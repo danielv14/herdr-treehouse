@@ -337,8 +337,6 @@ describe('bootstrap argv', () => {
 })
 
 describe('braces that are not placeholders', () => {
-  // Config values are shell commands, so braces are ordinary there. Only
-  // single-word braces are placeholders.
   test.each([
     "docker compose ps --format '{{.Names}}'",
     "kubectl get pods -o jsonpath='{.items[0].metadata.name}'",
