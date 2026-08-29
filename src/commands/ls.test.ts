@@ -8,8 +8,6 @@ import { expectRejection } from '../testing/expectRejection.ts'
 import { createTempRepo, type TempRepo } from '../testing/tempRepo.ts'
 import { ls } from './ls.ts'
 
-// Drives ls end to end: real repos and worktrees, scripted Herdr responses.
-
 let repo: TempRepo
 let configDir: string
 let logged: string[]

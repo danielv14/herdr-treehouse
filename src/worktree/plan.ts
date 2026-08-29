@@ -2,9 +2,6 @@ import { isAbsolute, resolve } from 'node:path'
 import { slugFromBranch, ticketFromBranch } from './branch.ts'
 import { expandHome, type RepoConfig } from '../config/config.ts'
 
-// Everything derived about one worktree, resolved in a single call. Pure: no
-// filesystem, no git, no Herdr.
-
 const PLACEHOLDERS = [
   'repo',
   'branch',
@@ -20,26 +17,18 @@ const PLACEHOLDERS = [
 
 const TARGETS_PLACEHOLDER = '{targets...}'
 
-// The prose form of the same list, legal everywhere ordinary placeholders are
-// but NOT in bootstrap argv: there it can only be a mistyped {targets...}.
 const TARGETS_JOINED_PLACEHOLDER = '{targets}'
 
 // Legal in the agent command and nowhere else. Not in PLACEHOLDERS: only
 // expandAgent below can supply a value for it.
 const CONTEXT_FILE_PLACEHOLDER = '{context_file}'
 
-// The slot a caller's --model lands in, also agent-command-only. Its value is
-// the repo's `model_arg`, which is where the agent's flag spelling lives, so
-// the engine never learns that a model is asked for with --model.
 const MODEL_ARG_PLACEHOLDER = '{model_arg}'
 
-// Legal inside a model_arg value and nowhere else: it is the one expansion that
-// has a model to substitute.
 const MODEL_PLACEHOLDER = '{model}'
 
 // The placeholders only one expansion can supply a value for, and where each
-// says it belongs when it turns up somewhere else. Kept as data so the tiers
-// read as a list rather than as three near-identical branches.
+// says it belongs when it turns up somewhere else.
 const SCOPED_PLACEHOLDERS: Record<string, { belongs: string; hint?: string }> = {
   [CONTEXT_FILE_PLACEHOLDER.slice(1, -1)]: { belongs: 'the agent command' },
   [MODEL_ARG_PLACEHOLDER.slice(1, -1)]: { belongs: 'the agent command' },
@@ -66,11 +55,9 @@ const usesPlaceholder = (template: string, placeholder: string): boolean =>
 export const bootstrapTakesTargets = (repoConfig: RepoConfig): boolean =>
   repoConfig.bootstrap?.includes(TARGETS_PLACEHOLDER) ?? false
 
-// Whether an agent command asks for the repo's rendered context.
 export const agentCommandTakesContext = (agentCommand: string): boolean =>
   usesPlaceholder(agentCommand, CONTEXT_FILE_PLACEHOLDER)
 
-// Whether an agent command has a slot for a model.
 export const agentCommandTakesModel = (agentCommand: string): boolean =>
   usesPlaceholder(agentCommand, MODEL_ARG_PLACEHOLDER)
 
@@ -93,7 +80,6 @@ export type WorktreePlan = {
   // legal. Both arrive as arguments: only the caller that renders them knows
   // whether there is a file, and whether a model was asked for at all.
   expandAgent: (command: string, values?: AgentValues) => string
-  // Expand a `model_arg` value, the one place `{model}` resolves.
   expandModelArg: (template: string, model: string) => string
 }
 
@@ -152,9 +138,6 @@ export type PlanInput = {
   branch: string
   mainRepoRoot: string
   repoConfig: RepoConfig
-  // Where the config that a bootstrap or setup command belongs to lives, so
-  // {config_dir} can name a script next to it. Resolving it is Herdr's answer;
-  // the plan only carries the value.
   configDir: string
   targets?: string[]
   // Path of a worktree that already exists, when the caller knows it (Herdr's
@@ -180,23 +163,14 @@ export type WorktreePlacement = {
   worktree: string
 }
 
-// The short names one branch can go by, shortest first. A ticket branch has
-// two: the ticket id, and the full slug that keeps ABC-1/reducer-approach and
-// ABC-1/state-machine-approach apart. Everything else has only the slug.
 const idCandidates = (branch: string): string[] => {
   const slug = slugFromBranch(branch)
   const ticket = ticketFromBranch(branch)
   return ticket === '' || ticket === slug ? [slug] : [ticket, slug]
 }
 
-// The short name a branch's worktree goes by when nothing disambiguates it:
-// the ticket if the branch has one, the slug otherwise.
 export const conventionalId = (branch: string): string => idCandidates(branch)[0]
 
-// The ordered spots the convention allows one branch; placement.ts asks git
-// which are taken. A worktree_dir that ignores {id} yields a single placement,
-// so that module refuses instead of silently reusing another branch's
-// worktree. Background: docs/worktree-lifecycle.md.
 export const worktreePlacements = (input: PlacementInput): WorktreePlacement[] =>
   idCandidates(input.branch).reduce<WorktreePlacement[]>((placements, id) => {
     const worktree = resolveWorktreePath(
@@ -209,7 +183,6 @@ export const worktreePlacements = (input: PlacementInput): WorktreePlacement[] =
       : [...placements, { id, worktree }]
   }, [])
 
-// Every placeholder except {worktree}, which needs the path this feeds into.
 const placeholderValues = (input: PlacementInput, id: string): Record<string, string> => ({
   repo: input.repoName,
   branch: input.branch,
@@ -238,9 +211,6 @@ export const buildWorktreePlan = ({
   const withoutWorktree = placeholderValues({ repoName, branch, mainRepoRoot, repoConfig }, id)
 
   const worktreePath = worktree ?? resolveWorktreePath(repoConfig, mainRepoRoot, withoutWorktree)
-  // {targets} is the prose form of the list {targets...} spreads into bootstrap
-  // argv: one string to drop into a sentence, empty when nothing was asked for.
-  //
   // config_dir joins here, not in placeholderValues, so worktree_dir cannot use
   // it. See docs/worktree-lifecycle.md.
   const values: Record<string, string> = {
@@ -284,8 +254,6 @@ export const buildWorktreePlan = ({
   }
 }
 
-// {repo} is the config key, which for unconfigured repos is the directory name;
-// set worktree_dir explicitly if a key deliberately differs from it.
 const resolveWorktreePath = (
   repoConfig: RepoConfig,
   mainRepoRoot: string,

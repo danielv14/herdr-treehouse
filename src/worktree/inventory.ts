@@ -4,10 +4,6 @@ import type { RepoConfig } from '../config/config.ts'
 import { listWorktrees, worktreeFacts } from './git.ts'
 import { placementOfWorktree, unplaceable, type ResolvedPlacement } from './placement.ts'
 
-// One record per linked worktree of a configured repo. Assembles and returns;
-// rendering is the ls command's job. Herdr facts arrive as plain data through
-// attachTabFacts below, so this module never knows Herdr.
-
 export type WorktreeTab = {
   tabId: string
   // Both absent when the tab has no registered agent.
@@ -23,8 +19,6 @@ export type InventoryWorktree = {
   // Ticket parsed from the branch ('' when it has none).
   ticket: string
   id: string
-  // Whether the path is one the repo's worktree_dir convention allows for this
-  // branch; a manual `git worktree add` elsewhere still appears, unmanaged.
   managed: boolean
   // The directory is gone but git still lists it (removed by hand; prunable).
   missing: boolean
@@ -62,8 +56,6 @@ export const collectRepoInventory = (
   // A broken worktree_dir template throws for every branch alike; one warning
   // says why the whole repo reads as unmanaged.
   let templateWarned = false
-  // The same module `up` asks, so a disambiguated slug path reads as
-  // conventional here, under the name `up` gave it.
   const placementOf = (branch: string, path: string): ResolvedPlacement => {
     try {
       return placementOfWorktree({ repoName: name, branch, mainRepoRoot: root, repoConfig: config }, path)
@@ -98,7 +90,6 @@ export const collectRepoInventory = (
         path,
         branch,
         ticket,
-        // Detached: no branch, so nothing to name the worktree after.
         id: placement?.id ?? '',
         managed: placement?.managed ?? false,
         missing,

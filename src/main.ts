@@ -3,8 +3,6 @@ import { commandHelp, findCommand, help } from './commands/registry.ts'
 import { resolveDeps, type EngineDeps } from './deps.ts'
 import { createHerdrInvoker } from './herdr/invoker.ts'
 
-// Takes argv and deps rather than reading the globals, so it can be imported
-// and driven in tests.
 export const runCommand = async (argv: string[], deps: EngineDeps) => {
   const { log } = resolveDeps(deps)
   const [name, ...rest] = argv

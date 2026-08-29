@@ -3,9 +3,6 @@ import { insideHerdr, type HerdrInvoker } from './herdr/invoker.ts'
 import { createTabChoreography, pluginConfigDir, type TabChoreography } from './herdr/tabs.ts'
 import { spawnProcess, type ProcessRunner } from './processRunner.ts'
 
-// What the commands need from the outside world. Only `invoke` is required;
-// the rest have production defaults and exist so tests can drive the engine
-// with no Herdr session, no HERDR_ENV and no real waiting.
 export type Ask = (question: string) => Promise<string>
 
 export type EngineDeps = {

@@ -4,10 +4,6 @@ import type { ProcessRunner } from '../processRunner.ts'
 import { addWorktree, findWorktreeAtPath } from './git.ts'
 import type { WorktreePlan } from './plan.ts'
 
-// "Make this worktree exist and be usable", shared by `treehouse up` and the
-// worktree.created hook. This unifies invocation, not configuration: `setup`
-// and `bootstrap` stay two tiers with two meanings (see CLAUDE.md).
-
 export type ProvisionOptions = {
   // 'just-created' means someone else made the checkout moments ago (Herdr's
   // native flow): nothing to create, but setup must still run.
@@ -16,9 +12,6 @@ export type ProvisionOptions = {
   // existing worktree is not necessarily a provisioned one; whether the
   // commands are worth re-running is the caller's call.
   setupExisting?: boolean
-  // The bootstrap script and the setup commands are the only processes this
-  // module starts, and both go through here (git creation goes through git.ts,
-  // which spawns git itself).
   run: ProcessRunner
   log: (message: string) => void
   warn: (message: string) => void

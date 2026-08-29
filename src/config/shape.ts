@@ -1,17 +1,10 @@
 import type { Diagnostic } from './diagnostics.ts'
 
-// The declare-and-validate engine: a Shape says which keys a table may hold
-// and what value each takes, validateTable checks an untyped table against it
-// in one pass, and Declared<> derives the TypeScript type from the same
-// declaration. Knows nothing about treehouse's config — the shapes themselves,
-// and the policy around them, live in config.ts.
-
 // A value constraint on a string, declared with the shape so a bad value
 // surfaces as a Diagnostic like every other config error, and a repo-scoped one
 // inherits demote-and-skip instead of needing its own warn-and-continue.
 export type StringCheck = { expected: string; ok: (value: string) => boolean }
 
-// Keys AND value shapes are declared once and checked in a single pass.
 type FieldSpec =
   | { kind: 'string'; values?: readonly string[]; check?: StringCheck }
   | { kind: 'number' }
@@ -24,10 +17,6 @@ type FieldSpec =
 
 export type Shape = Record<string, FieldSpec>
 
-// The type a spec's kind promises, so Declared<> can spell out what a validated
-// table holds. A `values` list narrows to its literals; the table kinds recurse.
-// Declaring a shape with `as const satisfies Shape` is what keeps the literal
-// types this needs while still checking the declaration against Shape.
 // A lookup on the discriminant rather than a chain of conditionals: rows cannot
 // be order-sensitive (a chain that tested bare `kind: 'string'` before the
 // values row would silently widen every enum string), and a kind added to
@@ -48,8 +37,6 @@ type FieldValue<S extends FieldSpec> = {
 // missing one means (config.ts demotes and skips by its blast-radius rules).
 export type Declared<S extends Shape> = { [K in keyof S]?: FieldValue<S[K]> }
 
-// The other half of Declared<>: names the keys a resolver promises to fill in,
-// so a resolved type can be derived from the same shape as the declared one.
 export type WithDefaulted<T, K extends keyof T> = T & Required<Pick<T, K>>
 
 type Scope = {

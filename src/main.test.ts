@@ -80,8 +80,6 @@ describe('help', () => {
 })
 
 describe('bootstrap flags', () => {
-  // The declaration used to be decorative here: the entrypoint hand-checked
-  // argv[0] instead of parsing through it.
   test('an unknown flag is reported by the parser, naming the command', async () => {
     await expectRejection(runCommand(['bootstrap', '--now'], deps()), 'unknown option for bootstrap: --now')
   })

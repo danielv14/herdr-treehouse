@@ -13,9 +13,6 @@ import {
 } from './git.ts'
 import { createTempRepo, type TempRepo } from '../testing/tempRepo.ts'
 
-// These behaviours used to be reachable only through the commands; now the git
-// module answers for them at its own interface, against real repos.
-
 let repo: TempRepo
 let warned: string[]
 

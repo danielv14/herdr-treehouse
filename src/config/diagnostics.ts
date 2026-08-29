@@ -9,8 +9,6 @@ export type Diagnostic = {
   key?: string
 }
 
-// The severity decision of config validation: warnings print and the run
-// continues, errors stop it (see docs/config.md for why).
 export const reportDiagnostics = (
   diagnostics: Diagnostic[],
   warn: (message: string) => void,

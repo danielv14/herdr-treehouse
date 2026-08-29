@@ -7,8 +7,6 @@ import { ONBOARD_COMMAND, onboard } from './onboard.ts'
 import { REPORT_COMMAND, report } from './report.ts'
 import { UP_COMMAND, up } from './up.ts'
 
-// The one registry: dispatch, --help and flag parsing all read this list, so
-// adding a command is one entry here.
 export const COMMANDS: Command[] = [
   { ...UP_COMMAND, run: up },
   { ...DOWN_COMMAND, run: down },

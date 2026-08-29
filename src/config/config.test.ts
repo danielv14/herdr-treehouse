@@ -6,11 +6,6 @@ import { renderProposedBlock, resolveAllRepoConfigs, resolveRepoConfig } from '.
 import { reportDiagnostics } from './diagnostics.ts'
 import { expectRejection } from '../testing/expectRejection.ts'
 
-// Driven through the two resolvers, which is the interface every call site uses:
-// a temp config dir for the central file, real directories for the repos (a
-// [repos.X] block is matched by path identity), and a warn sink for the
-// diagnostics. Validation is reached the way a command reaches it.
-
 let parent: string
 let configDir: string
 let centralPath: string
@@ -33,7 +28,6 @@ const writeCentral = (toml: string) => writeFileSync(centralPath, toml)
 
 const writeLocal = (repoRoot: string, toml: string) => writeFileSync(localPath(repoRoot), toml)
 
-// The central config as one [repos.my-repo] block for the repo under test.
 const writeMyBlock = (body: string) =>
   writeCentral(`[repos.my-repo]\nroot = ${JSON.stringify(mine)}\n${body}`)
 
@@ -552,7 +546,6 @@ base = "origin/master"
     expect(resolved.map((entry) => entry.name)).toEqual(['a', 'b'])
     expect(resolved[0].config.agent).toBe('codex')
     expect(resolved[1].config.agent).toBe('claude')
-    // The local file wins over the central block, as in resolveRepoConfig.
     expect(resolved[1].config.base).toBe('origin/main')
     expect(warned).toEqual([])
   })

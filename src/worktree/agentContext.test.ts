@@ -10,10 +10,6 @@ import {
 } from './agentContext.ts'
 import { buildWorktreePlan, type WorktreePlan } from './plan.ts'
 
-// The rules around `context` and `--model` in one place. No git and no Herdr:
-// the plan is pure, and the only side effect is the context file, whose path
-// comes back from the call.
-
 const MAIN = '/tmp/checkouts/ctx-repo'
 const CONFIG_DIR = '/tmp/herdr/plugins/config/treehouse'
 
@@ -31,7 +27,6 @@ const planFor = (branch: string, repoConfig: Partial<RepoConfig> = {}, targets: 
 
 const written: string[] = []
 
-// Same call, with the file it wrote recorded for cleanup.
 const prepare = (plan: WorktreePlan, input: AgentCommandInput) => {
   const prepared = prepareAgentCommand(plan, input)
   if (prepared.contextFile) written.push(prepared.contextFile)

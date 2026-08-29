@@ -1,6 +1,3 @@
-// Flag declaration, parsing and help rendering, all derived from one
-// declaration per command so help cannot drift. Deliberately not a framework.
-
 import type { EngineDeps } from './deps.ts'
 
 export type FlagKind = 'boolean' | 'value' | 'list'
@@ -12,9 +9,7 @@ export type FlagSpec = {
   // Key the parsed value is read back under. Two flags may share a key when
   // they feed the same list (--target and --targets).
   key: string
-  // Shown after the flag name in help, e.g. "<path>".
   placeholder?: string
-  // List flags whose single value is delimited, e.g. --targets a,b.
   split?: string
   help: string
 }
@@ -24,7 +19,6 @@ export type CommandSpec = {
   usage: string[]
   summary: string
   flags: FlagSpec[]
-  // Free-form lines printed under the flag list.
   notes?: string[]
 }
 
