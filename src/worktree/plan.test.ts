@@ -7,6 +7,7 @@ import {
   agentCommandTakesModel,
   buildWorktreePlan,
   worktreePlacements,
+  type TemplateSlot,
 } from './plan.ts'
 
 const MAIN = '/tmp/checkouts/my-repo'
@@ -75,7 +76,7 @@ describe('worktree path', () => {
       worktree: '/somewhere/herdr-made-this',
     })
     expect(result.worktree).toBe('/somewhere/herdr-made-this')
-    expect(result.expand('{worktree}')).toBe('/somewhere/herdr-made-this')
+    expect(result.expand('{worktree}', 'setup')).toBe('/somewhere/herdr-made-this')
   })
 
   test('{worktree} in worktree_dir is refused instead of passed through', () => {
@@ -137,7 +138,89 @@ describe('placements', () => {
     })
     expect(result.id).toBe('abc-1-state-machine')
     expect(result.ticket).toBe('abc-1')
-    expect(result.expand('docker compose -p {id}')).toBe('docker compose -p abc-1-state-machine')
+    expect(result.expand('docker compose -p {id}', 'pane')).toBe(
+      'docker compose -p abc-1-state-machine',
+    )
+  })
+})
+
+describe('what each slot admits', () => {
+  // The scope table as the config sees it: one row per place a template can
+  // sit. Declared here rather than imported, so a slot quietly gaining a
+  // placeholder fails a test instead of agreeing with itself.
+  const BASE = ['repo', 'branch', 'slug', 'ticket', 'id', 'root', 'base']
+  const WORKTREE = [...BASE, 'worktree', 'config_dir', 'targets']
+  const SCOPE: { slot: TemplateSlot; label: string; admits: string[] }[] = [
+    { slot: 'worktree_dir', label: 'worktree_dir', admits: BASE },
+    { slot: 'setup', label: 'setup', admits: WORKTREE },
+    { slot: 'pane', label: 'a pane command', admits: WORKTREE },
+    { slot: 'bootstrap', label: 'bootstrap', admits: WORKTREE },
+    { slot: 'context', label: 'context', admits: WORKTREE },
+    {
+      slot: 'agent',
+      label: 'the agent command',
+      admits: [...WORKTREE, 'context_file', 'model_arg'],
+    },
+    { slot: 'model_arg', label: 'model_arg', admits: [...WORKTREE, 'model'] },
+  ]
+  const EVERY_PLACEHOLDER = [...WORKTREE, 'context_file', 'model_arg', 'model']
+  // What only a caller can supply, all of it offered to every slot: what the
+  // template admits must be the table's answer, never the caller's.
+  const SUPPLIED = { context_file: '/tmp/ctx.md', model_arg: '--model fable', model: 'fable' }
+
+  const expandIn = (slot: TemplateSlot, template: string) =>
+    plan('ABC-1/x', {}, ['services/a']).expand(template, slot, SUPPLIED)
+
+  for (const { slot, label, admits } of SCOPE) {
+    for (const placeholder of EVERY_PLACEHOLDER) {
+      const template = `head {${placeholder}} tail`
+      if (admits.includes(placeholder)) {
+        test(`${label} expands {${placeholder}}`, () => {
+          expect(expandIn(slot, template)).not.toContain(`{${placeholder}}`)
+        })
+        continue
+      }
+      test(`${label} refuses {${placeholder}}`, () => {
+        const owners = SCOPE.filter((row) => row.admits.includes(placeholder))
+        expect(() => expandIn(slot, template)).toThrow(
+          owners.length === 1
+            ? `{${placeholder}} only expands in ${owners[0].label}, not in ${label}`
+            : `{${placeholder}} is not available in ${label}`,
+        )
+      })
+    }
+  }
+
+  test('the refusal for {model} points at the slot that fills it in', () => {
+    expect(() => expandIn('agent', 'claude --model {model}')).toThrow(
+      'The agent command takes {model_arg}, which model_arg fills in.',
+    )
+  })
+
+  test('a placeholder the slot admits but nobody rendered is an error, not an empty string', () => {
+    expect(() => plan('ABC-1/x').expand('cat {context_file}', 'agent')).toThrow(
+      '{context_file} is legal in the agent command but nothing was rendered for it',
+    )
+  })
+})
+
+describe('the real paths reach their slot', () => {
+  test('worktree_dir is expanded in the worktree_dir slot', () => {
+    expect(() => plan('ABC-1/x', { worktree_dir: '{worktree}-copy' })).toThrow(
+      '{worktree} is not available in worktree_dir',
+    )
+    expect(() => plan('ABC-1/x', { worktree_dir: '{config_dir}/trees/{id}' })).toThrow(
+      '{config_dir} is not available in worktree_dir',
+    )
+  })
+
+  test('bootstrap argv is expanded in the bootstrap slot', () => {
+    expect(() => plan('ABC-1/x').expandArgv(['s.sh', '{context_file}'])).toThrow(
+      '{context_file} only expands in the agent command, not in bootstrap',
+    )
+    expect(() => plan('ABC-1/x').expandArgv(['s.sh', '{model_arg}'])).toThrow(
+      '{model_arg} only expands in the agent command, not in bootstrap',
+    )
   })
 })
 
@@ -145,30 +228,39 @@ describe('placeholder expansion', () => {
   test('expands every known placeholder', () => {
     const result = plan('ABC-1/x', { base: 'origin/main' })
     expect(
-      result.expand('{repo} {branch} {slug} {ticket} {id} {root} {base} {worktree} {config_dir}'),
+      result.expand(
+        '{repo} {branch} {slug} {ticket} {id} {root} {base} {worktree} {config_dir}',
+        'setup',
+      ),
     ).toBe(
       `my-repo ABC-1/x abc-1-x abc-1 abc-1 ${MAIN} origin/main /tmp/checkouts/my-repo-abc-1 ${CONFIG_DIR}`,
     )
   })
 
-  test('an unknown placeholder fails, naming it and the known ones', () => {
+  test('an unknown placeholder fails, naming it and the ones the slot takes', () => {
     expect(() => plan('ABC-1/x').expand('cp {wortkree}/.env .env', 'setup')).toThrow(
-      /unknown placeholder \{wortkree\} in setup.*\{repo\}, \{branch\}, \{slug\}, \{ticket\}, \{id\}, \{worktree\}, \{root\}, \{base\}/s,
+      /unknown placeholder \{wortkree\} in setup.*Placeholders in setup: \{repo\}, \{branch\}, \{slug\}, \{ticket\}, \{id\}, \{root\}, \{base\}, \{worktree\}, \{config_dir\}, \{targets\}/s,
+    )
+  })
+
+  test('the known list follows the slot: worktree_dir names only what it takes', () => {
+    expect(() => plan('ABC-1/x', { worktree_dir: '../{wortkree}' })).toThrow(
+      'Placeholders in worktree_dir: {repo}, {branch}, {slug}, {ticket}, {id}, {root}, {base}',
     )
   })
 
   test('an empty ticket expands to an empty string rather than failing', () => {
-    expect(plan('fix/thing').expand('[{ticket}]')).toBe('[]')
+    expect(plan('fix/thing').expand('[{ticket}]', 'setup')).toBe('[]')
   })
 
   test('{targets} renders the --target list comma-separated', () => {
-    expect(plan('ABC-1/x', {}, ['services/a', 'packages/b']).expand('deps: {targets}')).toBe(
-      'deps: services/a, packages/b',
-    )
+    expect(
+      plan('ABC-1/x', {}, ['services/a', 'packages/b']).expand('deps: {targets}', 'context'),
+    ).toBe('deps: services/a, packages/b')
   })
 
   test('{targets} with no targets is an empty string, so the text can say so itself', () => {
-    expect(plan('ABC-1/x').expand('deps: [{targets}]')).toBe('deps: []')
+    expect(plan('ABC-1/x').expand('deps: [{targets}]', 'context')).toBe('deps: []')
   })
 })
 
@@ -184,51 +276,34 @@ describe('{config_dir}', () => {
       `cp ${CONFIG_DIR}/templates/.env .env`,
     )
   })
-
-  test('is refused in worktree_dir, where a worktree never belongs', () => {
-    expect(() => plan('ABC-1/x', { worktree_dir: '{config_dir}/trees/{id}' })).toThrow(
-      '{config_dir} is not available in worktree_dir',
-    )
-  })
 })
 
 describe('the agent command', () => {
   test('gets the ordinary placeholders', () => {
-    expect(plan('ABC-1/x').expandAgent('claude --resume --cwd {worktree}')).toBe(
+    expect(plan('ABC-1/x').expand('claude --resume --cwd {worktree}', 'agent')).toBe(
       'claude --resume --cwd /tmp/checkouts/my-repo-abc-1',
     )
   })
 
   test('{context_file} expands to the path it is handed', () => {
     expect(
-      plan('ABC-1/x').expandAgent('claude --append-system-prompt "$(cat {context_file})"', {
-        contextFile: '/tmp/ctx.md',
+      plan('ABC-1/x').expand('claude --append-system-prompt "$(cat {context_file})"', 'agent', {
+        context_file: '/tmp/ctx.md',
       }),
     ).toBe('claude --append-system-prompt "$(cat /tmp/ctx.md)"')
   })
 
-  test('{context_file} is refused everywhere else, saying where it belongs', () => {
-    const result = plan('ABC-1/x')
-    expect(() => result.expand('cat {context_file}', 'setup')).toThrow(
-      '{context_file} only expands in the agent command, not in setup',
-    )
-    expect(() => result.expand('cat {context_file}', 'a pane command')).toThrow(
-      '{context_file} only expands in the agent command, not in a pane command',
-    )
-    expect(() => result.expandArgv(['s.sh', '{context_file}'])).toThrow(
-      '{context_file} only expands in the agent command, not in bootstrap',
-    )
-  })
-
   test('a placeholder typo in it fails like any other', () => {
-    expect(() => plan('ABC-1/x').expandAgent('claude --cwd {wortkree}')).toThrow(
+    expect(() => plan('ABC-1/x').expand('claude --cwd {wortkree}', 'agent')).toThrow(
       'unknown placeholder {wortkree} in the agent command',
     )
   })
 
   test('{model_arg} expands to the fragment it is handed', () => {
     expect(
-      plan('ABC-1/x').expandAgent('claude {model_arg} --resume', { modelArg: '--model fable' }),
+      plan('ABC-1/x').expand('claude {model_arg} --resume', 'agent', {
+        model_arg: '--model fable',
+      }),
     ).toBe('claude --model fable --resume')
   })
 
@@ -236,26 +311,9 @@ describe('the agent command', () => {
     // No model asked for is a complete answer, not a missing one: the surviving
     // double space is inert, and collapsing it would mean the one placeholder
     // that also eats its neighbours.
-    expect(plan('ABC-1/x').expandAgent('claude {model_arg} --resume', { modelArg: '' })).toBe(
-      'claude  --resume',
-    )
-  })
-
-  test('{model_arg} is refused everywhere else, saying where it belongs', () => {
-    const result = plan('ABC-1/x')
-    expect(() => result.expand('echo {model_arg}', 'setup')).toThrow(
-      '{model_arg} only expands in the agent command, not in setup',
-    )
-    expect(() => result.expandArgv(['s.sh', '{model_arg}'])).toThrow(
-      '{model_arg} only expands in the agent command, not in bootstrap',
-    )
-  })
-
-  test('{model} in the agent command points at model_arg instead', () => {
-    // The mistake to expect: reaching for the value where only the slot works.
-    expect(() => plan('ABC-1/x').expandAgent('claude --model {model}', { modelArg: '' })).toThrow(
-      '{model} only expands in model_arg, not in the agent command',
-    )
+    expect(
+      plan('ABC-1/x').expand('claude {model_arg} --resume', 'agent', { model_arg: '' }),
+    ).toBe('claude  --resume')
   })
 
   test('a $-prefixed brace is a shell variable, not a slot', () => {
@@ -271,25 +329,29 @@ describe('the agent command', () => {
 
 describe('model_arg', () => {
   test('{model} expands to the model asked for', () => {
-    expect(plan('ABC-1/x').expandModelArg('--model {model}', 'fable')).toBe('--model fable')
+    expect(plan('ABC-1/x').expand('--model {model}', 'model_arg', { model: 'fable' })).toBe(
+      '--model fable',
+    )
   })
 
   test('ordinary placeholders work there too', () => {
-    expect(plan('ABC-1/x').expandModelArg('--model {model} --tag {ticket}', 'opus')).toBe(
-      '--model opus --tag abc-1',
-    )
+    expect(
+      plan('ABC-1/x').expand('--model {model} --tag {ticket}', 'model_arg', { model: 'opus' }),
+    ).toBe('--model opus --tag abc-1')
   })
 
   test('a typo fails there like anywhere else', () => {
-    expect(() => plan('ABC-1/x').expandModelArg('--model {mdoel}', 'fable')).toThrow(
-      'unknown placeholder {mdoel} in model_arg',
-    )
+    expect(() =>
+      plan('ABC-1/x').expand('--model {mdoel}', 'model_arg', { model: 'fable' }),
+    ).toThrow('unknown placeholder {mdoel} in model_arg')
   })
 
   test('the model is inserted literally, not expanded in turn', () => {
     // The model is the one value that reaches a command from the command line
     // rather than from config, so it is worth saying it gets no second pass.
-    expect(plan('ABC-1/x').expandModelArg('--model {model}', '{ticket}')).toBe('--model {ticket}')
+    expect(plan('ABC-1/x').expand('--model {model}', 'model_arg', { model: '{ticket}' })).toBe(
+      '--model {ticket}',
+    )
   })
 })
 
@@ -348,11 +410,13 @@ describe('braces that are not placeholders', () => {
   })
 
   test('but a single-word brace is still checked', () => {
-    expect(() => plan('ABC-1/x').expand('{wortkree}/x', 'setup')).toThrow('unknown placeholder {wortkree}')
+    expect(() => plan('ABC-1/x').expand('{wortkree}/x', 'setup')).toThrow(
+      'unknown placeholder {wortkree}',
+    )
   })
 
   test('{targets...} anywhere in a plain template is refused', () => {
-    expect(() => plan('ABC-1/x').expand('--dirs={targets...}', 'a pane command')).toThrow(
+    expect(() => plan('ABC-1/x').expand('--dirs={targets...}', 'pane')).toThrow(
       '{targets...} only expands as a standalone bootstrap argv entry',
     )
   })

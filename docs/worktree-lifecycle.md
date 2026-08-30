@@ -101,6 +101,23 @@ config values are shell commands, and braces are ordinary there
 preceded by `$` are treated as placeholders; everything else passes through
 untouched.
 
+Which placeholders a template admits is decided by the slot it sits in, and by
+nothing else. `worktree_dir`, `setup`, a pane command, `bootstrap`, `context`,
+the agent command and `model_arg` are the seven slots, and one table says what
+each admits and what it is called when a refusal has to name it. Before #65 that
+rule was spread across four things at once: which of the four expansion methods
+a caller happened to pick, which keys that method merged into its value bag, a
+side table of scoped placeholders, and the order of a spread (`{config_dir}`
+joined the values *after* `worktree_dir` had been resolved, and a comment said
+so). The `where` argument that shaped the error message was free text, seven
+different strings across four files, and the compiler could not tell that a call
+site passed the wrong one. Each of the last three features added another tier to
+that mechanism. Now the slot is the parameter, `expand(template, slot, values?)`
+is the whole interface plus the argv variant, and adding a placeholder is one
+entry in one table. The refusals fall out of the same table: a placeholder
+exactly one slot admits reports where it belongs, one that several admit but
+this slot does not reads as unavailable here, and one no slot admits is a typo.
+
 `{config_dir}` is the plugin config dir as a placeholder, and it exists because a
 bootstrap's `argv[0]` needs an absolute path, which meant every config wrote out
 Herdr's plugin config layout: a path `herdr plugin config-dir` decides, not us,
