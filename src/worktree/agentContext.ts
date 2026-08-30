@@ -51,7 +51,7 @@ const renderModelArg = (plan: WorktreePlan, input: AgentCommandInput): string =>
         "Add the slot, e.g. agent = 'claude {model_arg}'.",
     )
   }
-  return plan.expandModelArg(input.modelArg, input.model)
+  return plan.expand(input.modelArg, 'model_arg', { model: input.model })
 }
 
 export type PreparedAgentCommand = {
@@ -79,7 +79,7 @@ export const prepareAgentCommand = (
           'Add it, e.g. agent = \'claude --append-system-prompt "$(cat {context_file})"\', or drop context.',
       )
     }
-    return { command: plan.expandAgent(input.command, { modelArg }).trim() }
+    return { command: plan.expand(input.command, 'agent', { model_arg: modelArg }).trim() }
   }
 
   if (rendered === '') {
@@ -95,7 +95,7 @@ export const prepareAgentCommand = (
   // Trimmed for the same reason the other branch is: a {model_arg} last in the
   // command leaves a trailing space behind when no model was asked for, and
   // that ends up in the reported agent line.
-  const command = plan.expandAgent(input.command, { contextFile: path, modelArg }).trim()
+  const command = plan.expand(input.command, 'agent', { context_file: path, model_arg: modelArg }).trim()
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 })
   writeFileSync(path, `${rendered}\n`, { mode: 0o600 })
   // `mode` applies at creation only, and the name is deterministic, so a file

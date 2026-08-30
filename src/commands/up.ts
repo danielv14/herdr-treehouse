@@ -5,7 +5,7 @@ import { readInvocationContext, requireInvocationTarget } from '../herdr/context
 import { resolveDeps, type Ask, type EngineDeps } from '../deps.ts'
 import { findMainRepoRoot } from '../worktree/git.ts'
 import { refreshWorktreeCount } from '../worktreeCount.ts'
-import { bootstrapTakesTargets, buildWorktreePlan } from '../worktree/plan.ts'
+import { bootstrapTakesTargets, buildWorktreePlan, type WorktreePlan } from '../worktree/plan.ts'
 import { resolveWorktreePlacement } from '../worktree/placement.ts'
 import { prepareAgentCommand } from '../worktree/agentContext.ts'
 import { provisionWorktree } from '../worktree/provision.ts'
@@ -91,10 +91,10 @@ const askInteractively = async (
 // The panes arrive with their defaults applied, so expanding the command is all
 // that is left. The spread is also where a config pane becomes a Herdr one: a
 // key added to the config shape reaches the tab request from here.
-const paneSpecs = (repoConfig: RepoConfig, expand: (template: string, where?: string) => string): PaneSpec[] =>
+const paneSpecs = (repoConfig: RepoConfig, expand: WorktreePlan['expand']): PaneSpec[] =>
   repoConfig.panes.map((pane) => ({
     ...pane,
-    command: pane.command ? expand(pane.command, 'a pane command') : undefined,
+    command: pane.command ? expand(pane.command, 'pane') : undefined,
   }))
 
 export const up = async (argv: string[], deps: EngineDeps) => {

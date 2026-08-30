@@ -2,40 +2,57 @@ import { isAbsolute, resolve } from 'node:path'
 import { slugFromBranch, ticketFromBranch } from './branch.ts'
 import { expandHome, type RepoConfig } from '../config/config.ts'
 
-const PLACEHOLDERS = [
-  'repo',
-  'branch',
-  'slug',
-  'ticket',
-  'id',
-  'worktree',
-  'root',
-  'base',
-  'config_dir',
-  'targets',
-] as const
-
 const TARGETS_PLACEHOLDER = '{targets...}'
 
 const TARGETS_JOINED_PLACEHOLDER = '{targets}'
 
-// Legal in the agent command and nowhere else. Not in PLACEHOLDERS: only
-// expandAgent below can supply a value for it.
 const CONTEXT_FILE_PLACEHOLDER = '{context_file}'
 
 const MODEL_ARG_PLACEHOLDER = '{model_arg}'
 
-const MODEL_PLACEHOLDER = '{model}'
+const BASE_PLACEHOLDERS = ['repo', 'branch', 'slug', 'ticket', 'id', 'root', 'base'] as const
 
-// The placeholders only one expansion can supply a value for, and where each
-// says it belongs when it turns up somewhere else.
-const SCOPED_PLACEHOLDERS: Record<string, { belongs: string; hint?: string }> = {
-  [CONTEXT_FILE_PLACEHOLDER.slice(1, -1)]: { belongs: 'the agent command' },
-  [MODEL_ARG_PLACEHOLDER.slice(1, -1)]: { belongs: 'the agent command' },
-  [MODEL_PLACEHOLDER.slice(1, -1)]: {
-    belongs: 'model_arg',
-    hint: `The agent command takes ${MODEL_ARG_PLACEHOLDER}, which model_arg fills in.`,
+// The placeholders that only mean anything once the worktree path is known.
+const WORKTREE_PLACEHOLDERS = [...BASE_PLACEHOLDERS, 'worktree', 'config_dir', 'targets'] as const
+
+// The one rule for which placeholders a template admits: the slot it sits in.
+// Not which method a caller picked, not which keys that method merged in, not
+// the order of a spread. `worktree_dir` is the base set alone because it is
+// what derives {worktree}, and a worktree never belongs in the config dir.
+const SLOTS = {
+  worktree_dir: { label: 'worktree_dir', admits: BASE_PLACEHOLDERS },
+  setup: { label: 'setup', admits: WORKTREE_PLACEHOLDERS },
+  pane: { label: 'a pane command', admits: WORKTREE_PLACEHOLDERS },
+  bootstrap: { label: 'bootstrap', admits: WORKTREE_PLACEHOLDERS },
+  context: { label: 'context', admits: WORKTREE_PLACEHOLDERS },
+  agent: {
+    label: 'the agent command',
+    admits: [...WORKTREE_PLACEHOLDERS, 'context_file', 'model_arg'],
   },
+  model_arg: { label: 'model_arg', admits: [...WORKTREE_PLACEHOLDERS, 'model'] },
+} as const satisfies Record<string, { label: string; admits: readonly string[] }>
+
+export type TemplateSlot = keyof typeof SLOTS
+
+// The values no slot can derive on its own: the caller that renders one is the
+// only one that knows it. Keyed by placeholder name, so the table above is the
+// only thing deciding where each may appear.
+export type SlotValues = {
+  context_file?: string
+  // The rendered model fragment, empty when no model was asked for. Empty is a
+  // complete answer, not a missing one: the command then reads as it always has.
+  model_arg?: string
+  model?: string
+}
+
+const admits = (slot: TemplateSlot, key: string): boolean =>
+  SLOTS[slot].admits.some((name) => name === key)
+
+const slotsAdmitting = (key: string): TemplateSlot[] =>
+  (Object.keys(SLOTS) as TemplateSlot[]).filter((slot) => admits(slot, key))
+
+const PLACEHOLDER_HINTS: Record<string, string> = {
+  model: `The agent command takes ${MODEL_ARG_PLACEHOLDER}, which model_arg fills in.`,
 }
 
 // The one rule for what counts as a placeholder, shared by the expansion below
@@ -71,23 +88,35 @@ export type WorktreePlan = {
   root: string
   base: string
   targets: string[]
-  // Expand placeholders in a single string; `where` only shapes the error message.
-  expand: (template: string, where?: string) => string
+  // Expand a template for the slot it sits in; the slot decides both what is
+  // legal and how a refusal reads. `values` carries what only the caller can
+  // supply, and is ignored by slots the table says do not admit it.
+  expand: (template: string, slot: TemplateSlot, values?: SlotValues) => string
   // Expand a bootstrap argv: `{targets...}` becomes one entry per target, every
-  // other entry gets normal placeholder expansion plus ~ expansion.
+  // other entry gets the bootstrap slot's expansion plus ~ expansion.
   expandArgv: (argv: string[]) => string[]
-  // Expand an agent command, where `{context_file}` and `{model_arg}` are
-  // legal. Both arrive as arguments: only the caller that renders them knows
-  // whether there is a file, and whether a model was asked for at all.
-  expandAgent: (command: string, values?: AgentValues) => string
-  expandModelArg: (template: string, model: string) => string
 }
 
-export type AgentValues = {
-  contextFile?: string
-  // The rendered model fragment, empty when no model was asked for. Empty is a
-  // complete answer, not a missing one: the command then reads as it always has.
-  modelArg?: string
+const placeholderError = (key: string, slot: TemplateSlot, template: string): Error => {
+  const { label } = SLOTS[slot]
+  const where = JSON.stringify(template)
+  const elsewhere = slotsAdmitting(key)
+  if (elsewhere.length === 0) {
+    const known = SLOTS[slot].admits.map((name) => `{${name}}`).join(', ')
+    return new Error(
+      `unknown placeholder {${key}} in ${label}: ${where}. Placeholders in ${label}: ${known}`,
+    )
+  }
+  // Exactly one slot admitting it makes "where it belongs" a fact of the table,
+  // not a second list to keep in step with it.
+  if (elsewhere.length === 1) {
+    const hint = PLACEHOLDER_HINTS[key]
+    return new Error(
+      `{${key}} only expands in ${SLOTS[elsewhere[0]].label}, not in ${label}: ${where}` +
+        (hint ? `. ${hint}` : ''),
+    )
+  }
+  return new Error(`{${key}} is not available in ${label}: ${where}`)
 }
 
 // An unknown placeholder is an error, not a pass-through: a typo used to become
@@ -100,36 +129,28 @@ export type AgentValues = {
 // untouched.
 const expandWith = (
   template: string,
-  values: Record<string, string>,
-  where: string,
+  slot: TemplateSlot,
+  derived: Record<string, string>,
+  supplied: Record<string, string | undefined>,
 ): string => {
+  const { label } = SLOTS[slot]
   if (template.includes(TARGETS_PLACEHOLDER)) {
     throw new Error(
-      `${TARGETS_PLACEHOLDER} only expands as a standalone bootstrap argv entry, not in ${where}: ${JSON.stringify(template)}`,
+      `${TARGETS_PLACEHOLDER} only expands as a standalone bootstrap argv entry, not in ${label}: ${JSON.stringify(template)}`,
     )
   }
-  // The scope-restricted placeholders report where they belong from inside the
-  // expansion rather than from a pre-scan, so they answer to PLACEHOLDER_PATTERN
-  // like everything else and `${model}` in a setup command stays a shell
-  // variable instead of hard-erroring.
+  // The scope check runs from inside the expansion rather than from a pre-scan,
+  // so it answers to PLACEHOLDER_PATTERN like everything else and `${model}` in
+  // a setup command stays a shell variable instead of hard-erroring.
   return template.replace(PLACEHOLDER_PATTERN, (_whole, key: string) => {
-    const value = values[key]
-    if (value !== undefined) return value
-    const scope = SCOPED_PLACEHOLDERS[key]
-    if (scope) {
+    if (!admits(slot, key)) throw placeholderError(key, slot, template)
+    const value = derived[key] ?? supplied[key]
+    if (value === undefined) {
       throw new Error(
-        `{${key}} only expands in ${scope.belongs}, not in ${where}: ${JSON.stringify(template)}` +
-          (scope.hint ? `. ${scope.hint}` : ''),
+        `{${key}} is legal in ${label} but nothing was rendered for it: ${JSON.stringify(template)}`,
       )
     }
-    if ((PLACEHOLDERS as readonly string[]).includes(key)) {
-      throw new Error(`{${key}} is not available in ${where}: ${JSON.stringify(template)}`)
-    }
-    throw new Error(
-      `unknown placeholder {${key}} in ${where}: ${JSON.stringify(template)}. Known placeholders: ${PLACEHOLDERS.map(
-        (name) => `{${name}}`,
-      ).join(', ')}, plus ${TARGETS_PLACEHOLDER} in bootstrap argv, ${CONTEXT_FILE_PLACEHOLDER} and ${MODEL_ARG_PLACEHOLDER} in the agent command, and ${MODEL_PLACEHOLDER} in model_arg`,
-    )
+    return value
   })
 }
 
@@ -211,8 +232,6 @@ export const buildWorktreePlan = ({
   const withoutWorktree = placeholderValues({ repoName, branch, mainRepoRoot, repoConfig }, id)
 
   const worktreePath = worktree ?? resolveWorktreePath(repoConfig, mainRepoRoot, withoutWorktree)
-  // config_dir joins here, not in placeholderValues, so worktree_dir cannot use
-  // it. See docs/worktree-lifecycle.md.
   const values: Record<string, string> = {
     ...withoutWorktree,
     worktree: worktreePath,
@@ -220,8 +239,8 @@ export const buildWorktreePlan = ({
     targets: targets.join(', '),
   }
 
-  const expand = (template: string, where = 'a config template') =>
-    expandWith(template, values, where)
+  const expand = (template: string, slot: TemplateSlot, supplied: SlotValues = {}) =>
+    expandWith(template, slot, values, supplied)
 
   return {
     repo: repoName,
@@ -244,13 +263,6 @@ export const buildWorktreePlan = ({
         }
         return [expandHome(expand(entry, 'bootstrap'))]
       }),
-    expandAgent: (command, { contextFile, modelArg } = {}) => {
-      const scope = { ...values }
-      if (contextFile !== undefined) scope.context_file = contextFile
-      if (modelArg !== undefined) scope.model_arg = modelArg
-      return expandWith(command, scope, 'the agent command')
-    },
-    expandModelArg: (template, model) => expandWith(template, { ...values, model }, 'model_arg'),
   }
 }
 
@@ -259,7 +271,7 @@ const resolveWorktreePath = (
   mainRepoRoot: string,
   values: Record<string, string>,
 ): string => {
-  const expanded = expandHome(expandWith(repoConfig.worktree_dir, values, 'worktree_dir'))
+  const expanded = expandHome(expandWith(repoConfig.worktree_dir, 'worktree_dir', values, {}))
   // Relative paths resolve against the main checkout, not the caller's cwd:
   // "../foo" must mean the same thing from a skill, a keybinding and a shell.
   return isAbsolute(expanded) ? expanded : resolve(mainRepoRoot, expanded)
