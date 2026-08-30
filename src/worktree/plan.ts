@@ -46,7 +46,7 @@ export type SlotValues = {
 }
 
 const admits = (slot: TemplateSlot, key: string): boolean =>
-  (SLOTS[slot].admits as readonly string[]).includes(key)
+  SLOTS[slot].admits.some((name) => name === key)
 
 const slotsAdmitting = (key: string): TemplateSlot[] =>
   (Object.keys(SLOTS) as TemplateSlot[]).filter((slot) => admits(slot, key))
@@ -131,7 +131,7 @@ const expandWith = (
   template: string,
   slot: TemplateSlot,
   derived: Record<string, string>,
-  supplied: SlotValues,
+  supplied: Record<string, string | undefined>,
 ): string => {
   const { label } = SLOTS[slot]
   if (template.includes(TARGETS_PLACEHOLDER)) {
@@ -144,7 +144,7 @@ const expandWith = (
   // a setup command stays a shell variable instead of hard-erroring.
   return template.replace(PLACEHOLDER_PATTERN, (_whole, key: string) => {
     if (!admits(slot, key)) throw placeholderError(key, slot, template)
-    const value = derived[key] ?? supplied[key as keyof SlotValues]
+    const value = derived[key] ?? supplied[key]
     if (value === undefined) {
       throw new Error(
         `{${key}} is legal in ${label} but nothing was rendered for it: ${JSON.stringify(template)}`,

@@ -145,24 +145,20 @@ describe('placements', () => {
 })
 
 describe('what each slot admits', () => {
-  // The scope table as the config sees it: one row per place a template can
-  // sit. Declared here rather than imported, so a slot quietly gaining a
-  // placeholder fails a test instead of agreeing with itself.
+  // The scope table as the config sees it, declared here rather than imported
+  // so it cannot agree with the engine by construction. Keyed by TemplateSlot,
+  // so a new slot fails the typecheck until this table names it too.
   const BASE = ['repo', 'branch', 'slug', 'ticket', 'id', 'root', 'base']
   const WORKTREE = [...BASE, 'worktree', 'config_dir', 'targets']
-  const SCOPE: { slot: TemplateSlot; label: string; admits: string[] }[] = [
-    { slot: 'worktree_dir', label: 'worktree_dir', admits: BASE },
-    { slot: 'setup', label: 'setup', admits: WORKTREE },
-    { slot: 'pane', label: 'a pane command', admits: WORKTREE },
-    { slot: 'bootstrap', label: 'bootstrap', admits: WORKTREE },
-    { slot: 'context', label: 'context', admits: WORKTREE },
-    {
-      slot: 'agent',
-      label: 'the agent command',
-      admits: [...WORKTREE, 'context_file', 'model_arg'],
-    },
-    { slot: 'model_arg', label: 'model_arg', admits: [...WORKTREE, 'model'] },
-  ]
+  const SCOPE: Record<TemplateSlot, { label: string; admits: string[] }> = {
+    worktree_dir: { label: 'worktree_dir', admits: BASE },
+    setup: { label: 'setup', admits: WORKTREE },
+    pane: { label: 'a pane command', admits: WORKTREE },
+    bootstrap: { label: 'bootstrap', admits: WORKTREE },
+    context: { label: 'context', admits: WORKTREE },
+    agent: { label: 'the agent command', admits: [...WORKTREE, 'context_file', 'model_arg'] },
+    model_arg: { label: 'model_arg', admits: [...WORKTREE, 'model'] },
+  }
   const EVERY_PLACEHOLDER = [...WORKTREE, 'context_file', 'model_arg', 'model']
   // What only a caller can supply, all of it offered to every slot: what the
   // template admits must be the table's answer, never the caller's.
@@ -171,7 +167,10 @@ describe('what each slot admits', () => {
   const expandIn = (slot: TemplateSlot, template: string) =>
     plan('ABC-1/x', {}, ['services/a']).expand(template, slot, SUPPLIED)
 
-  for (const { slot, label, admits } of SCOPE) {
+  for (const [slot, { label, admits }] of Object.entries(SCOPE) as [
+    TemplateSlot,
+    { label: string; admits: string[] },
+  ][]) {
     for (const placeholder of EVERY_PLACEHOLDER) {
       const template = `head {${placeholder}} tail`
       if (admits.includes(placeholder)) {
@@ -181,7 +180,7 @@ describe('what each slot admits', () => {
         continue
       }
       test(`${label} refuses {${placeholder}}`, () => {
-        const owners = SCOPE.filter((row) => row.admits.includes(placeholder))
+        const owners = Object.values(SCOPE).filter((row) => row.admits.includes(placeholder))
         expect(() => expandIn(slot, template)).toThrow(
           owners.length === 1
             ? `{${placeholder}} only expands in ${owners[0].label}, not in ${label}`
