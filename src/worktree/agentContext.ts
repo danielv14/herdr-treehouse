@@ -68,7 +68,8 @@ export const prepareAgentCommand = (
   // Render before deciding: `context = "{ticket}"` on a branch with no ticket
   // is configured and still nothing to deliver, and expanding first reports a
   // placeholder typo as a typo even when {context_file} is missing too.
-  // Trimmed because a TOML """ block carries the newline after the delimiter.
+  // Trimmed because a TOML """ block carries a trailing newline, the one
+  // before the closing delimiter.
   const rendered =
     input.context === undefined ? '' : plan.expand(input.context, 'context').trim()
 

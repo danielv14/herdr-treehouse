@@ -451,15 +451,14 @@ context = "every repo"
 
 [repos.my-repo]
 root = ${JSON.stringify(mine)}
-context = """
-line one
-line two
-"""
+context = "\\nline one\\nline two\\n"
 `)
     const { config } = await resolveMine()
     expect(warned).toEqual([])
-    // Kept as TOML handed it over, blank edges and all (Bun keeps the newline
-    // after the """); trimming them is the rendering side's business.
+    // Kept as TOML handed it over, blank edges and all; trimming them is the
+    // rendering side's business. Escaped newlines rather than a """ block, so
+    // the assertion is about the config layer and not about how a given TOML
+    // parser treats the newline after the opening delimiter.
     expect(config.context).toBe('\nline one\nline two\n')
   })
 
